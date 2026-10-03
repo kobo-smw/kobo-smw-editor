@@ -181,3 +181,14 @@ settle it.
   before the save. For vanilla's overworld the two agree. Settles it: an overworld that
   puts a level on a submap its number does not say, built and played before and after
   a save.
+- **Kobo's VRAM patch decides a changed tile's place when the tile is made**
+  (2026-10-03, `vram.asm` `tile_address`, lunar-magic-install.md "Tilemap streaming").
+  Lunar Magic's patch takes the game's stripe as the game queues it and decides, after
+  the frame, from the rows its builds then keep; Kobo's decides in `GenerateTile`, from
+  the camera at that moment, and queues its own address, which leaves `$008072` and the
+  stripe upload as the game has them. The two agree for tiles made after the frame's
+  camera update (sprites, every case probed), and can differ for a tile the player
+  makes at the top or bottom row on a frame where the camera then crosses a row. The
+  stripe buffer also holds Kobo's address where Lunar Magic's holds the game's. Settles
+  it: a hack whose code reads the stripe buffer, or a difference seen in play; the fix
+  would be Kobo's own code at the game loop hook.

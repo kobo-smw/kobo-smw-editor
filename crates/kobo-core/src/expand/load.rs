@@ -282,8 +282,6 @@ fn play_frames(
     mut each: impl FnMut(u32, &mut ram::Ram),
     mut after: impl FnMut(u32, PlayedFrame),
 ) -> Result<(), ExpandError> {
-    const RUN_GAME_MODE: u32 = 0x00_8072;
-    const AFTER_GAME_MODE: u32 = 0x00_8075;
     let mut machine = Machine::new(rom, level);
     boot(&mut machine)?;
     load_level_with(&mut machine, entry)?;
@@ -292,15 +290,7 @@ fn play_frames(
     start(played(&machine));
     for frame in 0..frames {
         each(frame, &mut machine.bus.ram);
-        let ram = &mut machine.bus.ram;
-        ram.set_u8(ram::LAG_FLAG, 1);
-        let loop_frame = Call::jsr(RUN_GAME_MODE);
-        if !machine
-            .try_call_to(loop_frame, Some(AFTER_GAME_MODE))
-            .map_err(|source| ExpandError::Cpu { level, source })?
-        {
-            // Stopped where the loop goes on: the frame is done.
-        }
+        run_game_mode(&mut machine, level)?;
         if lag(frame) {
             // A vertical blank that comes before the loop's STZ $10: what
             // the screen shows while the frame lags.
@@ -311,6 +301,18 @@ fn play_frames(
         vertical_blank(&mut machine, level)?;
         after(frame, played(&machine));
     }
+    Ok(())
+}
+
+/// The game loop's frame, up to where it waits for the vertical blank.
+fn run_game_mode(machine: &mut Machine, level: u16) -> Result<(), ExpandError> {
+    const RUN_GAME_MODE: u32 = 0x00_8072;
+    const AFTER_GAME_MODE: u32 = 0x00_8075;
+    machine.bus.ram.set_u8(ram::LAG_FLAG, 1);
+    // Stopped where the loop goes on, or not: the frame is done either way.
+    machine
+        .try_call_to(Call::jsr(RUN_GAME_MODE), Some(AFTER_GAME_MODE))
+        .map_err(|source| ExpandError::Cpu { level, source })?;
     Ok(())
 }
 
@@ -372,6 +374,49 @@ pub fn call_in_level(
     long: bool,
     regs: Registers,
 ) -> Result<(ram::Ram, Option<Registers>), ExpandError> {
+    call_after_frames(
+        rom,
+        vanilla,
+        level,
+        0,
+        |_, _| {},
+        setup,
+        addr,
+        long,
+        regs,
+        false,
+    )
+    .map(|called| (called.ram, called.registers))
+}
+
+/// What [`call_after_frames`] leaves: the RAM and registers as the routine
+/// returned them (registers `None` under the clean room, as
+/// [`call_in_level`]'s), and VRAM after the vertical blank that follows,
+/// which uploads what the routine queued.
+pub struct Called {
+    pub ram: ram::Ram,
+    pub registers: Option<Registers>,
+    pub vram: Vec<u8>,
+}
+
+/// [`call_in_level`] after `frames` frames of the game loop, as
+/// [`play_game_loop`] plays them, `each` changing the RAM before each; and
+/// VRAM after the next vertical blank, with one more frame of the game loop
+/// before it (`then_frame`, for what a patch does with what a frame left
+/// once the frame ends, at `$008072`).
+#[allow(clippy::too_many_arguments)]
+pub fn call_after_frames(
+    rom: &Rom,
+    vanilla: &Rom,
+    level: u16,
+    frames: u32,
+    mut each: impl FnMut(u32, &mut ram::Ram),
+    setup: impl FnOnce(&mut ram::Ram),
+    addr: u32,
+    long: bool,
+    regs: Registers,
+    then_frame: bool,
+) -> Result<Called, ExpandError> {
     const M: u8 = 0x20;
     const X: u8 = 0x10;
     let mut machine = Machine::new(rom, level);
@@ -387,6 +432,12 @@ pub fn call_in_level(
     load_level(&mut machine)?;
     prepare_level(&mut machine)?;
     machine.bus.ram.set_u8(ram::GAME_MODE, 0x14);
+    for frame in 0..frames {
+        each(frame, &mut machine.bus.ram);
+        run_game_mode(&mut machine, level)?;
+        machine.bus.ram.set_u8(ram::LAG_FLAG, 0);
+        vertical_blank(&mut machine, level)?;
+    }
     setup(&mut machine.bus.ram);
     let mut call = if long {
         Call::jsl(addr)
@@ -405,6 +456,7 @@ pub fn call_in_level(
         .index_x(regs.x)
         .index_y(regs.y);
     machine.call(call)?;
+    let ram = machine.bus.ram.clone();
     let cpu = &machine.cpu;
     let out = (!crate::clean_room::forbidden()).then_some(Registers {
         a: cpu.a,
@@ -413,7 +465,16 @@ pub fn call_in_level(
         p: cpu.p,
         db: cpu.db,
     });
-    Ok((machine.bus.ram, out))
+    if then_frame {
+        run_game_mode(&mut machine, level)?;
+    }
+    machine.bus.ram.set_u8(ram::LAG_FLAG, 0);
+    vertical_blank(&mut machine, level)?;
+    Ok(Called {
+        ram,
+        registers: out,
+        vram: machine.bus.vram.to_vec(),
+    })
 }
 
 /// Where a screen exit leads, as the ROM's own entrance code resolves it:
@@ -614,7 +675,13 @@ fn prepare_level(machine: &mut Machine) -> Result<[u8; 2], ExpandError> {
     let ram = &mut machine.bus.ram;
     ram.fill(ram::LOADED_GFX_FILES, ram::LOADED_GFX_FILES_LEN, 0xFF);
     machine.call(Call::jsr(routines::DECOMPRESS_PLAYER_GFX))?;
-    machine.call(Call::jsr(routines::PREPARE_LEVEL))?;
+    // `GM12PrepLevel` ($00A59C) through the game loop's call of the game
+    // mode, as the game runs it, so that a patch hooking the loop there
+    // sees the frame end (Lunar Magic's VRAM patch puts the frame's changed
+    // tiles in place then).
+    machine.bus.ram.set_u8(ram::GAME_MODE, 0x12);
+    let level = machine.level;
+    run_game_mode(machine, level)?;
     // The level's own screen designation is what preparation set
     // (`ScreenSettings`); a Mode 7 arena's handlers change the layers
     // between the status bar and the playfield, and a hack's handlers

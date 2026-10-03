@@ -35,9 +35,6 @@ pub const INIT_LEVEL_RAM: u32 = 0x00_A635;
 /// (docs/lunar-magic-install.md, "The sites a save keeps with the marker").
 pub const GM11_MAX_SCREENS: u32 = 0x00_9708;
 pub const GM11_LAYER2_END: u32 = 0x00_970F;
-/// `GM12PrepLevel`: game mode $12. Uploads GFX, palettes, and the
-/// initial tilemaps; draws boss arenas; sets up layer 3. Ends with RTS.
-pub const PREPARE_LEVEL: u32 = 0x00_A59C;
 /// Lunar Magic's Map16 tile pointer routine, the `$058A65` hook's target.
 /// It takes the place of the game's `TAY : LDA $0FBE,Y`, so it is called
 /// with a 16-bit accumulator holding the tile number times two and returns

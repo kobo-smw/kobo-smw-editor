@@ -372,7 +372,13 @@ fn summarize_dec(list: &[usize]) -> String {
 /// cy..cy+14 of each layer).
 type Visible = ((u16, u16, u16, u16), Vec<u16>);
 
-fn visible_frames(rom: &Rom, level: u16, frames: u32, path: &str) -> Option<Vec<Visible>> {
+fn visible_frames(
+    rom: &Rom,
+    rom_name: &str,
+    level: u16,
+    frames: u32,
+    path: &str,
+) -> Option<Vec<Visible>> {
     use kobo_core::ram::RamAddr;
     let mut start = None;
     let mut out = Vec::new();
@@ -387,7 +393,17 @@ fn visible_frames(rom: &Rom, level: u16, frames: u32, path: &str) -> Option<Vec<
             ));
             steer(path, frame, ram, s);
         },
-        |_, played| {
+        |frame, played| {
+            // KOBO_PROBE_DUMP=dir KOBO_PROBE_FRAME=n: that frame's VRAM, as
+            // `<rom file name>.vram` in dir.
+            if let (Some(dir), Some(n)) = (
+                std::env::var_os("KOBO_PROBE_DUMP"),
+                std::env::var("KOBO_PROBE_FRAME").ok(),
+            ) && n.parse() == Ok(frame)
+            {
+                let name = format!("{}.vram", rom_name);
+                std::fs::write(std::path::Path::new(&dir).join(name), played.vram).unwrap();
+            }
             let r = |a| played.ram.u16(RamAddr::new(a));
             let cams = (r(0x7E_001A), r(0x7E_001C), r(0x7E_001E), r(0x7E_0020));
             let mut cells = Vec::new();
@@ -482,8 +498,8 @@ fn main() {
             };
             let mut clean = 0;
             for level in levels {
-                let va = visible_frames(&a, level, frames, &path);
-                let vb = visible_frames(&b, level, frames, &path);
+                let va = visible_frames(&a, "a", level, frames, &path);
+                let vb = visible_frames(&b, "b", level, frames, &path);
                 let (Some(va), Some(vb)) = (va, vb) else {
                     println!("{level:03X}: failed");
                     continue;

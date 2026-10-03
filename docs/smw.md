@@ -98,7 +98,13 @@ are SMWDisX's.
   higher for it, and layer 2 with them), and sprites spawned before `CODE_00A635` has placed
   the camera are those of screen 0. Then `CODE_00B888` (GFX32/33 to RAM) and all of
   game mode `$12` (`GM12PrepLevel`, `$00A59C`), which draws boss floors, sets up layer 3 (tides
-  zero rows 16-26 of the layer 2 screens), and uploads GFX, palettes, and initial tilemaps.
+  zero rows 16-26 of the layer 2 screens), and uploads GFX, palettes, and initial tilemaps,
+  run through the game loop's call at `$008072` as the game runs it, so that a patch
+  hooking the loop there sees the frame end (since 2026-10-04: Lunar Magic's VRAM patch
+  puts the frame's changed tiles in place then, which a sprite's first tiles need, and
+  changes the player's tile words: of eight ROMs' 512 levels, one picture changed, Super
+  Dram World 2 v1.3's level `0E2`, whose player now has small Mario's tiles where it had
+  big Mario's; no capture of the hack was at hand to say which it shows).
   `$0100` is set to `$11` and then `$12` on the way, as the game sets it, since a ROM's code
   run there may read it. The console's vertical blanks between those frames run too, each the
   ROM's whole NMI handler with the lag flag `$10` clear: once with the mode at `$11` (game

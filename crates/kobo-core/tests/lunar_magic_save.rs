@@ -1224,7 +1224,10 @@ fn kobos_special_exits_are_lunar_magics() {
 /// lagging, with layer 1's and 2's scroll registers and tilemaps compared at
 /// every vertical blank but the row above the level's top, which Lunar
 /// Magic's patch fills and Kobo's leaves (docs/lunar-magic-install.md,
-/// "Graphics").
+/// "Graphics"). Then without lag, with the camera skipping columns: the
+/// player put at x 0 or far right on the first frame or a later one, then
+/// carried right, and once with the ground shaking. And which tiles changed
+/// in play each writes, around the camera.
 #[test]
 fn kobos_vram_patch_lags_as_lunar_magics() {
     let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
@@ -1264,7 +1267,10 @@ fn kobos_vram_patch_lags_as_lunar_magics() {
             .patch(&kobo, &kobo_core::install::patch(piece))
             .unwrap()
             .rom;
-        let blanks = |rom: &Rom, level: u16| {
+        // Every other frame lagging, the player running; or none lagging, the
+        // player put at `x` on frame `from` and carried right, and the ground
+        // shaking from then on with `shake`.
+        let blanks = |rom: &Rom, level: u16, carried: Option<(u16, u32, bool)>| {
             use kobo_core::ram::RamAddr;
             let at = |a: u32| RamAddr::new(0x7E_0000 | a);
             let mut out = Vec::new();
@@ -1272,10 +1278,21 @@ fn kobos_vram_patch_lags_as_lunar_magics() {
                 rom,
                 level,
                 200,
-                |frame| frame % 2 == 1,
-                |frame, ram| {
-                    ram.set_u8(at(0x15), 0xC1);
-                    ram.set_u8(at(0x16), if frame % 16 == 0 { 0xC1 } else { 0 });
+                |frame| carried.is_none() && frame % 2 == 1,
+                |frame, ram| match carried {
+                    None => {
+                        ram.set_u8(at(0x15), 0xC1);
+                        ram.set_u8(at(0x16), if frame % 16 == 0 { 0xC1 } else { 0 });
+                    }
+                    Some((x, from, shake)) => {
+                        if frame >= from {
+                            ram.set_u16(at(0x94), x + 3 * (frame - from) as u16);
+                            ram.set_u8(at(0x1497), 0x7F);
+                        }
+                        if shake && frame == from {
+                            ram.set_u8(at(0x1887), 0x40);
+                        }
+                    }
                 },
                 |_, played| {
                     // Tile rows 30 and 31 of each 32x32 part: the level's
@@ -1291,9 +1308,97 @@ fn kobos_vram_patch_lags_as_lunar_magics() {
             out
         };
         for level in [0x105, 0x1CF, 0x0F7, 0x0E7, 0x0C2] {
-            let (a, b) = (blanks(&lm, level), blanks(&kobo, level));
+            let (a, b) = (blanks(&lm, level, None), blanks(&kobo, level, None));
             let first = (0..a.len()).find(|&i| a[i] != b[i]);
             assert_eq!(first, None, "{name}: level {level:03X}");
+        }
+        for (level, x, from, shake) in [
+            (0x1E2, 0, 0, false),
+            (0x1E2, 0x380, 0, false),
+            (0x105, 0x600, 0, false),
+            (0x1E2, 0, 20, false),
+            (0x105, 0x600, 20, false),
+            // Back to x $F8 on frame 1, then right: the camera turns within
+            // a cell, and the column on its right edge is built again.
+            (0x0ED, 0xF8, 1, false),
+            // The ground shaking takes the camera a row up and back, which
+            // builds the rows it shows.
+            (0x105, 0x600, 0, true),
+        ] {
+            let a = blanks(&lm, level, Some((x, from, shake)));
+            let b = blanks(&kobo, level, Some((x, from, shake)));
+            let first = (0..a.len()).find(|&i| a[i] != b[i]);
+            assert_eq!(
+                first, None,
+                "{name}: level {level:03X}, x {x:X} on frame {from}"
+            );
+        }
+        // A tile changed in play shows in the rows the frame's builds keep
+        // (cy to cy+14) and, on a layer that scrolls horizontally, the game's
+        // window of columns (8 before the camera's to 23 after it): a tile
+        // put either side of each edge after 20 frames, with the player held
+        // where it entered, and whether its place in the tilemap changed
+        // once the next frame has ended.
+        let shows = |rom: &Rom, level: u16, x0: u16, dx: i32, dy: i32| {
+            use kobo_core::expand::{self, Registers};
+            use kobo_core::ram::RamAddr;
+            let at = |a: u32| RamAddr::new(0x7E_0000 | a);
+            let word = |tile: u8| {
+                let slot = std::cell::Cell::new(0usize);
+                let called = expand::call_after_frames(
+                    rom,
+                    &base,
+                    level,
+                    20,
+                    |_, ram| {
+                        ram.set_u16(at(0x94), x0);
+                        ram.set_u8(at(0x1497), 0x7F);
+                    },
+                    |ram| {
+                        let x = (ram.u16(at(0x1A)) as i32 / 16 + dx) * 16;
+                        let y = ((ram.u16(at(0x1C)) as i32 + 1) / 16 + dy) * 16;
+                        slot.set(
+                            0x3000
+                                | ((x as usize & 0x100) << 2)
+                                | ((y as usize & 0xF0) << 2)
+                                | ((x as usize & 0xF0) >> 3),
+                        );
+                        ram.set_u8(at(0x9C), tile);
+                        ram.set_u16(at(0x9A), x as u16);
+                        ram.set_u16(at(0x98), y as u16);
+                    },
+                    0x00_BEB0,
+                    true,
+                    Registers {
+                        p: 0x30,
+                        ..Default::default()
+                    },
+                    true,
+                )
+                .unwrap();
+                let w = slot.get();
+                [called.vram[2 * w], called.vram[2 * w + 1]]
+            };
+            // Tile 0 changes nothing; 5 (a used block) is in none of these.
+            word(0x00) != word(0x05)
+        };
+        for (level, x0, dx, dy) in [
+            (0x0ED, 0x4E0, -9, 4),
+            (0x0ED, 0x4E0, -8, 4),
+            (0x0ED, 0x4E0, 23, 4),
+            (0x0ED, 0x4E0, 24, 4),
+            (0x0ED, 0x4E0, 8, -1),
+            (0x0ED, 0x4E0, 8, 0),
+            (0x0C2, 0x80, 4, -1),
+            (0x0C2, 0x80, 4, 0),
+            (0x0C2, 0x80, 4, 14),
+            (0x0C2, 0x80, 4, 15),
+        ] {
+            assert_eq!(
+                shows(&lm, level, x0, dx, dy),
+                shows(&kobo, level, x0, dx, dy),
+                "{name}: level {level:03X}, a tile at {dx},{dy} from the camera"
+            );
         }
     }
 }

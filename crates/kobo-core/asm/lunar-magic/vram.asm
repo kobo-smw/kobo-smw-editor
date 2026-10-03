@@ -13,12 +13,12 @@
 ; columns cx to cx+16 of rows cy to cy+14 are in view. A layer that scrolls
 ; horizontally is loaded with columns cx to cx+16 of rows cy-1 (or 0) to
 ; cy+14, one whose width fits (a vertical level's layers, a background)
-; with every column of those rows. Then each frame, when cx has changed,
-; the column that comes into view is built (rows cy to cy+14), and when cy
-; has, the row (columns cx to cx+16, or all of them), one of each a frame
-; until they catch up with the camera; the NMI uploads them. This is what
-; Lunar Magic's patch leaves in VRAM frame by frame, on every vanilla level
-; along several camera paths (examples/gfx_probe.rs).
+; with every column of those rows. Then each frame, when the camera has
+; moved, the column on the side it moved to is built (rows cy to cy+14)
+; and the row (columns cx to cx+16, or all of them), each unless it is the
+; one built last; the NMI uploads them (frame_layer has the details). This
+; is what Lunar Magic's patch leaves in VRAM frame by frame, on every vanilla
+; level along several camera paths (examples/gfx_probe.rs).
 ;
 ; Lunar Magic decides whether its own patch is in a ROM by $00A5A2 alone
 ; (a JML there), which Kobo leaves as the game has it: Lunar Magic's first
@@ -33,18 +33,24 @@ incsrc "memory.asm"
 !Tileset = !addr|$1931
 !LayerProcessing = !addr|$1933
 !LoadIndex = !addr|$1928
+!ShakeTimer = !addr|$1887
+!ShakeOffset = !addr|$1888       ; what the NMI adds to layer 1's vertical scroll
+!Size = !addr|$0BF5             ; the level's size byte
 
 ; What this code keeps between frames, in the RAM Lunar Magic's patch uses
-; for its own. Words, one for each layer, indexed by 0 or 2.
-!LastColumn = !addr|$0695       ; the camera's Map16 cell the frame before
-!LastRow = !addr|$0699
+; for its own. Words, one for each layer, indexed by 0 or 2; the bytes
+; named after a word share it, as its high byte.
+!LastX = !addr|$0695            ; the camera's position the frame before, as
+!LastY = !addr|$0699            ; shown (layer 1's with the ground shaking)
 !Pending = !addr|$069D          ; bit 0: a column is built, bit 1: a row
-!ColumnTile = !addr|$06A1       ; the column's tile column, 0 to 63
+!ColumnTile = !addr|$06A1       ; the column's tile column, 0 to 63 (byte)
+!RowTile = !addr|$06A2          ; the row's top tile row, 0 to 31 (byte)
 !ColumnRow = !addr|$06A5        ; the tile row its first word goes to, and
                                 ; in the high byte how many tile rows
-!RowTile = !addr|$06A9          ; the row's top tile row, 0 to 31
-!RowColumn = !addr|$06AD        ; the tile column its first word goes to
-!RowCount = !addr|$06B1         ; tile columns in the row
+!RowColumn = !addr|$06A9        ; the tile column its first word goes to (byte)
+!RowCount = !addr|$06AA         ; tile columns in the row (byte)
+!BuiltColumn = !addr|$06AD      ; the Map16 column built last, $FFFF for none
+!BuiltRow = !addr|$06B1         ; the row built last, $FFFF for none
 !BgTable = !addr|$06B5          ; a background's BG Map16 table, 3 bytes
 !BgStride = !addr|$06B8         ; bytes per half of a background
 !Mask = !addr|$06BA             ; ORed into a layer's tile words
@@ -162,19 +168,15 @@ camera_left_edge:
     PHP
     REP #$30
     LDA $1A
-    JSR shift4
-    STA !LastColumn
+    STA !LastX
     LDA $1C
-    INC A
-    JSR shift4
-    STA !LastRow
+    CLC
+    ADC !ShakeOffset            ; the frame before's, cleared later in this one
+    STA !LastY
     LDA $1E
-    JSR shift4
-    STA !LastColumn+2
+    STA !LastX+2
     LDA $20
-    INC A
-    JSR shift4
-    STA !LastRow+2
+    STA !LastY+2
     PLP
     PLA
     JML $00F6EA
@@ -265,10 +267,9 @@ load_layer:
     RTS
 +   JSR set_mask
     JSR camera_cell
-    LDA !CamColumn
-    STA !LastColumn,x
-    LDA !CamRow
-    STA !LastRow,x
+    LDA #$FFFF
+    STA !BuiltColumn,x
+    STA !BuiltRow,x
     STZ !Pending,x
     ; Rows cy-1 (or 0, at the level's top) to cy+14: columns cx to cx+16
     ; of a layer that scrolls horizontally, all of any other.
@@ -329,54 +330,91 @@ vram_frame:
     JML $058774                 ; PLP : RTL
 
 ; X = the layer. What came into view since the last frame, unless the NMI
-; has not uploaded what was built then.
+; has not uploaded what was built then. A column and a row are built on the
+; side the camera moved to, by its position, unless they are the ones built
+; last, as Lunar Magic's patch was seen to do: a camera that turns within a
+; cell builds the column or row on its other edge, and one that skips
+; columns builds only the one at its edge. On the first frame after the
+; load, a camera that has not moved builds the right column and the bottom
+; row, as if it had come right and down.
 frame_layer:
     STX !Layer
     JSR layer_kind
     STA !Kind
-    BEQ .done
-    LDA !Pending,x
-    BNE .done
-    JSR set_mask
+    BNE +
+    RTS
++   LDA !Pending,x
+    BEQ +
+    RTS
++   JSR set_mask
     JSR camera_cell
+    TXA
+    ASL A
+    TAY
+    ; The vertical position as this frame shows it: layer 1 with the ground
+    ; shaking that comes later in the frame, which the NMI adds to its
+    ; scroll register.
+    LDA $001C|!dp,y
+    CPX #$0000
+    BNE +
+    JSR shake_offset
+    CLC
+    ADC $1C
+    PHA
+    INC A
+    JSR shift4
+    STA !CamRow
+    PLA
++   PHA
     LDA !Kind
     CMP #!Horizontal
     BNE .row
-    ; A column: the one on the right moving right, on the left moving left,
-    ; when the camera's column is not the one of the frame before.
-    LDA !CamColumn
-    CMP !LastColumn,x
-    BEQ .row
+    ; A column: cx+16 moving right, cx moving left.
+    LDA $001A|!dp,y
     SEC
-    SBC !LastColumn,x
-    BMI .left
+    SBC !LastX,x
+    BNE +
+    LDA !BuiltColumn,x          ; not moving: right, on the first frame
+    CMP #$FFFF
+    BNE .row
+    BRA .right
++   BMI .left
+.right:
     LDA !CamColumn
     CLC
     ADC #$0010
     BRA +
 .left:
     LDA !CamColumn
-+   STA !Column
++   CMP !BuiltColumn,x
+    BEQ .row
+    STA !BuiltColumn,x
+    STA !Column
     LDA !CamRow
     STA !Row
     LDA #$000F
+    PHY
     JSR build_column
+    PLY
     LDX !Layer
 .row:
-    ; The row: the one at the bottom moving down, at the top moving up.
-    LDA !CamRow
-    CMP !LastRow,x
-    BEQ .done
+    ; A row: cy+14 moving down, cy moving up.
+    PLA
     SEC
-    SBC !LastRow,x
+    SBC !LastY,x
+    BEQ .still
     BMI .up
+.down:
     LDA !CamRow
     CLC
     ADC #$000E
     BRA +
 .up:
     LDA !CamRow
-+   STA !Row
++   CMP !BuiltRow,x
+    BEQ .done
+    STA !BuiltRow,x
+    STA !Row
     LDA !Kind
     CMP #!Horizontal
     BNE .whole
@@ -391,6 +429,45 @@ frame_layer:
     JSR build_row
 .done:
     RTS
+.still:
+    LDA !BuiltRow,x
+    CMP #$FFFF
+    BEQ .down
+    RTS
+
+; A = this frame's ground shaking, 16-bit, as exlevel.asm's shake will set
+; it after the frame's builds: from the timer before it counts down, a
+; pixel less up on the level's first row, and two pixels higher with B.
+; X kept.
+shake_offset:
+    LDA !ShakeTimer
+    AND #$00FF
+    BEQ .done
+    AND #$0003
+    ASL A
+    PHX
+    TAX
+    LDA $1C
+    CMP #$0010
+    BCS +
+    LDA.l shake_top,x
+    BRA ++
++   LDA !Size
+    AND #$0040
+    BEQ +
+    LDA.l shake_bottom_row,x
+    BRA ++
++   LDA.l shake_offsets,x
+++  PLX
+.done:
+    RTS
+
+shake_offsets:
+    dw $FFFE,$0000,$0002,$0000
+shake_top:
+    dw $FFFF,$0000,$0002,$0000
+shake_bottom_row:
+    dw $FFFC,$FFFE,$0000,$FFFE
 
 ; ---------------------------------------------------------------------------
 ; The NMI, in a level. A, X, Y 8-bit, the data bank $00.
@@ -496,7 +573,9 @@ build_column:
     LDA !Column
     ASL A
     AND #$003F
+    SEP #$20
     STA !ColumnTile,x
+    REP #$20
     JSR buffer
     CLC
     ADC #!ColumnArea
@@ -544,15 +623,21 @@ build_column:
 build_row:
     STA !Count
     ASL A
+    SEP #$20
     STA !RowCount,x
+    REP #$20
     LDA !Row
     ASL A
     AND #$001F
+    SEP #$20
     STA !RowTile,x
+    REP #$20
     LDA !Column
     ASL A
     AND #$003F
+    SEP #$20
     STA !RowColumn,x
+    REP #$20
     JSR buffer
     STA !Index
 .cell:
@@ -568,6 +653,7 @@ build_row:
     STA.l $000002,x             ; top right
     LDX !Layer
     LDA !RowCount,x
+    AND #$00FF
     ASL A
     CLC
     ADC !Index
@@ -819,10 +905,12 @@ upload_layer:
     STA $2115
     REP #$20
     LDA !RowTile,x
+    AND #$00FF
     STA $04
     JSR upload_tile_row
     LDX !Layer
     LDA !RowCount,x
+    AND #$00FF
     ASL A
     CLC
     ADC $02
@@ -849,6 +937,7 @@ upload_layer:
     ADC #!ColumnArea
     STA $02
     LDA !ColumnTile,x
+    AND #$00FF
     STA $04
     JSR upload_tile_column
     LDA $02
@@ -867,8 +956,10 @@ upload_layer:
 ; $00 the tilemap, $02 the words, $04 the tile row; X = the layer.
 upload_tile_row:
     LDA !RowCount,x
+    AND #$00FF
     STA $06                     ; words left
     LDA !RowColumn,x
+    AND #$00FF
     STA $08                     ; the tile column
     LDA $02
     STA $0A                     ; the words' place
@@ -1012,7 +1103,7 @@ dma:
 ; From GenerateTile at $00BF37: A 8-bit, X and Y 16-bit, the block's
 ; position in $0C (X) and $0E (Y). Leaves the block's VRAM address in $06
 ; (high byte) and $07 (low), and X and Y, which the game keeps as _8 and _A,
-; such that CODE_00C0FB's checks pass only for a block in view: equal to
+; such that CODE_00C0FB's checks pass only for a block in the window below: equal to
 ; the block's position, or $7FF0, past any.
 tile_address:
     PHB
@@ -1049,21 +1140,24 @@ tile_address:
     XBA
     STA $06
     REP #$20
-    ; In view: rows cy to cy+15, and for a layer that scrolls horizontally
-    ; columns cx to cx+16.
+    ; Written for rows cy to cy+14, the ones the frame's builds keep, and on
+    ; a layer that scrolls horizontally for columns X/16-8 to X/16+23, the
+    ; game's own window (32 columns, the tilemap's width), as Lunar Magic's
+    ; patch writes them.
     JSR layer_kind
     STA $02
     TXA
     ASL A
     TAY
     LDA $001C|!dp,y
+    INC A
     JSR shift4
     STA $00
     LDA $0E
     JSR shift4
     SEC
     SBC $00
-    CMP #$0010
+    CMP #$000F
     BCS .hidden
     LDA $02
     CMP #!Horizontal
@@ -1075,7 +1169,9 @@ tile_address:
     JSR shift4
     SEC
     SBC $00
-    CMP #$0011
+    CLC
+    ADC #$0008
+    CMP #$0020
     BCS .hidden
 .shown:
     LDA $0C

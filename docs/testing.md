@@ -302,8 +302,11 @@ how each oracle is produced, where its data lives, and what is known not to matc
   `bypass rom...` counts objects `24` and `25`; `loads a b [range]` lists every level
   whose VRAM after the load differs between two ROMs (default: the tilemaps,
   `3000-4000`); `scroll a b frames path [levels]` plays every level along a path in both
-  and reports cells in view that differ for two frames running. Paths are legs
-  `dx,dy@frames/...` of pixels a frame for the player; `POKE_TILE=dx,dy,tile` puts a
+  and reports cells in view that differ for two frames running
+  (`KOBO_PROBE_DUMP=dir KOBO_PROBE_FRAME=n` writes that frame's VRAM of each, `a.vram`
+  and `b.vram`). Paths are legs `dx,dy@frames/...` of pixels a frame for the player
+  (`-1000,0@1/3,0` sends it back 1000 pixels on the first frame, a camera that skips
+  columns); `POKE_TILE=dx,dy,tile` puts a
   tile (a coin) beside the player first. For where a list's files go, make ExGFX
   files whose every 16-byte unit starts `A5 5A f j` and look for them in the VRAM dump.
 - **Kobo's VRAM patch against Lunar Magic's**: `tools/lunar-magic/with-kobo-vram lm.smc
@@ -311,7 +314,10 @@ how each oracle is produced, where its data lives, and what is known not to matc
   `scroll` compare the two. On vanilla saved once by Lunar Magic (2026-09-28): the same
   tilemaps after every level's load but for the unseen row above a level's top, and
   nothing visible different for longer than a frame on any level along seven paths
-  (`3,0`, `0,-2`, `3,-2@80/-2,2`, `3,2`, `-3,-3`, `1,-1@80/-1,1`, `6,-5@60/-7,6`).
+  (`3,0`, `0,-2`, `3,-2@80/-2,2`, `3,2`, `-3,-3`, `1,-1@80/-1,1`, `6,-5@60/-7,6`), held
+  still (`0,0`), and three that jump (`-1000,0@1/3,0`, `1000,0@1/-3,0`,
+  `400,0@1/0,0@30/-400,0@1/0,0`), 240 frames each (2026-10-04). `exlevel_probe call
+  ... frames=N then=frame vramw=...` shows where a tile changed in play goes.
   `tests/install.rs` (`the_vram_patch_keeps_layer_1_in_view`) checks, with the ROM and
   Asar, that every cell in view on layer 1 holds its tile's definition along paths in a
   horizontal, a vertical, and a layer 2 objects level.
@@ -325,8 +331,9 @@ how each oracle is produced, where its data lives, and what is known not to matc
   `hold:`/`ram:` for RAM such as `$1887`, the ground shaking, or `$1412`, the vertical
   scroll setting), `sizes rom level` shows what each size byte changes at the entrance,
   `call rom level addr jsl|jsr` runs one routine with chosen RAM and registers
-  (`expand::call_in_level`), and `ram`, `show`, `entry` print the tables, words per
-  frame, and the entrance's RAM. `entry_probe compare` with `KOBO_ENTRY_SIZE` varies the
+  (`expand::call_in_level`), `ram`, `show`, `entry` print the tables, words per
+  frame, and the entrance's RAM, and `cells a b level frame` draws which Map16 cells of
+  layer 1's and 2's tilemaps differ on a frame, in view or not. `entry_probe compare` with `KOBO_ENTRY_SIZE` varies the
   size byte along with the entrance bytes. Hacks with taller levels are moved into a
   3.70 ROM with `transfer` first: their own ROMs carry older versions' code. The results
   (2026-09-28) are in docs/lunar-magic-install.md ("Taller levels").
@@ -521,7 +528,8 @@ how each oracle is produced, where its data lives, and what is known not to matc
   in the game's format, Yoshi's wings, or the bonus game loads, from every third
   translevel on three submaps), and `kobos_vram_patch_lags_as_lunar_magics` (`vram.asm`:
   layer 1's and 2's scroll registers and tilemaps at every vertical blank with every
-  other frame lagging, through `expand::play_game_loop_lagging`). By hand,
+  other frame lagging, through `expand::play_game_loop_lagging`, then with the player put
+  at x 0 or far right on the first frame, which makes the camera skip columns). By hand,
   `exlevel_probe compare` does the same over more levels and paths, with `lag=N` for
   lagging frames; how each was found is in lunar-magic-install.md ("The sites a save keeps
   with the marker", "Graphics").

@@ -782,17 +782,53 @@ and the rows follow what is on screen.
   level's layers and a background hold all 32 columns of those rows. At the level's top
   (`cy` = 0) row -1, which no camera shows, holds other words under Lunar Magic's patch
   (seen in VRAM); Kobo's leaves that row as it was.
-- Each frame, for each layer, when `cx` changes a column goes up, `cx+16` moving right
-  and `cx` moving left, rows `cy`..`cy+14`; when `cy` changes a row goes up, `cy+14`
-  moving down and `cy` moving up, columns `cx`..`cx+16` (all 32 for a layer whose width
-  fits). The frame that crosses uploads it, whatever the game mode is once the frame
-  ends (a frame in which the player dies still uploads).
+- Each frame, for each layer, when the camera has moved (its position against the
+  frame before's, in pixels) a column goes up, `cx+16` moving right and `cx` moving
+  left, rows `cy`..`cy+14`; and a row, `cy+14` moving down and `cy` moving up, columns
+  `cx`..`cx+16` (all 32 for a layer whose width fits). Each is left out when it is the
+  column or row that layer last had built, so a camera that keeps moving one way
+  builds one as it crosses into a cell, and one that turns within a cell builds the
+  one on its other edge. The frame that crosses uploads it, whatever the game mode is
+  once the frame ends (a frame in which the player dies still uploads).
+- A camera that skips columns (as when a player is put somewhere else in the level)
+  gets the one column at its edge; the columns skipped are not built, and show what was
+  there before until they leave the view and come into it again at an edge.
+- The first frame after the load builds the right column `cx+16` and the bottom row
+  `cy+14`, as if the camera had come right and down, though it has not moved (its
+  position is the load's all along); a later frame where it has not moved builds
+  nothing. It shows where the column is past the level's end, which the load leaves
+  unwritten (levels `0D0`, `0D1`, `0F5`, `0F6`, entered on their last screen), and
+  where that frame's camera also skipped columns.
+- Layer 1's position is the one shown: with the ground shaking (`$1887`), which the
+  game adds to `$1C` after the frame's builds and the NMI adds to the scroll register
+  (`$1888`), the rows follow the shaken position, so a shake that takes the camera
+  across a row boundary builds the row it reveals and, as it settles, the one at the
+  other edge. Kobo's patch works out the frame's shake before the shake code runs,
+  as `exlevel.asm`'s shake will apply it (seen in level `0E8`, 2026-10-03).
+- Found 2026-10-03 by putting the player at x 0 and at points either side of the
+  entrance, on the first frame and later ones (`exlevel_probe cells ... from=N`, level
+  `1E2`), and by watching when each word of a column (`0ED`) and of a row (`105`) is
+  written along paths that turn (`KOBO_VRAM_WATCH`, `gfx_probe watch`, whose `scroll`
+  dumps a frame's VRAM with `KOBO_PROBE_DUMP`), and on every vanilla level along the
+  paths below and three that jump: Kobo's patch writes them on the same frames since.
 - Rows of a 27-row level past its last row are left as they were.
 - The vertical pipes (`133`-`13A`) take the definitions for their screen (every 16
   columns, or rows in a vertical level; `MAP16AppTable`), and the game's Map16 pointers
   for them (`$1224`-`$1233`) are left at the set for the last column (row, in a vertical
   level) the patch built for layer 1, which tile changes then read.
-- A tile changed in play goes to these tilemaps, when in view.
+- A tile changed in play shows in these tilemaps when it is in the rows the frame's
+  builds keep, `cy`..`cy+14`, and on a layer that scrolls horizontally in the game's
+  own window of columns, `X/16-8`..`X/16+23` (the 32 the tilemap holds, of which only
+  `cx`..`cx+16` are kept current). The game queues the stripe for the game's window
+  (rows `Y/16-8`..`Y/16+23` too) at the game's own address (layer 1 at `$2000`); Lunar
+  Magic's patch puts the ones in those rows at their place at `$3000` and leaves the
+  rest out, not before another frame of the game loop has run (so, it seems, at its
+  game loop hook, `$008072`). Kobo's decides when the tile is made, from the camera
+  then, and queues Kobo's address (review.md). Found 2026-10-03 by
+  calling the game's `GenerateTile` around the camera after frames of play in a
+  horizontal, a vertical, and a layer 2 objects level, with the camera held at
+  positions either side of a row, and reading the tile's place in VRAM after the next
+  frame (`exlevel_probe call ... frames=N path=... vramw=... then=frame`).
 - The load leaves the patch's own state in `$0695`-`$06BE`, `$06DD`, `$7F8183`-`$7F819F`,
   the vanilla layer 1 and 2 buffers `$1BE6`-`$1DE7`, and for a background
   `$7FBC00`-`$7FBF5F` and `$7FC300`-`$7FC65F` (per cell, a 16-bit address in the BG Map16
@@ -812,7 +848,8 @@ its own patch over all of them (its taller levels piece over `$0580D3`, `$05879D
 `$00BF36`). Against Lunar Magic's on every vanilla level (2026-09-28): the same tilemaps
 after every load but for row -1 above, and no visible cell different for more than a
 frame along seven camera paths (slow and fast, both ways, diagonal), nor for a coin
-collected in a horizontal and a vertical level. Kaizo Kindergarten's content moved into that ROM by Lunar Magic's command line
+collected in a horizontal and a vertical level; since 2026-10-04 also held still, along
+three paths that jump, and with the ground shaking (the rules above found then). Kaizo Kindergarten's content moved into that ROM by Lunar Magic's command line
 (tools/lunar-magic/transfer) gives the same tilemaps after every
 load with Kobo's patch swapped in, but for row -1. Lunar Magic's own graphics loader
 then leaves BG2 and BG3 unloaded: it loads them only with its VRAM patch in place, so
@@ -1096,9 +1133,8 @@ ExGFX pointers.
 #### Still to find
 
 - Layer 2 objects moving vertically, frame by frame (tiles changed in play match:
-  "Unknowns" below); a camera that jumps
-  further than a column a frame (the probes' carried paths from x 0) leaves other
-  columns than Lunar Magic's patch does in `1CF` and `1E2`. The game loop hook
+  "Unknowns" below). A camera that jumps further than a column a frame: found
+  (2026-10-03, "Tilemap streaming" above). The game loop hook
   (`$00BA56`), the lag path (`$0081E2`), and the stripe upload (`$0085D2`) were checked
   one by one (2026-10-02, above).
 - Which tiles of which files the 4bpp piece still converts from 3bpp (the help file names
@@ -1780,6 +1816,13 @@ restorable code, or anything else, reads it; which reads exist is the main open 
   Method: build Kobo's one-time set, let Lunar Magic save the build (it adds its
   restorable hooks), and compare RAM after every level load, and pictures, with a Lunar
   Magic-saved vanilla ROM (`ramdiff.py`, `render_hashes`); a mismatch names the address.
+  Done for the restorable hooks (2026-10-03, a vanilla project with one Map16 page
+  built and saved): all 512 pictures are the same, and what RAM differs after the load
+  is each piece's own: Kobo's sprite loader keeps its state in `$0BC0`-`$0BD8` and
+  leaves Lunar Magic's cache at `$0CF6`-`$0D75` and `$0BEE` as they were; `$00FE`-`$00FF`
+  are cleared by Kobo's palette hook, which every build in Lunar Magic's layout has and
+  which Lunar Magic's save of vanilla does not install; `$65`-`$66` and `$CE`-`$CF` point
+  at level data that sits elsewhere; and direct page scratch. Community patches remain.
 - Behaviour that a level load does not exercise: the overworld (`$04DCFA`, `$04E5F1`),
   which builds leave as the game has it (roadmap step 4). The rest has been played
   against Lunar Magic's code since: block contact ("Custom block actions"), scrolling

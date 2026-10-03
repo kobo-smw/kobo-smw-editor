@@ -28,12 +28,20 @@
 //! size byte first, `ram:ADDR=VV` sets RAM on entry, `hold:ADDR=VV` on
 //! every frame, `pad=HEX` holds controller bits (`$15`/`$16` as the NMI
 //! reads them: `B Y sel start up down left right` in the high byte then `A
-//! X L R`, held, and pressed anew every 16 frames), `free` leaves the player where the game puts it.
+//! X L R`, held, and pressed anew every 16 frames), `free` leaves the player where the game puts it,
+//! `from=N` starts the path at frame N.
 //! `runs=N` shows up to N differing runs of work RAM a frame (12; 0 lists
 //! every differing frame's number instead), and
 //! `words=` takes `$7F` addresses as `1xxxx`; `vram=LO-HI` compares only
 //! those VRAM words. `lag=N` makes every Nth frame lag: an NMI comes
 //! before the game loop has ended the frame (`expand::play_game_loop_lagging`).
+//!
+//! `exlevel_probe cells a.sfc b.sfc level frame [option...]` plays the
+//! level in both ROMs (options as `compare`'s) and draws, for that frame,
+//! layer 1's and 2's tilemaps (`$3000`, `$3800`) as 32 by 16 Map16 cells:
+//! `.` the same in both, `X` different, upper case where the camera of the
+//! first ROM shows the cell (`o` and `X`), lower case `x` where it does not.
+//! `KOBO_PROBE_DUMP=dir` writes both VRAMs there (`a.vram`, `b.vram`).
 //!
 //! Clean room: a ROM Lunar Magic saved holds its code; this reads memory
 //! only, and never with `KOBO_CPU_TRACE`.
@@ -142,6 +150,8 @@ fn ram_after(rom: &Rom, level: u16) {
 
 struct Options {
     path: Option<(i32, i32, i32, i32)>,
+    /// `from=N`: the path carries the player from frame N on, its frame 0.
+    from: u32,
     frames: u32,
     /// `runs=N`: how many differing work RAM runs `compare` shows a frame.
     runs: usize,
@@ -161,6 +171,7 @@ struct Options {
 fn options(args: &[String]) -> Options {
     let mut o = Options {
         path: Some((48, 3, -1, 0)),
+        from: 0,
         frames: 300,
         runs: 12,
         size: None,
@@ -185,6 +196,8 @@ fn options(args: &[String]) -> Options {
             } else {
                 (n[0], n[1], -1, 0)
             });
+        } else if let Some(v) = a.strip_prefix("from=") {
+            o.from = v.parse().unwrap();
         } else if a == "free" {
             o.path = None;
         } else if a == "vram" {
@@ -250,7 +263,8 @@ fn play(rom: &Rom, level: u16, o: &Options) -> Vec<(Vec<u8>, Vec<u8>)> {
                 m.set_u8(at(0x16), if pressed { (o.pad >> 8) as u8 } else { 0 });
                 m.set_u8(at(0x18), if pressed { o.pad as u8 } else { 0 });
             }
-            if let Some((x0, dx, y0, dy)) = o.path {
+            if let Some((x0, dx, y0, dy)) = o.path.filter(|_| frame >= o.from) {
+                let frame = frame - o.from;
                 let x = x0 + dx * frame as i32;
                 m.set_u16(at(0x94), x as u16);
                 if y0 >= 0 {
@@ -286,7 +300,10 @@ fn play(rom: &Rom, level: u16, o: &Options) -> Vec<(Vec<u8>, Vec<u8>)> {
 }
 
 /// `call rom level addr jsl|jsr [a=HEX x= y= p= db=] [size=VV] [ram:ADDR=VV...]
-/// [words=ADDR,...]`: the registers and words the routine leaves. On a
+/// [words=ADDR,...] [frames=N [path=X0:DX[:Y0:DY]]] [vramw=WORD,...]
+/// [then=frame]`: the registers and words the routine leaves, called after N
+/// frames of play, and VRAM words after the vertical blank that follows
+/// (with a frame of the game loop before it, `then=frame`). On a
 /// ROM Lunar Magic saved, only the words, and only for a routine of the
 /// game's or a hook (clean room).
 fn call(args: &[String]) {
@@ -300,9 +317,17 @@ fn call(args: &[String]) {
     };
     let mut pokes = Vec::new();
     let mut words = Vec::new();
+    let mut frames = 0;
+    let mut path: Option<Vec<i32>> = None;
+    let mut vram_words: Vec<u32> = Vec::new();
+    let mut then_frame = false;
     for a in &args[4..] {
         let (k, v) = a.split_once('=').unwrap();
         match k {
+            "frames" => frames = v.parse().unwrap(),
+            "vramw" => vram_words = v.split(',').map(hex).collect(),
+            "then" => then_frame = v == "frame",
+            "path" => path = Some(v.split(':').map(|x| x.parse().unwrap()).collect()),
             "a" => regs.a = hex(v) as u16,
             "x" => regs.x = hex(v) as u16,
             "y" => regs.y = hex(v) as u16,
@@ -317,10 +342,23 @@ fn call(args: &[String]) {
         }
     }
     let vanilla = Rom::load(kobo_core::config::vanilla_rom_path().unwrap()).unwrap();
-    let result = expand::call_in_level(
+    let at = |a: u32| ram::RamAddr::new(0x7E_0000 | a);
+    let result = expand::call_after_frames(
         &rom,
         &vanilla,
         level,
+        frames,
+        |frame, m| {
+            // The player carried as `compare`'s `path=` carries it.
+            if let Some(n) = &path {
+                m.set_u16(at(0x94), (n[0] + n[1] * frame as i32) as u16);
+                if n.len() >= 4 {
+                    m.set_u16(at(0x96), (n[2] + n[3] * frame as i32) as u16);
+                    m.set_u8(at(0x7D), 0);
+                }
+                m.set_u8(at(0x1497), 0x7F);
+            }
+        },
         |m| {
             for &(a, v) in &pokes {
                 m.set_u8(ram::RamAddr::new(0x7E_0000 | a), v);
@@ -329,9 +367,19 @@ fn call(args: &[String]) {
         addr,
         long,
         regs,
+        then_frame,
     );
     match result {
-        Ok((m, r)) => {
+        Ok(expand::Called {
+            ram: m,
+            registers: r,
+            vram,
+        }) => {
+            // `vramw=ADDR,...`: those VRAM words after the next vertical blank.
+            for &w in &vram_words {
+                let w = w as usize;
+                print!("vram ${w:04X}={:02X}{:02X} ", vram[2 * w + 1], vram[2 * w]);
+            }
             let words: Vec<String> = words
                 .iter()
                 .map(|&a| {
@@ -421,6 +469,66 @@ fn compare(a: &Rom, b: &Rom, level: u16, o: &Options) {
     }
 }
 
+/// `cells`: which Map16 cells of the layers' tilemaps differ on a frame.
+fn cells(a: &Rom, b: &Rom, level: u16, frame: usize, o: &Options) {
+    let mut o = Options {
+        vram: true,
+        vram_words: None,
+        ignore: vec![],
+        path: o.path,
+        from: o.from,
+        frames: frame as u32 + 1,
+        runs: 0,
+        size: o.size,
+        ram: o.ram.clone(),
+        hold: o.hold.clone(),
+        pad: o.pad,
+        words: vec![],
+        lag: o.lag,
+    };
+    o.frames = frame as u32 + 1;
+    let (fa, fb) = (play(a, level, &o), play(b, level, &o));
+    let (Some((ra, va)), Some((_, vb))) = (fa.get(frame), fb.get(frame)) else {
+        println!("played {} and {} frames", fa.len(), fb.len());
+        return;
+    };
+    if let Some(dir) = std::env::var_os("KOBO_PROBE_DUMP") {
+        let dir = std::path::PathBuf::from(dir);
+        std::fs::write(dir.join("a.vram"), va).unwrap();
+        std::fs::write(dir.join("b.vram"), vb).unwrap();
+    }
+    let word = |r: &[u8], at: usize| r[at] as usize | (r[at + 1] as usize) << 8;
+    for (layer, base, cam) in [(1, 0x3000, 0x1A), (2, 0x3800, 0x1E)] {
+        let (x, y) = (word(ra, cam), word(ra, cam + 2));
+        let (cx, cy) = (x / 16, (y + 1) / 16);
+        println!("layer {layer}: camera {x:04X},{y:04X} (cell {cx},{cy})");
+        for row in 0..16 {
+            let line: String = (0..32)
+                .map(|col| {
+                    let differs = (0..2).any(|dy| {
+                        (0..2).any(|dx| {
+                            let tx = (2 * col + dx) % 64;
+                            let ty = (2 * row + dy) % 32;
+                            let w = base + (tx / 32) * 0x400 + ty * 32 + tx % 32;
+                            word(va, 2 * w) != word(vb, 2 * w)
+                        })
+                    });
+                    // In view: the 17 columns and 15 rows from the camera's cell.
+                    let seen = (0..17).any(|i| (cx + i) % 32 == col)
+                        && (0..15).any(|i| (cy + i) % 16 == row);
+                    match (differs, seen) {
+                        (false, false) => '.',
+                        (false, true) => 'o',
+                        (true, false) => 'x',
+                        (true, true) => 'X',
+                    }
+                })
+                .collect();
+            println!("  {row:2} {line}");
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let rom = |i: usize| Rom::load(&args[i]).unwrap();
@@ -457,6 +565,11 @@ fn main() {
         Some("show") => {
             let o = options(&args[3..]);
             show_words(&rom(1), hex(&args[2]) as u16, &o);
+        }
+        Some("cells") => {
+            let o = options(&args[5..]);
+            let frame = args[4].parse().unwrap();
+            cells(&rom(1), &rom(2), hex(&args[3]) as u16, frame, &o);
         }
         Some("compare") => {
             let o = options(&args[4..]);
