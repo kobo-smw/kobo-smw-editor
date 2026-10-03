@@ -38,7 +38,10 @@ address, "PC" an offset in the headerless file.
   image with packages from a pinned snapshot of Debian's archive, and a rebuild gives the
   same bytes; they need glibc 2.35 (Ubuntu 22.04) or later. The Windows and macOS ones
   depend on the compilers of GitHub's runner images, which cannot be pinned: rebuilt on
-  the same image they match, and a newer image may not. kobo-tools's `verify` workflow
+  the same image they match, and a newer image may not. That is accepted (maintainer,
+  2026-10-03): Kobo pins every build by hash, so what users run and what a project builds
+  do not depend on it, and the Linux builds can be rebuilt and checked; pinning Xcode or
+  an MSVC toolset would last only until the images drop them. kobo-tools's `verify` workflow
   rebuilds a release from its source archives and compares every file: all twelve
   builds of `r1` came out byte-identical (2026-10-03), and the Linux ones match a local
   rebuild in Docker too. `r1` was built once before Actions were turned on

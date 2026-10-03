@@ -13,15 +13,6 @@ settle it.
 
 ## Open
 
-- **Windows and macOS tool builds are reproducible only on the same runner image**
-  (2026-09-27, kobo-tools README). The Linux builds are made in a pinned Debian image
-  with packages from a pinned snapshot, and two local runs and CI gave the same bytes;
-  a rebuild of `r1` on CI matched all twelve builds. But MSVC and Apple Clang come with
-  GitHub's runner images, which cannot be pinned, so a
-  rebuild after an image update may differ; kobo-tools's `verify` workflow fails on a
-  Linux difference and only reports the others. Settles it: pinning those compilers
-  (a fixed Xcode through `xcode-select`, clang-cl or a pinned MSVC toolset on Windows) if
-  byte-identical rebuilds matter there.
 - **The pinned Linux builds need glibc 2.35 or later** (2026-09-27, kobo-tools `pins.py`
   `MAX_GLIBC`). Debian 11, the older image first tried, has left Debian's mirrors;
   building on Debian 12 makes Ubuntu 22.04 the oldest distribution the builds run on
