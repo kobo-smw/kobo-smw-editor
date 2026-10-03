@@ -191,6 +191,13 @@ how each oracle is produced, where its data lives, and what is known not to matc
     `136` (407, block 408), a block one byte longer than the list; and 2022 `09_idol`
     level `105`, 32 screens of 64 rows, more than the planes hold.
 
+  Run again over the QLDC patches on 2026-10-04 (every `kobo-core` test, release build):
+  the four above fail at the same hacks, and nothing else does. Two tests added since
+  needed changes to take them: `graphics_build` builds an SA-1 hack's lists as an SA-1
+  project, and `layer3_settings` takes a tide by `$1403` too and leaves out what a
+  sprite touches in a tide (lunar-magic-install.md, "Layer 3 settings"); its first run
+  over them found two differences in Kobo's layer 3 code, since fixed.
+
   `tests/map16_pages.rs` (`older_layouts_import_as_lunar_magic_exports_them`, with
   `KOBO_LUNAR_MAGIC`) imports the Map16 of every `KOBO_LM_ROMS` hack in an older Lunar
   Magic layout and requires it to be Lunar Magic 3.70's `-ExportAllMap16` of the hack,
