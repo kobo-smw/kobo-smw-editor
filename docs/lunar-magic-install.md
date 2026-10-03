@@ -1157,8 +1157,11 @@ ExGFX pointers.
   (`$00BA56`), the lag path (`$0081E2`), and the stripe upload (`$0085D2`) were checked
   one by one (2026-10-02, above).
 - Which tiles of which files the 4bpp piece still converts from 3bpp (the help file names
-  "portions of files B, F and 21"), and what it does on the overworld, in the credits, and
-  for the Mode 7 bosses.
+  "portions of files B, F and 21"), and what it does on the overworld and in the credits.
+  In levels it changes nothing Kobo's loader does not: Kaizo Kindergarten (4bpp) with
+  Kobo's graphics loader swapped in loads the same VRAM on every level, the Mode 7 boss
+  arenas included, but for the player's tile words (2026-10-04, `with-kobo-graphics`,
+  `gfx_probe loads 0000-8000`).
 - SP4's high nibble: what its bits do, and why Lunar Magic 3.70's save clears bit 12
   (Kobo's builds keep what the source says). Bit 12 changes nothing a level's load
   leaves (lunar-magic.md); play was not compared.

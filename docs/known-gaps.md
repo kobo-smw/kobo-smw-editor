@@ -83,6 +83,11 @@ What a rendered level does not reproduce, and what the tooling does not handle.
   unaffected, since the ROM's own decompression runs for them. LC_LZ2 and LC_LZ3 have
   encoders (`compress::lz2::compress`, `compress::lz3::compress`); the LC_LZ3 one does not
   use its reversed and backwards copies (commands 5 and 6).
+- A build of a hack saved by Lunar Magic 1.6x draws the vertical pipes as Lunar Magic 3.70's
+  install does, each screen's in its colour set (`MAP16AppTable`), where the hack's own
+  code, which a 3.70 save keeps, may draw them all in one: Kaizo Mario's level `105` has
+  green pipes and its build grey and yellow ones, from the same colour tables (2026-10-04).
+  Kobo writes 3.70's layout, so this is left as it is.
 - Lunar Magic 2.41's older ExAnimation lists (Kaizo Mario World 3, the corpus's only ROM
   with them) are not read from a ROM: where their table is had been found in a way that
   was not recorded, so the reading, and the conversion of the older format with it, were
