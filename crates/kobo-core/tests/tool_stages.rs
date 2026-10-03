@@ -154,14 +154,13 @@ fn addmusick_inserts_the_music() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// With SA-1 Pack (`KOBO_SA1PACK`), Asar, and the vanilla ROM: the SA-1
-/// base's levels, imported and built back as an SA-1 project, read back
-/// the same and render the same as the base. The check of all 512
-/// pictures is `render_hashes` (docs/testing.md).
+/// With SA-1 Pack (configured, or the pinned release in the cache), Asar,
+/// and the vanilla ROM: the SA-1 base's levels, imported and built back as
+/// an SA-1 project, read back the same and render the same as the base.
+/// The check of all 512 pictures is `render_hashes` (docs/testing.md).
 #[test]
 fn sa1_projects_build_onto_sa1_pack() {
-    if std::env::var_os("KOBO_SA1PACK").is_none() {
-        eprintln!("skipping: KOBO_SA1PACK is not set");
+    if common::tool(Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {
@@ -199,10 +198,39 @@ fn sa1_projects_build_onto_sa1_pack() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// SA-1 Pack on an image with no game data, so it runs without a ROM: CI
+/// fetches the pinned release and runs it through the pinned Asar on
+/// every platform, which must give the same bytes.
+#[test]
+fn sa1_pack_applies_without_a_rom() {
+    if common::tool(Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
+        return;
+    }
+    if common::asar().is_none() {
+        return;
+    }
+    let manifest = Manifest {
+        sa1: true,
+        ..Manifest::default()
+    };
+    let base = build::base_image(&common::synthetic_base(), &manifest).unwrap();
+    assert!(base.mapping().is_sa1());
+    assert_eq!(base.read(SnesAddr::new(0x00FFD5), 1).unwrap(), [0x23]);
+    // Its marker, and its version, 140.
+    assert_eq!(
+        base.read(SnesAddr::new(0x0084C0), 4).unwrap(),
+        [0x23, 0xA1, 0x05, 140]
+    );
+    assert_eq!(
+        base.sha1_hex(),
+        "e0b4dff291199349b4cb095a251ee02856416774",
+        "SA-1 Pack's output on the synthetic image changed"
+    );
+}
+
 #[test]
 fn sa1_images_past_4m_take_sa1_packs_larger_patches() {
-    if std::env::var_os("KOBO_SA1PACK").is_none() {
-        eprintln!("skipping: KOBO_SA1PACK is not set");
+    if common::tool(Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {
@@ -399,8 +427,7 @@ fn gps_inserts_blocks() {
 /// `render_hashes` (docs/testing.md). A LoROM project may not ask for it.
 #[test]
 fn sa1_projects_store_gfx_as_lz3() {
-    if std::env::var_os("KOBO_SA1PACK").is_none() {
-        eprintln!("skipping: KOBO_SA1PACK is not set");
+    if common::tool(Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {

@@ -27,6 +27,7 @@ use kobo_core::map16::pages as map16_pages;
 use kobo_core::map16::{GameTables, Map16Tile, TILESET_COUNT, Tile8Ref};
 use kobo_core::palette::{Color15, CustomPalette, Palette};
 use kobo_core::source::map16::{DEFAULT_ACTS, GamePage, GameTile, Map16Entry, Map16Page};
+use kobo_core::tools::Tool;
 use kobo_core::{Rom, SnesAddr, clean_room, exanimation, import};
 use sha1::{Digest, Sha1};
 
@@ -710,8 +711,7 @@ fn lunar_magic_reads_an_lz3_build() {
         eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
         return;
     };
-    if std::env::var_os("KOBO_SA1PACK").is_none() {
-        eprintln!("skipping: KOBO_SA1PACK is not set");
+    if common::tool(Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {

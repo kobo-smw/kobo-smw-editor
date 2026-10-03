@@ -200,7 +200,8 @@ Early stage: roadmap step 1 is complete; step 2 is next, planned in `docs/step-2
   file, and so on) wins; else Asar, PIXI (`tools::pixi()`), and UberASM Tool come from the
   builds `tools/pinned.toml` pins, downloaded from `kobo-smw/kobo-tools` on first use,
   checked by SHA-256, and cached per user (`KOBO_TOOL_CACHE`; `KOBO_OFFLINE` turns
-  downloads off). AddmusicK, GPS, and SA-1 Pack are only ever the user's. A stage's cache
+  downloads off); SA-1 Pack comes the same way from its author's release
+  (`tools/upstream.toml`). AddmusicK and GPS are only ever the user's. A stage's cache
   key hashes a pinned build's hash, or every file a configured tool's folder holds; a
   configured tool makes a build not reproducible elsewhere, which `Located::note` says
   and `kobo build` prints.
@@ -273,8 +274,9 @@ Windows, and macOS. Keep all three green.
   committed: `KOBO_ORACLE_DIR` (Mesen 2 dumps of every vanilla level, `tools/oracle/`; of
   another ROM, the SA-1 reference ROM say, with `KOBO_ORACLE_ROM`),
   `KOBO_BOSS_ORACLE_DIR`, `KOBO_VIDEO_ORACLE_DIRS` (whole pictures), `KOBO_65816_TESTS`
-  (SingleStepTests), `KOBO_SA1PACK` (SA-1 Pack's folder: the tests of Kobo's patches and
-  builds run on its SA-1 base too), `KOBO_LM_ROMS` (`:`-separated Lunar Magic hacks, ROMs or `.bps`
+  (SingleStepTests), `KOBO_SA1PACK` (SA-1 Pack's folder, else the pinned release if
+  `kobo tools fetch` has cached it: the tests of Kobo's patches and builds run on its
+  SA-1 base too), `KOBO_LM_ROMS` (`:`-separated Lunar Magic hacks, ROMs or `.bps`
   patches of the vanilla ROM), `KOBO_MWL_DIR`
   (MWL exports, `tools/lunar-magic/export-mwl`), and `KOBO_LUNAR_MAGIC` (Lunar Magic 3.70's
   folder: a build must survive its save). Lunar Magic exports (hashes in
@@ -371,7 +373,9 @@ describes that module's code rather than the game). Do not grow this file with t
   (`tools/pinned.toml`, written by its `build.py pins`) and fetches the build for its
   platform on first use. A `[tools]` path or environment variable overrides one, and the
   build report notes it. AddmusicK, SA-1 Pack, and GPS have no licence and are never
-  bundled; GPS runs unmodified, so Kobo's bank `$06` code has the shape it patches.
+  bundled; SA-1 Pack is fetched by hash from its author's GitHub release
+  (`tools/upstream.toml`), the other two are the user's own. GPS runs unmodified, so
+  Kobo's bank `$06` code has the shape it patches.
 
 ## Open decisions
 

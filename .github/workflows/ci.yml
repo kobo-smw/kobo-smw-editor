@@ -49,14 +49,15 @@ jobs:
       # The builds of Asar and UberASM Tool (and PIXI) that Kobo pins, from
       # kobo-smw/kobo-tools, checked against pinned.toml's hashes. kobo-tools
       # builds them from upstream source and can rebuild a release to
-      # compare (its verify workflow).
+      # compare (its verify workflow). SA-1 Pack comes from its author's
+      # release, checked against upstream.toml's hash.
       - name: Tool cache
         shell: bash
         run: echo "KOBO_TOOL_CACHE=$RUNNER_TEMP/kobo-tools" >> "$GITHUB_ENV"
       - uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/kobo-tools
-          key: kobo-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('crates/kobo-core/src/tools/pinned.toml') }}
+          key: kobo-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('crates/kobo-core/src/tools/pinned.toml', 'crates/kobo-core/src/tools/upstream.toml') }}
       - name: Fetch the pinned tools
         run: cargo run -p kobo-cli -- tools fetch
       # ROM-backed tests skip themselves: no ROM data exists in CI. The
@@ -67,3 +68,4 @@ jobs:
           KOBO_REQUIRE_ASAR: "1"
           KOBO_REQUIRE_UBERASM: "1"
           KOBO_REQUIRE_PIXI: "1"
+          KOBO_REQUIRE_SA1PACK: "1"

@@ -178,10 +178,11 @@ enum Command {
 enum ToolsCommand {
     /// List each tool and where a build would take it from (the default).
     List,
-    /// Download the pinned builds for this platform into the cache, so
-    /// builds need no network later.
+    /// Download the pinned builds for this platform, and SA-1 Pack's
+    /// release, into the cache, so builds need no network later.
     Fetch {
-        /// The tools to fetch (`asar`, `pixi`, `uberasm`); all by default.
+        /// The tools to fetch (`asar`, `pixi`, `uberasm`, `sa1pack`); all by
+        /// default.
         tools: Vec<String>,
     },
     /// Print the path a build would use for a tool, fetching its pinned
@@ -1522,15 +1523,13 @@ fn convert_addr(text: &str, sa1: bool) -> Result<()> {
 
 /// Says that a tool's pinned build is about to be downloaded, if it is.
 fn announce_download(tool: Tool) {
-    if let (true, Some(pinned), Some(build)) =
-        (tool.needs_download(), tool.pinned(), tool.pinned_build())
-    {
+    if let (true, Some(source)) = (tool.needs_download(), tool.source()) {
         eprintln!(
             "downloading {} {} ({} KiB) from {}",
             tool,
-            pinned.version,
-            build.size / 1024,
-            tools::pinned::base_url()
+            source.version,
+            source.build.size / 1024,
+            source.url
         );
     }
 }
@@ -1553,10 +1552,7 @@ fn tools_list() -> Result<()> {
             .unwrap_or_else(|| "nowhere (set KOBO_TOOL_CACHE)".into())
     );
     for tool in Tool::ALL {
-        let version = tool
-            .pinned()
-            .map(|p| format!(" {}", p.version))
-            .unwrap_or_default();
+        let version = tool.version().map(|v| format!(" {v}")).unwrap_or_default();
         let place = match tool.locate_offline() {
             Ok(located) => match &located.origin {
                 tools::Origin::Configured(setting) => {
@@ -1576,13 +1572,13 @@ fn tools_fetch(keys: &[String]) -> Result<()> {
     let tools: Vec<Tool> = if keys.is_empty() {
         Tool::ALL
             .into_iter()
-            .filter(|t| t.pinned().is_some())
+            .filter(|t| t.version().is_some())
             .collect()
     } else {
         keys.iter().map(|k| parse_tool(k)).collect::<Result<_>>()?
     };
     for tool in tools {
-        if tool.pinned().is_none() {
+        if tool.version().is_none() {
             bail!("Kobo pins no build of {tool}, which has no licence; configure a path to it");
         }
         announce_download(tool);

@@ -462,11 +462,16 @@ how each oracle is produced, where its data lives, and what is known not to matc
 - **Pinned tools**: `tools::pinned`'s unit tests serve synthetic builds from a local port:
   a build is downloaded, checked, and unpacked once; one that fails its hash or is longer
   than pinned leaves nothing in the cache; an archive entry outside its folder is refused;
-  and `pinned.toml` names Asar, PIXI, and UberASM Tool for every platform. CI fetches the
-  real builds before the tests (a cache keyed by `pinned.toml`), and runs the tests with
+  a `.zip` (SA-1 Pack's release) unpacks stored and deflated entries into its folder and
+  fails a damaged one's CRC; and `pinned.toml` names Asar, PIXI, and UberASM Tool for
+  every platform, `upstream.toml` SA-1 Pack. CI fetches the real builds and SA-1 Pack's
+  release before the tests (a cache keyed by both files), and runs the tests with
   `KOBO_OFFLINE=1`, so no test downloads. The published builds are checked against a
   rebuild from their sources by `kobo-smw/kobo-tools`'s `verify` workflow.
-- **SA-1 builds**: with `KOBO_SA1PACK` (`~/src/sa1pack` here), `tool_stages.rs` imports
+- **SA-1 builds**: with SA-1 Pack (`KOBO_SA1PACK`, `~/src/sa1pack` here, or the pinned
+  release in the tool cache, which CI fetches), `sa1_pack_applies_without_a_rom` applies
+  it to the synthetic image, which must give the same bytes on every platform; with the
+  vanilla ROM as well, `tool_stages.rs` imports
   every level of the SA-1 base and builds it back as an SA-1 project, which must read back
   the same and render four levels the same. All 512 pictures, by hand: make the reference
   ROM as [sa1.md](sa1.md) says (`~/.local/share/kobo/roms/sa1/smw-sa1.sfc` here), `kobo

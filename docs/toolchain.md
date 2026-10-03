@@ -34,8 +34,16 @@ address, "PC" an offset in the headerless file.
   cache ahead of time and `kobo tools` lists where each tool would come from.
 - A stage's cache key takes a pinned build's hash, not its files. A configured tool's
   key takes every file of it, and `kobo build` prints a note for it: the build depends
-  on the user's copy and is not reproducible elsewhere. AddmusicK, GPS, and SA-1 Pack
-  always get that note, since Kobo can pin no build of them.
+  on the user's copy and is not reproducible elsewhere. AddmusicK and GPS always get that
+  note, since Kobo can pin no build of them.
+- SA-1 Pack 1.40 is pinned to its author's own release, not rebuilt: `upstream.toml`
+  names `VitorVilela7/SMW-SA1-Pack`'s `v1.40` asset `SA1-Pack-140.zip` by size and
+  SHA-256, and `Tool::locate` fetches, checks, and caches it as it does a kobo-tools
+  build, unpacked into `sa1pack-1.40/` (the patches at the top; a configured folder may
+  have them there or in `asm/`, as the repository does). Fetching it from its author is
+  not redistribution, which its lack of a licence rules out (maintainer, 2026-10-03).
+  The release's patches differ from the repository's tag `v1.40` only in line endings,
+  and give the same bytes at 1, 6, and 8 MiB (checked 2026-10-03).
 - Reproducibility of the builds themselves: the Linux ones are made in a pinned Debian 12
   image with packages from a pinned snapshot of Debian's archive, and a rebuild gives the
   same bytes; they need glibc 2.35 (Ubuntu 22.04) or later, which `build.py test` checks.

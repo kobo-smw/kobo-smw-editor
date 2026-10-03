@@ -989,10 +989,17 @@ fn patch_can_include(project: &Project, path: &Path) -> bool {
 }
 
 /// SA-1 Pack on the clean ROM, and its 6 or 8 MiB patch for a larger
-/// image, run through Asar from the configured SA-1 Pack folder. SA-1 Pack
-/// applies to a clean ROM only, before anything else (docs/toolchain.md).
+/// image, run through Asar from SA-1 Pack's folder: the pinned release,
+/// whose patches are at the top, or a configured folder of either that
+/// or the repository's layout (`asm/`). SA-1 Pack applies to a clean ROM
+/// only, before anything else (docs/toolchain.md).
 fn apply_sa1pack(rom: &Rom, size: usize) -> Result<Rom, BuildError> {
-    let dir = Tool::Sa1Pack.locate()?.path.join("asm");
+    let folder = Tool::Sa1Pack.locate()?.path;
+    let dir = if folder.join("sa1.asm").is_file() {
+        folder
+    } else {
+        folder.join("asm")
+    };
     let asar = Asar::configured().map_err(|e| BuildError::Asar(Box::new(e)))?;
     let mut rom = Rom::from_headerless(rom.data().to_vec())?;
     let mut patches = vec![dir.join("sa1.asm")];

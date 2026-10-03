@@ -1,0 +1,18 @@
+# The tools Kobo fetches from their authors' own releases, checked by
+# SHA-256 as the kobo-tools builds are. They have no licence, so Kobo
+# neither rebuilds nor redistributes them (docs/step-2.md, "Tools").
+# Edited by hand: a new version is a new URL, size, and hash.
+
+[sa1pack]
+name = "SA-1 Pack"
+version = "1.40"
+release = "v1.40"
+url = "https://github.com/VitorVilela7/SMW-SA1-Pack/releases/download/v1.40/"
+
+# The release's patches, `sa1.asm` and the rest at the top of the archive,
+# unpacked into `root`.
+[sa1pack.build]
+file = "SA1-Pack-140.zip"
+sha256 = "ffd31d1ef68a35af5b2f91d754f4b792cad05ac1e6445b8191bb7a3ddec905a2"
+size = 192824
+root = "sa1pack-1.40"

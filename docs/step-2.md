@@ -702,8 +702,9 @@ on the built ROM.
   5. **Yoshi's tongue and berries**: done (above). The player's tile words in a whole
      build: settled, as the vanilla ROM has them (review.md).
   6. **Tools left as the user's own:** AddmusicK and GPS are not fetched (no licence, no
-     stable source for every platform). SA-1 Pack 1.40 is to be fetched by hash from its
-     GitHub release (decided 2026-10-03): not started.
+     stable source for every platform). SA-1 Pack 1.40 is fetched by hash from its
+     GitHub release (`tools/upstream.toml`, done 2026-10-03), and CI runs it on all three
+     platforms.
   7. **Baserom template projects** ("No base", above): not started.
   8. **Closing step 2:** fold what stays true of this file into the other docs and delete
      it, as its header says.
