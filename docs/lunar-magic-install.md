@@ -1070,10 +1070,25 @@ What the settings do, observed:
   tide with `B`) with Kobo's layer 3 code and that plays as the hack on every frame, and
   without that it does not. Before, the 7 corpus levels played the same but where a
   sprite meets the tide's end, and on the first frame; those were checked against the
-  hacks moved into a 3.70 ROM and have not been again. In one case seen a Lunar Magic ROM
-  wrapped a tide's vertical position from `$118` to `$108`, and kept X under `$200`,
-  where Kobo's code goes on. A tide in a vertical level, which only Lunar Magic supports
-  with `B`, is refused.
+  hacks moved into a 3.70 ROM and have not been again. A tide in a vertical level, which
+  only Lunar Magic supports with `B`, is refused.
+- A tide's vertical position with `B` (found 2026-10-04 in QLDC 2021 `35_FrozenQuills`'s
+  level `025` moved into a 3.70 ROM, then with every vertical setting and offsets from
+  -12 to 30 rows, layer 1 along its height): where layer 3 moves as a tide does, with
+  layer 1 (setting 1, or another of no shift) or by an autoscroll, Lunar Magic 3.70 keeps
+  it not below 0 and, from `$108` on, within `$108`-`$117`, as `$108` plus the position
+  less `$108` in 16 (the step of the tide's pattern); none, a fraction of layer 1, and
+  1.2 times leave it as set, below 0 or past `$117`. X is not bounded (an older version
+  was once seen keeping it under `$200`). Kobo's code does the same since
+  (`tide_bounds`). A layer 3 axis with no scroll setting is left as it is, by Lunar
+  Magic's code and since 2026-10-04 by Kobo's with `I` too (it had put back the position
+  it kept a frame ahead, which undid a hack's own code moving layer 3: QLDC 2022
+  `27_unipat` level `105`).
+- With every QLDC entry added, `kobos_layer3_code_plays_as_lunar_magics` takes 85 hacks
+  and agrees on every level it compares (one, QLDC 2021 `51_singlepat`, left out: Asar
+  would place Kobo's code in a block of the hack's). It leaves out tide levels of a size
+  of their own: what a sprite in the tide touches comes from Lunar Magic's code at
+  `$00E966` too, which stays in a hack Kobo's layer 3 code is swapped into.
 - Not settled: AN2's bit 12, which no corpus ROM sets and which changed nothing seen.
   Builds refuse it (`build::check_layer3`, [review.md](review.md)).
 

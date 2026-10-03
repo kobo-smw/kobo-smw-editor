@@ -272,6 +272,46 @@ fn a_build_fills_a_tide_with_what_it_acts_like() {
     }
 }
 
+/// In tide level 127, layer 3's vertical position stays as Lunar Magic's
+/// code keeps it where it moves as a tide does (with layer 1, setting 1,
+/// or by an autoscroll): not below 0, and from `$108` on within
+/// `$108`-`$117`; a fraction of layer 1 leaves it as it is.
+#[test]
+fn a_tide_keeps_layer3_within_lunar_magics_bounds() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    if common::asar().is_none() {
+        return;
+    }
+    for (vertical, y, bounded) in [
+        (0x01, -12, true),
+        (0x01, 30, true),
+        (0x09, 20, true),
+        (0x02, -12, false),
+    ] {
+        let (mut level, _) = import::read_level(&clean, 0x127).unwrap();
+        let mut list = GraphicsList::DEFAULT;
+        list.set_layer3(&Layer3Settings {
+            advanced: true,
+            vertical,
+            y,
+            ..Layer3Settings::default()
+        })
+        .unwrap();
+        level.graphics = Some(list);
+        for (_, built) in common::builds(&clean, &project(vec![(0x127, level)])) {
+            let frames = play(&built, 0x127, 240, "0,3@120/0,-3@120").unwrap();
+            let ys: Vec<i16> = frames
+                .iter()
+                .map(|f| i16::from_le_bytes([f.ram[2], f.ram[3]]))
+                .collect();
+            let inside = ys.iter().all(|&y| (0..0x118).contains(&y));
+            assert_eq!(inside, bounded, "{vertical:02X} {y}: {ys:?}");
+        }
+    }
+}
+
 /// Tide level 127 at sizes of its own fills the rows Lunar Magic's load
 /// does (docs/lunar-magic-install.md, "Layer 3 settings"): rows 16 down of
 /// the screens from layer 2's first (the split's with `T`, else 16), the
@@ -354,8 +394,11 @@ fn a_tide_in_a_taller_level_fills_the_rows_lunar_magic_does() {
 
 /// A ROM with Lunar Magic's layer 3 code, with Kobo's in its place: the
 /// hook sites put back to the clean ROM's bytes (with SA-1 Pack's, for an
-/// SA-1 ROM), then `layer3.asm`.
-fn with_kobos(hack: &Rom, clean: &Rom, asar: &kobo_core::asar::Asar) -> Rom {
+/// SA-1 ROM), then `layer3.asm`; `None` where Asar's free space search would
+/// write into a tagged block of the hack's (docs/toolchain.md, "Asar 1.91
+/// RATS boundary limitation"), which a build, writing onto the clean ROM,
+/// never meets.
+fn with_kobos(hack: &Rom, clean: &Rom, asar: &kobo_core::asar::Asar) -> Option<Rom> {
     let mut rom = Rom::from_bytes(hack.data().to_vec()).unwrap();
     for (a, b) in [
         (0x00A01F, 0x00A024),
@@ -367,7 +410,11 @@ fn with_kobos(hack: &Rom, clean: &Rom, asar: &kobo_core::asar::Asar) -> Rom {
         let bytes = clean.read(SnesAddr::new(a), len as usize).unwrap().to_vec();
         rom.write(SnesAddr::new(a), &bytes).unwrap();
     }
-    install::apply_layer3(asar, &rom).unwrap()
+    match install::apply_layer3(asar, &rom) {
+        Ok(rom) => Some(rom),
+        Err(kobo_core::asar::AsarError::Damaged { .. }) => None,
+        Err(e) => panic!("layer3.asm: {e}"),
+    }
 }
 
 /// Every corpus hack with Lunar Magic's layer 3 code from 3.10 on: with
@@ -408,7 +455,13 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
         } else {
             &clean
         };
-        let kobo = with_kobos(&hack, base, &asar);
+        let Some(kobo) = with_kobos(&hack, base, &asar) else {
+            eprintln!(
+                "{}: Kobo's code does not fit beside the hack's",
+                path.display()
+            );
+            continue;
+        };
         let mut levels = 0;
         for number in 0..0x200u16 {
             let Some(list) = exgfx::read_list(&hack, number).unwrap() else {
@@ -423,6 +476,12 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
             };
             let tide =
                 exgfx::has_tide(&hack, level.header.object_tileset, level.entrance.layer3).unwrap();
+            // A tide in a level of a size of its own: what a sprite in the
+            // tide touches comes from Lunar Magic's code at $00E966 as well,
+            // which stays in the hack and reads Lunar Magic's layer 3 state,
+            // not Kobo's; a build has Kobo's at both (entrance.asm), and its
+            // positions are checked against Lunar Magic 3.70's by hand
+            // (docs/lunar-magic-install.md, "Layer 3 settings").
             if s.unknown
                 || (tide && !level.size.is_default())
                 || (tide && s.advanced && level.header.level_mode.layer1_vertical())

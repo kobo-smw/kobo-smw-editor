@@ -455,6 +455,7 @@ scroll:
     JSR axis
     LDX #$0002
     JSR axis
+    JSR tide_bounds
     JSR tide_offsets
     PLA
     STA $00
@@ -468,6 +469,40 @@ scroll:
     STA $02,s
     PLP
     RTL
+
+; In a tide level whose layer 3 moves vertically as a tide does (with
+; layer 1, setting 1 or another of no shift, or by an autoscroll), its
+; vertical position kept as Lunar Magic's code keeps it: not below 0, and
+; from $108 on within $108-$117, a step of the tide's 16 lines. Seen with
+; offsets from -12 to 30 rows, layer 1 along its height, and autoscrolls
+; both ways; none, a fraction of layer 1, and 1.2 times leave it as it is
+; (docs/lunar-magic-install.md "Layer 3 settings"). A, X, Y 16-bit.
+tide_bounds:
+    LDA.l $001403|!addr
+    AND #$00FF
+    BEQ .done
+    LDX #$0002
+    JSR mode
+    CMP #$0002
+    BEQ +
+    CMP #$0001
+    BNE .done
+    LDA.w shifts,y
+    AND #$00FF
+    BNE .done
++   LDA $24
+    BPL +
+    STZ $24
+    RTS
++   CMP #$0108
+    BCC .done
+    SEC
+    SBC #$0108
+    AND #$000F
+    ADC #$0107                  ; carry set: $108 on
+    STA $24
+.done:
+    RTS
 
 ; In a tide level, the tide's interaction offsets from layer 1 as Lunar
 ; Magic's code leaves them with B, from layer 3's position as it now is
@@ -611,8 +646,13 @@ tide_kinds:
     dw $0204, $0204, $0205, $0205, $0206, $0206, $0207, $0207
     dw $0208, $0208, $0209, $0209, $020A, $020A
 
-; One axis (X = 0 horizontal, 2 vertical). A, X, Y 16-bit.
+; One axis (X = 0 horizontal, 2 vertical). A, X, Y 16-bit. An axis that
+; does not scroll is left as it is, I or not, as Lunar Magic's code leaves
+; it (a position another patch writes stays).
 axis:
+    JSR mode
+    CMP #$0000
+    BEQ .none
     LDA !Flags
     AND #$0002
     BEQ .move

@@ -129,9 +129,14 @@ settle it.
   and since 2026-10-02 with Kobo's code after the player's collision with layer 2
   (`$00E966`), which makes them trail a frame as Lunar Magic's do: Super Dram World 2
   v1.3's level `0D3` plays as the hack on every frame tried. Refused: `advanced` with a
-  tide in a vertical level, which only Lunar Magic's code supports. Settles it: the 7
-  corpus levels moved into a 3.70 ROM and played again (before the `$00E966` code they
-  played the same but where a sprite meets the tide's end, and on the first frame).
+  tide in a vertical level, which only Lunar Magic's code supports. Since 2026-10-04
+  Kobo's code also bounds a tide's vertical position as Lunar Magic 3.70's does
+  (lunar-magic-install.md, "Layer 3 settings"), and the corpus comparison, with every QLDC
+  entry, agrees on every tide level of the game's height in hacks from 3.10 on. Settles
+  it: the tide levels of a size of their own, which the comparison cannot take with
+  Kobo's layer 3 code alone, built and played against the hacks (QLDC 2021 `06_Friday`
+  level `106`: there a sprite in the tide touched water under Kobo's layer 3 code and
+  Lunar Magic's `$00E966`, air under Lunar Magic's own).
 - **SA-1: the patches name SA-1 Pack's addresses through Asar defines, not ones made from
   `ram::RamMap`** (2026-10-01, `asm/lunar-magic/memory.asm`). The plan had each patch's
   RAM "as defines through `ram::RamMap`'s SA-1 map". The patches use the community's
