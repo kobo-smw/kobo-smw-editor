@@ -132,11 +132,10 @@ settle it.
   tide in a vertical level, which only Lunar Magic's code supports. Since 2026-10-04
   Kobo's code also bounds a tide's vertical position as Lunar Magic 3.70's does
   (lunar-magic-install.md, "Layer 3 settings"), and the corpus comparison, with every QLDC
-  entry, agrees on every tide level of the game's height in hacks from 3.10 on. Settles
-  it: the tide levels of a size of their own, which the comparison cannot take with
-  Kobo's layer 3 code alone, built and played against the hacks (QLDC 2021 `06_Friday`
-  level `106`: there a sprite in the tide touched water under Kobo's layer 3 code and
-  Lunar Magic's `$00E966`, air under Lunar Magic's own).
+  entry, agrees on every tide level in hacks from 3.10 on but for what a sprite in a tide
+  touches, which comes from `$00E966` too and so takes a build (QLDC 2021 `06_Friday`'s
+  level `106` built by Kobo touches what the hack does). Settles it: more tide levels
+  built and played against their hacks.
 - **SA-1: the patches name SA-1 Pack's addresses through Asar defines, not ones made from
   `ram::RamMap`** (2026-10-01, `asm/lunar-magic/memory.asm`). The plan had each patch's
   RAM "as defines through `ram::RamMap`'s SA-1 map". The patches use the community's

@@ -323,6 +323,11 @@ fn the_corpus_graphics_build_as_the_hacks_have_them() {
         if !exgfx::has_exgfx(&hack) || gfx::is_locked(&hack) {
             continue;
         }
+        // An SA-1 hack builds as an SA-1 project, which needs SA-1 Pack.
+        let sa1 = hack.mapping().is_sa1();
+        if sa1 && common::tool(kobo_core::tools::Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
+            continue;
+        }
         let name = path.display();
         let (files, _) = import::read_exgfx_files(&hack).unwrap();
         let exgfx = exgfx_bytes(&files);
@@ -363,6 +368,7 @@ fn the_corpus_graphics_build_as_the_hacks_have_them() {
         }
         let mut p = project(Manifest {
             rom_size: Some(hack.len().max(0x20_0000)),
+            sa1,
             four_bpp: true,
             bypass_lists: exgfx::read_old_lists(&hack).unwrap().into_iter().collect(),
             ..Manifest::default()

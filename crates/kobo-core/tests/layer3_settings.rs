@@ -85,6 +85,9 @@ const WATCHED: [(u32, usize); 8] = [
     (0x7F_E400, 32),
 ];
 
+/// Where `$1693` is in a frame's [`WATCHED`] bytes.
+const TOUCHED: usize = 9;
+
 fn play(rom: &Rom, level: u16, frames: u32, path: &str) -> Result<Vec<Frame>, String> {
     let mut start = None;
     let mut out = Vec::new();
@@ -115,9 +118,27 @@ fn play(rom: &Rom, level: u16, frames: u32, path: &str) -> Result<Vec<Frame>, St
     Ok(out)
 }
 
-/// The first frame on which two ROMs differ, if any.
-fn first_difference(a: &Rom, b: &Rom, level: u16, frames: u32, path: &str) -> Option<String> {
-    match (play(a, level, frames, path), play(b, level, frames, path)) {
+/// The first frame on which two ROMs differ, if any; `untouched` leaves out
+/// what a sprite touches (`$1693`).
+fn first_difference(
+    a: &Rom,
+    b: &Rom,
+    level: u16,
+    frames: u32,
+    path: &str,
+    untouched: bool,
+) -> Option<String> {
+    let play = |rom| {
+        play(rom, level, frames, path).map(|mut frames| {
+            if untouched {
+                for f in &mut frames {
+                    f.ram[TOUCHED] = 0;
+                }
+            }
+            frames
+        })
+    };
+    match (play(a), play(b)) {
         (Ok(fa), Ok(fb)) => fa
             .iter()
             .zip(&fb)
@@ -474,18 +495,13 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
             let Ok((level, _)) = import::read_level(&hack, number) else {
                 continue;
             };
-            let tide =
-                exgfx::has_tide(&hack, level.header.object_tileset, level.entrance.layer3).unwrap();
-            // A tide in a level of a size of its own: what a sprite in the
-            // tide touches comes from Lunar Magic's code at $00E966 as well,
-            // which stays in the hack and reads Lunar Magic's layer 3 state,
-            // not Kobo's; a build has Kobo's at both (entrance.asm), and its
-            // positions are checked against Lunar Magic 3.70's by hand
-            // (docs/lunar-magic-install.md, "Layer 3 settings").
-            if s.unknown
-                || (tide && !level.size.is_default())
-                || (tide && s.advanced && level.header.level_mode.layer1_vertical())
-            {
+            // By the game's table, or as the level loads ($1403): a hack may
+            // set a tide its own way.
+            let tide = exgfx::has_tide(&hack, level.header.object_tileset, level.entrance.layer3)
+                .unwrap()
+                || expand::expand_level(&hack, number)
+                    .is_ok_and(|l| l.ram.u8(RamAddr::new(0x7E_1403)) != 0);
+            if s.unknown || (tide && s.advanced && level.header.level_mode.layer1_vertical()) {
                 continue;
             }
             let (frames, paths): (u32, &[&str]) = if s.advanced {
@@ -493,8 +509,13 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
             } else {
                 (30, &["3,-1"])
             };
+            // In a tide level, what a sprite touches comes from Lunar Magic's
+            // code at $00E966 as well, which stays in the hack and reads
+            // Lunar Magic's layer 3 state, not Kobo's; a build has Kobo's at
+            // both (entrance.asm), and plays as the hack there (QLDC 2021
+            // `06_Friday`'s level 106, docs/lunar-magic-install.md).
             for p in paths {
-                if let Some(d) = first_difference(&hack, &kobo, number, frames, p) {
+                if let Some(d) = first_difference(&hack, &kobo, number, frames, p, tide) {
                     failures.push(format!("{}: {number:03X} {p}: {d}", path.display()));
                 }
             }

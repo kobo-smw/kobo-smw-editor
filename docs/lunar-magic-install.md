@@ -1086,9 +1086,11 @@ What the settings do, observed:
   `27_unipat` level `105`).
 - With every QLDC entry added, `kobos_layer3_code_plays_as_lunar_magics` takes 85 hacks
   and agrees on every level it compares (one, QLDC 2021 `51_singlepat`, left out: Asar
-  would place Kobo's code in a block of the hack's). It leaves out tide levels of a size
-  of their own: what a sprite in the tide touches comes from Lunar Magic's code at
-  `$00E966` too, which stays in a hack Kobo's layer 3 code is swapped into.
+  would place Kobo's code in a block of the hack's). In tide levels it leaves out what a
+  sprite touches (`$1693`): that comes from Lunar Magic's code at `$00E966` too, which
+  stays in a hack Kobo's layer 3 code is swapped into and reads Lunar Magic's layer 3
+  state; a Kobo build, with Kobo's code at both, gives the hack's values there (QLDC 2021
+  `06_Friday`'s level `106`, where the swap alone did not).
 - Not settled: AN2's bit 12, which no corpus ROM sets and which changed nothing seen.
   Builds refuse it (`build::check_layer3`, [review.md](review.md)).
 
