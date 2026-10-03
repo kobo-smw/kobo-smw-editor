@@ -13,11 +13,6 @@ settle it.
 
 ## Open
 
-- **The .NET runtime is not rehosted as source** (2026-09-27, kobo-tools `pins.py`). The
-  UberASM Tool source archive holds UberASM Tool's source and Pidgin's (MIT, bundled);
-  the .NET runtime bundled beside them (MIT) is treated as the platform it runs on, named
-  by the pinned SDK, with its notices in `third-party/`. Settles it: whether the GPL's
-  corresponding source should include dotnet/runtime's source too.
 - **Downloads trust webpki-roots, not the system's certificate store** (2026-09-27,
   `tools::pinned`, `ureq` with rustls). A network that intercepts TLS with its own root
   fails to download; `KOBO_TOOL_MIRROR` (a folder URL with the same files) or a

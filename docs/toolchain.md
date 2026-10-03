@@ -295,7 +295,11 @@ are placed as well as that old ones are kept.
   parser library, is not trim-safe, so it is not trimmed. The cost is about 29 MB per
   platform against about 1 MB framework-dependent, accepted (maintainer, 2026-10-03) so
   that nothing has to be installed; since .NET 8's support ends 2026-11-10, kobo-tools
-  `r2` builds it against .NET 10 (supported to 2028-11) instead. A checkout's
+  `r2` builds it against .NET 10 (supported to 2028-11) instead. The .NET runtime bundled
+  in it (MIT) is taken as the platform the program runs on, not part of its GPL
+  corresponding source, so the source archive holds UberASM Tool's and Pidgin's only;
+  from `r2` the notice names the runtime's exact version and its `dotnet/runtime` tag
+  rather than the repository alone (maintainer, 2026-10-03). A checkout's
   `.gitkeep` files are taken for library binaries ("Zero insert size"); a release has none.
   Kobo's stage lays the project's folder over a copy of the tool's without hidden files,
   and refuses a project folder with no `list.txt`, which would run the tool's own.
