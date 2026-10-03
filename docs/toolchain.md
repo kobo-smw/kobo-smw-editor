@@ -25,8 +25,10 @@ address, "PC" an offset in the headerless file.
 - `Tool::locate` takes a configured path first (the environment variable, then `[tools]`),
   then the pinned build for the platform: from the cache (`KOBO_TOOL_CACHE`, else
   `kobo/tools` in the user's cache directory, one folder per build named by its hash), or
-  downloaded over HTTPS (`ureq`, rustls with the webpki roots; proxies from
-  `HTTPS_PROXY`), checked against the pinned size and SHA-256 before it is unpacked, and
+  downloaded over HTTPS (`ureq`, rustls with the system's certificate store through
+  `rustls-platform-verifier`, so a network that intercepts TLS with its own root works as
+  it does in a browser; proxies from `HTTPS_PROXY`), checked against the pinned size and
+  SHA-256 before it is unpacked, which is what vouches for the file, and
   unpacked into a scratch folder renamed into place, so a failed or concurrent fetch never
   leaves half a build. `KOBO_OFFLINE=1` turns downloads off; `kobo tools fetch` fills the
   cache ahead of time and `kobo tools` lists where each tool would come from.

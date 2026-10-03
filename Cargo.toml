@@ -27,7 +27,7 @@ thiserror = "2"
 toml = "0.9"
 toml_edit = "0.25"
 # Downloads the pinned tool builds, over rustls with ring and webpki-roots.
-ureq = { version = "3", default-features = false, features = ["rustls"] }
+ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 
 [workspace.lints.clippy]
 all = "warn"

@@ -400,6 +400,13 @@ fn download(url: &str, build: &PinnedBuild, dir: &Path) -> Result<PathBuf, ToolE
         .timeout_connect(Some(Duration::from_secs(30)))
         .timeout_global(Some(Duration::from_secs(30 * 60)))
         .user_agent(concat!("kobo/", env!("CARGO_PKG_VERSION")))
+        // The system's roots, so a network that intercepts TLS with its own
+        // works as in a browser; the pinned hash, not TLS, vouches for the file.
+        .tls_config(
+            ureq::tls::TlsConfig::builder()
+                .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+                .build(),
+        )
         .build()
         .into();
     let mut response = agent.get(url).call().map_err(|e| failed(e.to_string()))?;

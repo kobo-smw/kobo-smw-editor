@@ -13,11 +13,6 @@ settle it.
 
 ## Open
 
-- **Downloads trust webpki-roots, not the system's certificate store** (2026-09-27,
-  `tools::pinned`, `ureq` with rustls). A network that intercepts TLS with its own root
-  fails to download; `KOBO_TOOL_MIRROR` (a folder URL with the same files) or a
-  configured path are the ways round it, and every download is checked against the
-  pinned hash either way. Settles it: `ureq`'s `platform-verifier` feature, if users hit it.
 - **GPS, AddmusicK, and SA-1 Pack are not fetched from upstream** (2026-09-27). The plan
   ([step-2.md](step-2.md#tools)) has Kobo fetch them from upstream by hash as well; they
   have no licence and no stable upstream URL (GPS is on the Wayback Machine only), so they
