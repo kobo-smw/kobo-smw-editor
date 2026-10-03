@@ -172,6 +172,7 @@ impl Manifest {
         if let Some(pixi) = &self.pixi {
             out.key("pixi", "dir", quoted(pixi));
         }
+
         if let Some(compiled) = &self.pixi_compiled {
             out.key("pixi", "compiled", quoted(compiled));
         }
@@ -192,7 +193,23 @@ impl Manifest {
             if !pages.is_empty() {
                 out.table(name);
                 for (page, path) in pages {
-                    out.key(name, &format!("0x{page:02X}"), quoted(path));
+                    let key = format!("0x{page:02X}");
+                    let others: Vec<String> = match name {
+                        "map16_tileset" => crate::map16::sharing_group(*page)
+                            .iter()
+                            .filter(|t| *t != page)
+                            .map(|t| format!("{t:X}"))
+                            .collect(),
+                        _ => Vec::new(),
+                    };
+                    if others.is_empty() {
+                        out.key(name, &key, quoted(path));
+                    } else {
+                        // The tilesets whose own tiles of pages 0 and 1 the
+                        // file's are too.
+                        let note = format!("pages 0 and 1 also tilesets {}", others.join(", "));
+                        out.key_note(name, &key, quoted(path), &note);
+                    }
                 }
             }
         }
@@ -706,7 +723,7 @@ mod tests {
              [music]\ndir = \"music\"\n\n[uberasm]\ndir = \"uberasm\"\n\n[pixi]\ndir = \"sprites\"\n\n[gps]\ndir = \"blocks\"\n\n\
              [graphics]\nbpp = 4\n\n\
              [gfx]\n0x00 = \"graphics/GFX00.png\"\n\n[map16]\n0x10 = \"map16/10.toml\"\n\n[map16_bg]\n0x01 = \"map16/bg-01.toml\"\n\n\
-             [map16_tileset]\n0x05 = \"map16/tileset-05.toml\"\n\n\
+             [map16_tileset]\n0x05 = \"map16/tileset-05.toml\"  # pages 0 and 1 also tilesets 4, D\n\n\
              [map16_pipes]\nfile = \"map16/pipes.toml\"\n\n\
              [exgfx]\n0x080 = \"graphics/ExGFX80.png\"\n\
              0x100 = { file = \"graphics/ExGFX100.png\", bpp = 2 }\n\
@@ -720,6 +737,30 @@ mod tests {
         let (again, comments) = Manifest::from_toml(&text).unwrap();
         assert_eq!(again, manifest);
         assert!(comments.is_empty());
+    }
+
+    #[test]
+    fn tileset_files_name_the_tilesets_sharing_them() {
+        let manifest = Manifest {
+            map16_tileset: BTreeMap::from([
+                (0x01, PathBuf::from("map16/tileset-1.toml")),
+                (0x04, PathBuf::from("map16/tileset-4.toml")),
+            ]),
+            ..Manifest::default()
+        };
+        let text = manifest.to_toml(&Comments::default());
+        assert!(
+            text.contains(
+                "0x01 = \"map16/tileset-1.toml\"\n\
+                 0x04 = \"map16/tileset-4.toml\"  # pages 0 and 1 also tilesets 5, D\n"
+            ),
+            "{text}"
+        );
+        // The note is Kobo's: read back, it is not kept as a comment.
+        let (again, comments) = Manifest::from_toml(&text).unwrap();
+        assert_eq!(again, manifest);
+        assert!(comments.is_empty());
+        assert_eq!(again.to_toml(&comments), text);
     }
 
     #[test]

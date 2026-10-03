@@ -152,6 +152,26 @@ pub fn pipe_address(set: Option<u8>, tile: u16) -> Option<SnesAddr> {
 }
 
 pub const TILESET_COUNT: u8 = 15;
+
+/// The object tilesets that share the clean ROM's table of their own tiles
+/// ([`GameTables::sharing`] of it), which a project's tileset files follow.
+pub const TILESET_SHARING: [&[u8]; 5] = [
+    &[0, 7, 0xC],
+    &[1],
+    &[2, 6, 8],
+    &[3, 9, 0xA, 0xB, 0xE],
+    &[4, 5, 0xD],
+];
+
+/// The tilesets that share tileset `tileset`'s own tiles in the clean ROM,
+/// itself among them.
+pub fn sharing_group(tileset: u8) -> &'static [u8] {
+    TILESET_SHARING
+        .iter()
+        .find(|g| g.contains(&tileset))
+        .copied()
+        .unwrap_or(&[])
+}
 pub const FG_TILE_COUNT: usize = 0x200;
 pub const BG_TILE_COUNT: usize = 0x200;
 

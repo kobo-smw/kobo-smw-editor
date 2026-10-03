@@ -1739,9 +1739,9 @@ fn gfx_error(name: &str, e: &dyn std::fmt::Display) -> BuildError {
 
 /// Writes the project's BG Map16 pages into a table of their own, all 16
 /// pages, for each BG Map16 table they are in, and points `$0EFD50` at
-/// them. Pages 0 and 1 of the first table keep the game's tiles unless the
-/// project lists them; any other page it does not list is empty, as Lunar
-/// Magic leaves a table's unused pages.
+/// them. A tile a page leaves out is what the build starts from: on pages
+/// 0 and 1 of the first table, the game's own, the clean ROM's tile, and
+/// elsewhere an empty one, as Lunar Magic leaves a table's unused tiles.
 fn write_map16_bg(rom: &mut Rom, clean: &Rom, project: &Project) -> Result<(), BuildError> {
     if project.map16_bg.is_empty() {
         return Ok(());
@@ -1756,19 +1756,20 @@ fn write_map16_bg(rom: &mut Rom, clean: &Rom, project: &Project) -> Result<(), B
         let mut bytes = Vec::with_capacity(16 * 0x800);
         for page in 0..16 {
             let number = table * 16 + page;
-            match pages.get(&number) {
-                Some(tiles) => {
-                    let first = number as u16 * page_source::PAGE_TILES;
-                    for tile in first..=first + (page_source::PAGE_TILES - 1) {
-                        bytes.extend(tiles.tile(tile).gfx.to_bytes());
-                    }
+            let mut page_bytes = if number < 2 {
+                let at = crate::map16::tables::MAP16_BG_TILES.add(number as u32 * 0x800);
+                clean.read(at, 0x800)?.to_vec()
+            } else {
+                vec![0; 0x800]
+            };
+            if let Some(tiles) = pages.get(&number) {
+                let first = number as u16 * page_source::PAGE_TILES;
+                for (&tile, entry) in tiles.tiles.range(first..=first + 0xFF) {
+                    let i = (tile - first) as usize * 8;
+                    page_bytes[i..i + 8].copy_from_slice(&entry.gfx.to_bytes());
                 }
-                None if table == 0 && page < 2 => {
-                    let at = crate::map16::tables::MAP16_BG_TILES.add(page as u32 * 0x800);
-                    bytes.extend_from_slice(clean.read(at, 0x800)?);
-                }
-                None => bytes.extend([0; 0x800]),
             }
+            bytes.extend(page_bytes);
         }
         let at = place(rom, &mut space, &bytes)?;
         rom.write_u24(map16_pages::BG_TABLES.add(3 * table as u32), at.raw())?;

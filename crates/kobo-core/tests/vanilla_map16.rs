@@ -26,6 +26,14 @@ fn sha1_hex(bytes: &[u8]) -> String {
 }
 
 #[test]
+fn tileset_sharing_is_the_clean_roms() {
+    let Some(rom) = common::vanilla() else { return };
+    let groups = map16::GameTables::read(&rom).unwrap().sharing();
+    let expected: Vec<Vec<u8>> = map16::TILESET_SHARING.iter().map(|g| g.to_vec()).collect();
+    assert_eq!(groups, expected);
+}
+
+#[test]
 fn fg_tiles_match_lunar_magic_export() {
     let Some(rom) = common::vanilla() else { return };
     let expected = load_fixture();

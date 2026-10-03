@@ -28,7 +28,10 @@
 //! per tileset, left out meaning the clean ROM's, and, when page 2 is per
 //! tileset (Lunar Magic's "tileset specific" page 2), the tileset's page 2,
 //! left out meaning empty. They have no `acts`, which is the same in every
-//! tileset.
+//! tileset. Tilesets that share the game's table of their own tiles share
+//! one file's tiles of pages 0 and 1, which the manifest notes after it
+//! ([`crate::map16::TILESET_SHARING`]); page 2 is per tileset exactly when
+//! a tileset file lists a tile of it.
 //!
 //! The pipes file, in the manifest's `[map16_pipes]`, holds the game's
 //! other definitions of some page 1 tiles: the vertical pipes' colours and
@@ -38,6 +41,11 @@
 //! without `acts`: page `P` is page `P % 16` of BG Map16 table `P / 16`,
 //! and a tile's key is its number in the table plus `$1000` times the
 //! table, so that the file names the table's pages as the table's number.
+//! Pages 0 and 1 of table 0 are the game's own, so as with the foreground's,
+//! a tile their files leave out keeps the clean ROM's.
+//!
+//! Throughout, a tile a file leaves out is what the build starts from: the
+//! clean ROM's on the game's own pages, an empty one past them.
 
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;

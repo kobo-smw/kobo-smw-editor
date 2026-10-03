@@ -166,7 +166,12 @@ are placed as well as that old ones are kept.
 - PIXI's 255-sprite option (on: Kobo does not pass `-d255spl`) moves the load flags to
   `$7FAF00` through `$02A856` and its other hooks, which Kobo's loader calls as the game's,
   and clears `$0FFFE0` bit 0; a build then takes levels of up to 255 sprites
-  (`sprites::max_sprites`).
+  (`sprites::max_sprites`), and one without PIXI refuses 129. PIXI 1.43 refuses
+  `-d255spl` ("not supported since 1.41", as it puts minor sprites' tables in the RAM
+  at `$1938` the move frees), so a project cannot keep 128 (found 2026-10-03, when the
+  maintainer chose a setting for it). 19 of the corpus's 28 PIXI hacks keep 128 flags at
+  `$1938`; an import of one with `--pixi` notes that the build moves them, for the
+  hack's own code may use `$7FAF00` or `$1938`.
 - Importing a PIXI hack (2026-10-03). With the hack's PIXI folder (`kobo import hack.smc
   dir --pixi folder`), the import copies its inputs (`tools::PIXI_INPUTS`: `list.txt`, the
   sprite folders, `routines/`, `asm/ExtraDefines` and `asm/ExtraHijacks`; not PIXI's own

@@ -151,6 +151,12 @@ impl<'a> Writer<'a> {
         self.text += &format!("{key} = {value}\n");
     }
 
+    /// A `key = value` line of table `table` with Kobo's note after it.
+    pub fn key_note(&mut self, table: &str, key: &str, value: impl Display, note: &str) {
+        self.lines(&format!("{table}.{key}"));
+        self.text += &format!("{key} = {value}  # {note}\n");
+    }
+
     /// The comments before a key the file leaves out, such as a flag that
     /// is not set, so they are not lost with it.
     pub fn key_comments(&mut self, table: &str, key: &str) {

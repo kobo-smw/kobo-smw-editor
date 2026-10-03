@@ -13,108 +13,6 @@ settle it.
 
 ## Open
 
-- **Map16 pages 0 and 1 list only what a project changes** (2026-09-27,
-  `source::map16::GamePage`, step-2.md "Source formats"). A page 0 or 1 file holds the
-  tiles whose graphics or acts-like setting differ from the clean ROM's, each with `acts`,
-  `gfx`, or both; a tile it leaves out keeps the clean ROM's. That differs from pages 2
-  and up (a tile left out is empty) and from BG Map16 pages 0 and 1 (a whole page when
-  listed), and keeps Nintendo's tiles out of projects. Settles it: whether the three kinds
-  should read the same way.
-- **The tiles the game keeps per object tileset go in tileset files** (2026-09-27,
-  `[map16_tileset]`, `build::check_map16`). Tilesets that share the game's table (vanilla:
-  0, 7, C; 2, 6, 8; 3, 9, A, B, E; 4, 5, D) share one file's tiles of pages 0 and 1: a
-  build refuses two of their files listing them, and import writes them under the first
-  tileset of each group. Page 2 per tileset goes in the same files, and is on exactly when
-  one of them lists a tile of page 2, with no separate switch; page 2's own file then
-  holds only what its tiles act like. Settles it: whether the manifest should name
-  sharing groups, or have an explicit switch for page 2 per tileset.
-- **The diagonal pipes and the vertical pipes' colours are a file of their own**
-  (2026-10-01, `[map16_pipes] file`, `source::map16::Pipes`; replaces the 2026-09-27
-  entry that left them out). They are neither pages 0 and 1 nor a tileset's table, so a
-  page file does not hold them: the pipes file lists colour sets 0, 2, and 3 (set 1 is
-  page 1's own tiles) and the diagonal pipes, only what a project changes. Lunar Magic's
-  full export and save read them back (`tests/lunar_magic_save.rs`). Settles it: a
-  different layout the maintainer prefers.
-- **LC_LZ3 GFX are for SA-1 builds only** (2026-09-27, `[rom] lz3`, step-2.md). An SA-1
-  build gets its LC_LZ3 decompressor from SA-1 Pack, the user's own tool; a LoROM build
-  would need one of Kobo's own at `$00B8E3`, written clean-room, which is not done, so
-  such a build is refused. A LoROM hack with LC_LZ3 GFX imports and builds with LC_LZ2,
-  which reads the same. The encoder leaves out LC_LZ3's reversed and backwards copies.
-  Settles it: whether LC_LZ3 is wanted in LoROM builds (then Kobo's own decompressor),
-  and whether the few percent those copies would save matter.
-- **Yoshi's berry check is Lunar Magic 3.70's where it can be told, and bounded where
-  Lunar Magic's is not** (2026-10-01, lunar-magic-install.md "Yoshi and berries";
-  replaces the 2026-09-27 entry that kept the game's check). Kobo's hooks follow the
-  acts-like chain, read vertical levels and layer 2, and put a layer 2 berry's mushroom
-  on layer 1, as Lunar Magic's code does in every scenario probed. Three things are left
-  out on purpose: Lunar Magic's code going outside the tile planes when a layer 2 point
-  is off the level, which hangs the game in a vertical level with the player's X at
-  `$D0` or more (in Mesen 2 too), so Kobo bounds the point as the game's lookups do;
-  `$1B7D`, which Lunar Magic sets while a berry's mushroom is on its way and nothing
-  observed reads; and the tongue's custom block slot (`$06F9F0`), which Lunar Magic
-  never called in any probe, so Kobo does not either. Yoshi walking into a berry stays
-  the game's check, as under Lunar Magic. Settles it: a hack or tool that relies on
-  `$1B7D` or writes the tongue's slot, or a newer Lunar Magic that fixes the hang (then
-  check it still matches).
-- **Builds refuse a sprite list out of screen order** (2026-09-28, `build::sprite_list`).
-  The game's loader stops at the first sprite past the screen it loads, and Lunar Magic's
-  loader crashes the game on such a list (random scenarios with unsorted lists broke to
-  `BRK` and `COP` in a Lunar Magic-saved ROM, not with Kobo's loader); every list of the
-  corpus and of vanilla is in order. Level files keep data order, so a list is refused
-  rather than sorted, which would change its load indexes. Kept (2026-10-01): the sweep
-  found one hack with such lists, QLDC 2021 `34_idol` (Lunar Magic 3.30; levels `016`,
-  `08F`, `090`, `0B1`, `13F`), and played under its own code those five levels, and no
-  other of its levels tried, stop on the first frame (a `BRK`, or a loop that never
-  ends), so the lists are broken in the hack too. (Mesen could not confirm it: the
-  oracle script stays on the hack's title screen.) Settles it: whether the build should
-  sort instead.
-- **More than 128 sprites in a level is refused unless the ROM declares a 255-sprite
-  loader** (2026-09-28, `sprites::max_sprites`). Lunar Magic's layout keeps 128 load flags;
-  PIXI's 255-sprite option (on unless `-d255spl`) moves them to `$7FAF00` and clears bit 0
-  of `$0FFFE0`, the bit Lunar Magic's help says declares 255, and Kobo's loader takes
-  entry numbers to 255. So a build with the sprites stage takes up to 255 sprites a level
-  (tested: entries past 200 spawn and set PIXI's flags), and one without refuses 129.
-  Settles it: whether a project should be able to ask for PIXI's `-d255spl`.
-- **Kobo's sprite loader differs from Lunar Magic 3.30's in one taller level** (2026-09-28,
-  lunar-magic-install.md "Sprites"). Luminescent's own ROM (saved by 3.30) with Kobo's
-  loader swapped in plays every level as the hack does but level `156` (298 rows, `TT` 1,
-  smart spawning), where the hack's loader erases a Sumo Brother `$130` below the camera
-  a frame before Kobo's does (reproduced carrying the player down from the level's top).
-  Luminescent moved into a 3.70 ROM plays the same way with 3.70's loader and with
-  Kobo's, on nine routes through that level: the difference is between 3.30 and 3.70,
-  and Kobo matches 3.70, the version step 2 targets (taller levels piece, 2026-09-28).
-  Settles it: nothing more, unless older versions' behaviour matters.
-- **`KOBO_RAM_WATCH` was used on a Lunar Magic-saved ROM** (2026-09-28, and again
-  2026-10-01). To see which sprite slots a level load wrote, it watched `$14D0` and
-  `$14D1` in vanilla saved by Lunar Magic and in Kaizo Kindergarten with Kobo's loader;
-  in the berry probes, `$168E`. With the trace forbidden it printed each write's value,
-  its address, and the writing instruction's address and registers; the addresses were
-  the game's own code (`$02A975`, `$018174`, `$01ACA1`, `$02AC0C`, `$008A53`) and one in
-  the hack's own code. Settled 2026-10-01: once a ROM Lunar Magic saved is loaded
-  (`kobo_core::clean_room` since 2026-10-02), a watch line gives the write alone, without
-  the instruction's address or registers.
-- **Two values Lunar Magic's loader leaves are not reproduced** (2026-09-28): `$54` (the
-  first byte of the last sprite entry loaded) and `$0BEE`-`$0BEF` (`$FFFF`, or other values
-  with smart spawning). Nothing known reads them; PIXI reads `$0BF0`-`$0BF3`, which Kobo
-  leaves as Lunar Magic does. Settles it: a tool or patch that reads either.
-- **Kobo's VRAM patch keeps its own state where Lunar Magic's keeps its own**
-  (2026-09-28, `asm/lunar-magic/vram.asm`). The RAM a level load leaves in `$0695`-`$06BE`,
-  the upload buffers `$1BE6`-`$1DE7`, and `$7FBC00`/`$7FC300` (the background) are the
-  patch's own in both, laid out differently, so a load leaves them different
-  (docs/lunar-magic-install.md, "Tilemap streaming"). No code outside either patch was
-  seen to read them. Kobo's also leaves the unseen row above a level's top as it was,
-  where a Lunar Magic-saved ROM has other words there (seen in VRAM). Settles it: a patch
-  or tool that reads Lunar Magic's state there.
-- **Parts of Lunar Magic's VRAM patch have no counterpart in Kobo's** (2026-09-28,
-  updated 2026-10-02): its game loop hook (`$008072`/`$00BA56`) and its stripe upload
-  (`$0085D2`). Kobo leaves the game's code there, and a save puts Lunar Magic's in. The
-  game loop hook changes only the player's tile words (the entry on them, below) and
-  Lunar Magic's own RAM; stripe images (a message box, a level's end into a cutscene)
-  leave the same VRAM with Kobo's patch as with Lunar Magic's, lagging or not. Its lag
-  path (`$0081E2`) has Kobo's own code since 2026-10-02, which keeps layer 1's and 2's
-  scroll registers on a lagging frame as Lunar Magic's does (lunar-magic-install.md,
-  "Graphics"). Settles it: stripe images of other kinds (a hack's own), or lag measured
-  against an emulator rather than an NMI put before the frame's end.
 - **Builds refuse layer 3's tilemap of size 3 and files too large for a slot**
   (2026-09-28, updated 2026-09-30). LT3's `DD` = 1 is settled (the whole file from
   `$5000`, as Kobo's loader had it) and builds take it; size 3 (`FF` = 3), which Lunar
@@ -141,13 +39,6 @@ settle it.
   every slot, with `bypass`, `layer3_files`, `layer3_tilemap`, and `tilemap` (LT3's
   nibble) apart, and the layer 3 settings in `[graphics.layer3]`; it is written only when the list changes
   what the level loads. Settles it: review of the names and of PNG versus bytes.
-- **Kobo's graphics loader leaves `$7FC009` different from Lunar Magic's** (2026-09-28,
-  updated 2026-09-30). It now gives its direct page back (the player's tile pointers are
-  built from it, which made the player's tiles differ) and sets `$7FC01A` bit 7 for a
-  list with `T` as Lunar Magic's does; `$7FC009` (`$41` in Lunar Magic's boss arenas)
-  still differs, and while a `$2000`-byte layer 3 tilemap loads, Kobo's puts
-  `$7EBD00`-`$7ECCFF` aside in VRAM at `$4000` and back, then reloads layer 3's first two
-  files when the list names none. Settles it: a tool or patch that reads those.
 - **Builds write the submaps' lists but have no overworld graphics code** (2026-09-28).
   Lists `200`-`206` are written as Lunar Magic 3.70 writes them (the overworld's own
   files), so its editor and save find them; Kobo leaves the overworld's, cutscenes', and
@@ -175,21 +66,6 @@ settle it.
   shows as it appears; there is no option to render a later frame. Settles it: a GUI need
   for it, which would add a frame count to `RenderOptions` and run the game loop that
   many frames before drawing (`expand::play_game_loop` has the loop).
-- **Taller levels: `$02950B` is left as the game has it** (2026-09-28). Lunar Magic's
-  piece rewrites the cape's block checks' entry (`STZ $0F : JSR CODE_029540`), and no
-  memory effect was found with every size, `$5B`, and cape position tried. Settles it:
-  a case where the cape behaves differently in a taller level.
-- **Taller levels: the castle intro, Choc Island 2's rooms, and the credits get the tables
-  for the game's 27 rows** (2026-09-28, `exlevel.asm`; observed 2026-10-01). Lunar Magic
-  hooks each where the game loads its own data over the level entered; Kobo sets up size
-  0 there. Mesen runs into castle `101` and Choc Island 2's target `024` at size `01`,
-  and into the credits' enemy list after `024`, gave the same screen pointers and the
-  same credits tile grid under Kobo's code as under Lunar Magic's. One difference, kept:
-  in the intro and the rooms Lunar Magic leaves the pointers' low and high bytes
-  (`$0CB6`, `$0CD6`, which the block lookups read) at the level's own size, while Kobo
-  sets them to size 0's with the pointers; nothing was seen to read them there (the
-  intro is one screen). Settles it: a room past its first screen in a taller level's
-  Choc Island 2 played under both.
 - **Choc Island 2's rooms get their banks from Kobo's code** (2026-10-01,
   `choc-island.asm`). A build writes listed levels to free space, and the rooms take
   their 16-bit pointers' banks from the level the exit led to (`0CD`-`0CF`), so a build
@@ -253,26 +129,6 @@ settle it.
   tide in a vertical level, which only Lunar Magic's code supports. Settles it: the 7
   corpus levels moved into a 3.70 ROM and played again (before the `$00E966` code they
   played the same but where a sprite meets the tide's end, and on the first frame).
-- **Kobo's layer 3 code keeps its state where Lunar Magic's does** (2026-09-30,
-  `layer3.asm`). It leaves the RAM Lunar Magic's leaves after a load (`$145E`-`$1460`,
-  `$1458`-`$145D`, `$146A`-`$146D`, `$1B78`-`$1B7B`, `$7FC01A`-`$7FC01C`) with the same
-  values, since a patch might read them, and borrows `$7FC01D` (left 0) during the setup.
-  Settles it: whether matching those is wanted or a layout of Kobo's own would do.
-- **The player's tile words differ for a level's first frames in a whole build**
-  (2026-10-01). They come from direct page `$0C`-`$0D` as a load leaves it; Kobo's
-  graphics loader now leaves it as Lunar Magic's does (all 512 vanilla levels the same),
-  but other pieces of a build leave other scratch there, so the player's first frame's
-  tiles (VRAM `$6040`-`$6187`, `$67F0`) can differ before the game redraws him. Settled
-  (2026-10-01): left as it is. A whole build (vanilla imported from a ROM Lunar Magic
-  saved once, and built) leaves the player's tile words as the vanilla ROM does, after
-  every level's load and on every frame played (`exlevel_probe compare ... vram=6000-6800`,
-  14 levels for 40 frames); it is the Lunar Magic-saved ROM that differs from vanilla,
-  at the first frame and on every frame after in words `$6064`-`$6067` and
-  `$6084`-`$6087`, which the game fills from scratch RAM that Lunar Magic's code leaves
-  otherwise. Swapping single pieces of Kobo's code into that ROM changes the words too
-  (graphics, VRAM, sprites), each leaving the game's scratch where Lunar Magic's leaves
-  its own. Matching Lunar Magic there would mean copying its scratch use, which nothing
-  shown needs.
 - **SA-1: the patches name SA-1 Pack's addresses through Asar defines, not ones made from
   `ram::RamMap`** (2026-10-01, `asm/lunar-magic/memory.asm`). The plan had each patch's
   RAM "as defines through `ram::RamMap`'s SA-1 map". The patches use the community's
@@ -290,28 +146,6 @@ settle it.
   SA-1 Pack (no marker at `$0084C0`) with Lunar Magic 2.52; it imports, but Kobo's code
   swapped into it is not expected to match. Settles it: a hack built on an older SA-1
   Pack that someone wants to build with Kobo.
-- **SA-1: the conditional Direct Map16 flags are read through SA-1 Pack's call to the
-  S-CPU** (2026-10-01, `objects.asm`, `%call_scpu` in `memory.asm`). The flags stay in
-  work RAM (`$7FC060`), where a Lunar Magic-saved SA-1 ROM reads them, and Kobo's object
-  code runs on the SA-1 there, which cannot reach work RAM. The call costs an interrupt
-  per conditional object at the load. The alternative, copying the 16 bytes to BW-RAM on
-  the S-CPU before the load, needs a hook of Kobo's own in SA-1 Pack's level load.
-  Settles it: nothing found wrong; recorded as the one place Kobo's code relies on SA-1
-  Pack's inter-processor calls.
-- **SA-1: uploads use DMA channel 2 and read from bank `$00`** (2026-10-01,
-  `memory.asm` `!dma`). SA-1 Pack keeps channel 1 for windowing HDMA and moves the game's
-  own NMI and blank-screen uploads to channel 2, so Kobo's (the VRAM patch, graphics)
-  follow; the buffers are read from `$00:6xxx` (BW-RAM's window) as SA-1 Pack's own
-  uploads read them. On LoROM the channel is still 1, and the buffers are read from
-  bank `$00` too (work RAM's mirror) where they were read from `$7E`: the same memory.
-- **SA-1 with PIXI: the goal tape's extra bits are not kept in `$187B` by Kobo's loader**
-  (2026-10-01, `sprites.asm`). PIXI on an SA-1 ROM puts its own jump at `$02A9D7`, the
-  site Kobo's loader uses after a spawn, so `sprite_after` does not run; Lunar Magic's
-  loader is bypassed there the same way, and PIXI keeps the extra bits itself
-  (`!extra_bits`): a goal tape placed for the secret exit gives it in an SA-1 build with
-  PIXI, and after Lunar Magic saves it (`a_pixi_build_survives_a_lunar_magic_save`). On
-  LoROM PIXI jumps from `$02A9DB` and Kobo's code still runs. Settles it: whether
-  anything other than the goal tape reads `$187B` from the loader on SA-1.
 - **A screen exit in Lunar Magic's format writes its whole destination** (2026-10-02,
   `source::level`). Long screen exits name entrances up to `1FFF`, so an exit with
   `lm_format` now has `dest` as the whole number (`dest = 0x320`), where it was the low

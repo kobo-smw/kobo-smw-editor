@@ -141,10 +141,18 @@ on the built ROM.
   empty tiles out. BG Map16 pages are the same without `acts`, in `[map16_bg]`, page
   `P` being page `P % 16` of table `P / 16`. Pages 0 and 1, the game's own tables, list
   only the tiles a project changes, with `acts`, `gfx`, or both; what a file leaves out
-  is the clean ROM's. The tiles the game keeps per object tileset are in tileset files
+  is the clean ROM's. So do BG Map16 table 0's pages 0 and 1, the game's background
+  tiles. One rule throughout (decided with the maintainer, 2026-10-03): a tile a file
+  leaves out is what the build starts from, which keeps Nintendo's tiles out of
+  projects. The tiles the game keeps per object tileset are in tileset files
   (`[map16_tileset]`, gfx only), as is page 2 when it is per tileset; tilesets that
-  share the game's table share one file's tiles, and the build refuses two
-  (decided 2026-09-27, [review.md](review.md)).
+  share the game's table share one file's tiles, and the build refuses two; page 2 is
+  per tileset exactly when a tileset file lists a tile of page 2, with no switch. Both
+  stay implicit (maintainer, 2026-10-03), and the manifest notes after a tileset file
+  which other tilesets its pages 0 and 1 also are (`map16::TILESET_SHARING`). The
+  vertical pipes' colour sets 0, 2, and 3 and the diagonal pipes, which are neither a
+  page nor a tileset's table, are a file of their own (`[map16_pipes] file`,
+  `source::map16::Pipes`), listing only what a project changes (maintainer, 2026-10-03).
 - A background of the level's own is `[layer2]` `table`, `rows` (32 for Lunar Magic's own
   format, 27 for the game's behind a full pointer), and `tiles`, one line per row of the
   left half's 16 tiles then the right half's.
@@ -330,8 +338,11 @@ on the built ROM.
   121,663). The game's routine reads every file back, all 512 levels draw as in the
   LC_LZ2 build, Lunar Magic exports every file the same from both, and its save keeps
   the setting; an SA-1 ROM with LC_LZ3 GFX imports with it set. LoROM builds refuse it:
-  they would need an LC_LZ3 decompressor of Kobo's own (decided 2026-09-27,
-  [review.md](review.md)).
+  they would need an LC_LZ3 decompressor of Kobo's own, and a LoROM hack with LC_LZ3
+  GFX imports and builds with LC_LZ2, which reads the same. The encoder leaves out
+  LC_LZ3's reversed and backwards copies. Kept so (maintainer, 2026-10-03): what LoROM
+  loses is about 5% of the GFX's space; revisit if a project runs short of it, or with
+  graphics editing (roadmap step 4).
 - Secondary entrances are in the level they lead to (`[entrances]`), read from a ROM or
   an MWL file and written in the game's format, where an entrance's number must share its
   level's bit 8; a level's list replaces what the base ROM had leading to it, and may not

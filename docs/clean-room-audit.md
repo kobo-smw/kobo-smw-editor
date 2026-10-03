@@ -41,7 +41,9 @@ changed or removed.
 - From 2026-09-26 the rule covered the code in a ROM, but outputs still showed it until
   2026-10-02: CPU errors gave the address where a ROM's code stopped, which was sometimes
   inside Lunar Magic's code; `KOBO_RAM_WATCH` gave the writing instruction until
-  2026-10-01; `exlevel_probe call` gave the registers a routine returned; `romdiff.py` and
+  2026-10-01 (used on Lunar Magic-saved ROMs on 2026-09-28 and 10-01, it printed only
+  the game's and a hack's own code, `$02A975`, `$018174`, `$01ACA1`, `$02AC0C`,
+  `$008A53`; reviewed and accepted, maintainer, 2026-10-03); `exlevel_probe call` gave the registers a routine returned; `romdiff.py` and
   `sites.py` decoded bytes inside regions Lunar Magic rewrote until 2026-09-27.
 - On 2026-09-27 a session printed the byte before each of the entrance tables' pointers
   and named the instruction, beyond what any check needs.

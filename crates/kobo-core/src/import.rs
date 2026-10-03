@@ -592,6 +592,17 @@ pub fn import_rom_with(
     if let Some(folder) = options.pixi {
         let found = crate::tools::copy_pixi_inputs(folder, &dir.join("pixi"))?;
         manifest.pixi = Some(PathBuf::from("pixi"));
+        // PIXI has refused `-d255spl` since 1.41, so a hack whose PIXI kept
+        // the game's 128 load flags gets 255 sprites when built: its own
+        // code may use the RAM PIXI then takes.
+        if insert.as_ref().is_some_and(|(found, _)| !found.sprites_255) {
+            report.notes.push(
+                "sprites: the hack's PIXI keeps 128 load flags at $1938; PIXI 1.43 always \
+                 moves them to $7FAF00 for 255 sprites a level and uses $1938 for its own \
+                 tables, so check the hack's own code uses neither"
+                    .into(),
+            );
+        }
         report.notes.push(format!(
             "sprites: PIXI's inputs ({}) copied from {} into pixi/, which the build runs \
              PIXI 1.43 on",
@@ -1045,25 +1056,38 @@ pub fn read_gfx(rom: &Rom, base: &Rom) -> Result<GfxImport, ImportError> {
 
 /// BG Map16 pages from Lunar Magic's tables: the pages of each table that
 /// lie in the RATS block it starts in, the last as far as the block goes,
-/// but empty ones; and of the game's
-/// own table, when the first pointer is still it, the pages that differ
-/// from `clean`'s.
+/// with their tiles but empty ones; and the first table's pages 0 and 1,
+/// the game's own, wherever that table is, with only the tiles that differ
+/// from `clean`'s, which is what a build keeps for a tile they leave out.
 pub fn read_map16_bg(rom: &Rom, clean: &Rom) -> Result<Map16Import, ImportError> {
-    const GAME_TABLE: u32 = 0x0D9100;
+    use crate::map16::tables::MAP16_BG_TILES;
     let (mut out, notes) = (Vec::new(), Vec::new());
     let blocks = rats_spans(rom);
     let page_len = PAGE_TILES as usize * 8;
     // A table ends at the tile after its last used one, so a page may end
-    // early: its tiles past the block are empty.
+    // early: its tiles past the block are empty. A page's tiles are listed
+    // where they differ from `base`'s: the clean ROM's for the game's own
+    // pages, else empty ones.
     let read_page = |at: SnesAddr, number: u8, len: usize| -> Result<Map16Page, ImportError> {
-        let bytes = rom.read(at, len - len % 8)?;
+        let mut bytes = rom.read(at, len - len % 8)?.to_vec();
+        bytes.resize(page_len, 0);
+        let base = if number < 2 {
+            clean
+                .read(
+                    MAP16_BG_TILES.add(number as u32 * page_len as u32),
+                    page_len,
+                )?
+                .to_vec()
+        } else {
+            vec![0; page_len]
+        };
         let mut page = Map16Page::default();
-        for (i, def) in bytes.chunks(8).enumerate() {
-            let entry = Map16Entry {
-                gfx: Map16Tile::from_bytes(def.try_into().expect("8 bytes")),
-                ..Map16Entry::default()
-            };
-            if entry != Map16Entry::default() {
+        for (i, (def, theirs)) in bytes.chunks(8).zip(base.chunks(8)).enumerate() {
+            if def != theirs {
+                let entry = Map16Entry {
+                    gfx: Map16Tile::from_bytes(def.try_into().expect("8 bytes")),
+                    ..Map16Entry::default()
+                };
                 page.tiles
                     .insert(number as u16 * PAGE_TILES + i as u16, entry);
             }
@@ -1074,11 +1098,11 @@ pub fn read_map16_bg(rom: &Rom, clean: &Rom) -> Result<Map16Import, ImportError>
         let Some(at) = map16_pages::bg_table(rom, table)? else {
             continue;
         };
-        if table == 0 && at.raw() == GAME_TABLE {
+        if table == 0 && at == MAP16_BG_TILES {
             for page in 0..2u8 {
-                let start = at.add(page as u32 * page_len as u32);
-                if rom.read(start, page_len)? != clean.read(start, page_len)? {
-                    out.push((page, read_page(start, page, page_len)?));
+                let tiles = read_page(at.add(page as u32 * page_len as u32), page, page_len)?;
+                if !tiles.tiles.is_empty() {
+                    out.push((page, tiles));
                 }
             }
             continue;
