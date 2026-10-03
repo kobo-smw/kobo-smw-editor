@@ -339,7 +339,8 @@ how each oracle is produced, where its data lives, and what is known not to matc
   (`expand::call_in_level`), `ram`, `show`, `entry` print the tables, words per
   frame, and the entrance's RAM, and `cells a b level frame` draws which Map16 cells of
   layer 1's and 2's tilemaps differ on a frame, in view or not. `entry_probe compare` with `KOBO_ENTRY_SIZE` varies the
-  size byte along with the entrance bytes. Hacks with taller levels are moved into a
+  size byte along with the entrance bytes, and `KOBO_ENTRY_BASE=table=VV,...` (`SZ` the size
+  table) sets bytes in both first, for a corner of several settings. Hacks with taller levels are moved into a
   3.70 ROM with `transfer` first: their own ROMs carry older versions' code. The results
   (2026-09-28) are in docs/lunar-magic-install.md ("Taller levels").
   `tests/taller_levels.rs` builds every size with and without `B` and requires the

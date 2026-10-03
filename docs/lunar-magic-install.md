@@ -616,8 +616,10 @@ jumping, spinning the cape, throwing fireballs, with vertical scrolling at will)
 through the ground shaking and the camera at every vertical scroll setting; every
 value of every entrance byte and of the size byte, with and without `B` and a relative
 camera, leaves the same RAM at the end of the entrance code as Lunar Magic's but for
-Lunar Magic's added layer 2 scroll rates (below), and in one corner: size `1E` with `B`
-at the slowest rate places the background a pixel off ([review.md](review.md)).
+Lunar Magic's added layer 2 scroll rates (below), and in one corner, size `1E` with `B`
+at the slowest rate, which placed the background a pixel off and no longer does
+(2026-10-04: every settings byte over size `1E` with `B` and a relative camera,
+`entry_probe compare` with `KOBO_ENTRY_BASE`).
 Luminescent's and ValuableAndBeautiful's levels imported and built by Kobo resolve the
 same grid as the hacks moved into Lunar Magic 3.70 (a few cells differ from the hacks'
 own ROMs, saved by older versions, which draw some of Lunar Magic's objects

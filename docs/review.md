@@ -76,10 +76,13 @@ settle it.
   same (Mesen, all three levels). Settles it: whether to install it only with Lunar
   Magic's layout, or to keep those levels' data in bank `$06`.
 - **Taller levels: one entrance corner a pixel off** (2026-09-28). With a relative camera,
-  size `1E` (15 rows) with `B` at the slowest layer 2 rate places the background one
-  pixel lower than Lunar Magic's; every other size, rate, and entrance byte tried gives
-  the same RAM. Settles it: more data points on sizes shorter than the screen, if anyone
-  uses them.
+  size `1E` (15 rows) with `B` at the slowest layer 2 rate placed the background one
+  pixel lower than Lunar Magic's. It no longer reproduces (2026-10-04): with the size
+  byte `1E` or `9E`, with and without `B`, and a relative camera with and without `F`
+  set first (`entry_probe compare` with `KOBO_ENTRY_BASE`), every value of every
+  settings byte, the layer 2 scroll settings included, leaves the same RAM as Lunar
+  Magic's in levels `105`, `00E`, and `101`; a change since (the camera work of
+  2026-10-01 and -02) took it. Settles it: nothing more, unless it is seen again.
 - **Layer 2 scroll settings 8 to 11, `S`, and `H` build, and a save keeps Kobo's camera**
   (2026-10-01, `entrance.asm`, lunar-magic-install.md "Layer 2 scroll settings"; replaces
   the 2026-09-28 entry that refused them). Kobo's camera and entrance give the same RAM

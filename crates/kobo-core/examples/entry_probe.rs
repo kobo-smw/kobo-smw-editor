@@ -9,7 +9,8 @@
 //! level's main entrance then leaves differently. `entry_probe compare
 //! a.sfc b.sfc level [addr[-end][:mask]...]` runs every value of every byte
 //! in both ROMs and prints where their entries differ, but for the bits
-//! named (or only at `+addr[-end]`). `entry_probe levels a.sfc b.sfc
+//! named (or only at `+addr[-end]`), from the bytes `KOBO_ENTRY_BASE`
+//! names (`table=VV,...`, `SZ` the size table) where that is set. `entry_probe levels a.sfc b.sfc
 //! [ignore...]` compares every level's (or secondary entrance's) entry as
 //! the two ROMs have it. `entry_probe batch rom level word...` reads lines of
 //! `table=value` settings (hex) and prints the 16-bit words of RAM named
@@ -240,9 +241,26 @@ fn main() {
             }
         }
         Some("compare") => {
-            let a = Rom::load(&args[1]).unwrap();
-            let b = Rom::load(&args[2]).unwrap();
+            let mut a = Rom::load(&args[1]).unwrap();
+            let mut b = Rom::load(&args[2]).unwrap();
             let level = u16::from_str_radix(&args[3], 16).unwrap();
+            // KOBO_ENTRY_BASE=table=VV,...: the level's bytes in those tables
+            // (an address in hex, or SZ for the size table), in both, first.
+            if let Ok(list) = std::env::var("KOBO_ENTRY_BASE") {
+                for item in list.split(',') {
+                    let (table, v) = item.split_once('=').unwrap();
+                    let v = u8::from_str_radix(v, 16).unwrap();
+                    let (ta, tb) = match table {
+                        "SZ" => (size_table(&a), size_table(&b)),
+                        t => {
+                            let t = u32::from_str_radix(t, 16).unwrap();
+                            (t, t)
+                        }
+                    };
+                    a = with(&a, ta, level, v);
+                    b = with(&b, tb, level, v);
+                }
+            }
             let ignore = ignored(&args[4..]);
             let mut same = 0;
             let tables = table_list(&a, &b);
