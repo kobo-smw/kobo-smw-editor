@@ -155,6 +155,19 @@ pub(super) fn lookup_one(
     lunar_magic: bool,
     n: u16,
 ) -> Result<Option<Map16Tile>, ExpandError> {
+    Ok(match lookup_address(machine, lunar_magic, n)? {
+        Some(ptr) => Some(read_map16(&mut machine.bus, ptr)),
+        None => None,
+    })
+}
+
+/// Where one foreground tile number's definition is, as [`lookup_one`]
+/// finds it: a table's address, which the routine leaves in A and `$0C`.
+pub(super) fn lookup_address(
+    machine: &mut Machine,
+    lunar_magic: bool,
+    n: u16,
+) -> Result<Option<u32>, ExpandError> {
     let ptr = if lunar_magic {
         machine.call(
             Call::jsl(routines::LM_MAP16_POINTER)
@@ -177,7 +190,7 @@ pub(super) fn lookup_one(
     } else {
         return Ok(None);
     };
-    Ok(Some(read_map16(&mut machine.bus, ptr)))
+    Ok(Some(ptr))
 }
 
 /// The four position-dependent definitions of each vertical pipe tile,

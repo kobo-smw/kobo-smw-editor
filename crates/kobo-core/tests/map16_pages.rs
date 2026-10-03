@@ -429,3 +429,62 @@ fn the_corpus_pages_0_and_1_build_as_the_hacks_have_them() {
     }
     assert!(failures.is_empty(), "{failures:?}");
 }
+
+/// With `KOBO_LM_ROMS` and `KOBO_LUNAR_MAGIC`: a hack whose Map16 pages are
+/// in an older Lunar Magic's layout imports them, read through the ROM's
+/// own routine, as Lunar Magic 3.70's full export of the hack shows them:
+/// every definition (Lunar Magic's empty tile, `$1004` four times, counting
+/// as Kobo's, zeros) and what every tile acts like, pages 2 to `7F`.
+#[test]
+fn older_layouts_import_as_lunar_magic_exports_them() {
+    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
+        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+        return;
+    };
+    let lm_empty = [0x04, 0x10, 0x04, 0x10, 0x04, 0x10, 0x04, 0x10];
+    let empty = |b: &[u8]| b == [0; 8] || b == lm_empty;
+    let mut checked = 0;
+    for (path, rom) in common::lunar_magic_roms() {
+        let Ok((pages, notes)) = import::read_map16(&rom) else {
+            continue;
+        };
+        if !notes
+            .iter()
+            .any(|n| n.contains("older Lunar Magic's layout"))
+        {
+            continue;
+        }
+        let name = path
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .replace(' ', "_");
+        let file = common::export_map16(&lunar_magic, &rom, &name);
+        let word = |i: usize| u32::from_le_bytes(file[i..i + 4].try_into().unwrap()) as usize;
+        let all = &file[word(0x70)..word(0x70) + word(0x74)];
+        let acts = &file[word(0x78)..word(0x78) + word(0x7C)];
+        for tile in 0x200..0x8000u16 {
+            let entry = pages
+                .iter()
+                .find(|(p, _)| *p as u16 == tile >> 8)
+                .and_then(|(_, page)| page.tiles.get(&tile));
+            let ours = entry.map_or([0; 8], |e| e.gfx.to_bytes());
+            let theirs = &all[tile as usize * 8..tile as usize * 8 + 8];
+            assert!(
+                ours == theirs || (empty(&ours) && empty(theirs)),
+                "{}: tile {tile:04X}",
+                path.display()
+            );
+            if let Some(b) = acts.get(tile as usize * 2..tile as usize * 2 + 2) {
+                assert_eq!(
+                    entry.map_or(DEFAULT_ACTS, |e| e.acts),
+                    u16::from_le_bytes([b[0], b[1]]),
+                    "{}: what tile {tile:04X} acts like",
+                    path.display()
+                );
+            }
+        }
+        checked += 1;
+    }
+    eprintln!("{checked} hacks with an older layout checked");
+}

@@ -529,6 +529,27 @@ pub fn resolve_map16(
         .collect()
 }
 
+/// Where the definitions of Map16 tiles are, as [`resolve_map16`] finds
+/// them: for reading a ROM's tables in a layout Kobo does not parse (an
+/// older Lunar Magic's), through the ROM's own routine. Addresses of data
+/// tables, which say nothing of where the ROM's code is.
+pub fn map16_addresses(
+    rom: &Rom,
+    level: u16,
+    tiles: &[u16],
+) -> Result<Vec<Option<crate::addr::SnesAddr>>, ExpandError> {
+    let mut machine = Machine::new(rom, level);
+    boot(&mut machine)?;
+    load_level(&mut machine)?;
+    let routine = map16::routine_in_use(rom);
+    tiles
+        .iter()
+        .map(|&n| {
+            Ok(map16::lookup_address(&mut machine, routine, n)?.map(crate::addr::SnesAddr::new))
+        })
+        .collect()
+}
+
 /// Brings the machine to where the game is when a level load starts.
 /// The reset code runs up to the main loop: it builds the RAM-resident
 /// OAM reset routine, uploads the SPC engine (against a stub that echoes

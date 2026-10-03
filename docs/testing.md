@@ -191,6 +191,11 @@ how each oracle is produced, where its data lives, and what is known not to matc
     `136` (407, block 408), a block one byte longer than the list; and 2022 `09_idol`
     level `105`, 32 screens of 64 rows, more than the planes hold.
 
+  `tests/map16_pages.rs` (`older_layouts_import_as_lunar_magic_exports_them`, with
+  `KOBO_LUNAR_MAGIC`) imports the Map16 of every `KOBO_LM_ROMS` hack in an older Lunar
+  Magic layout and requires it to be Lunar Magic 3.70's `-ExportAllMap16` of the hack,
+  tile for tile; `examples/map16_export_check.rs` shows the same per page.
+
   All 512 levels of each `corpus_more` hack render without a fatal error (2026-09-25);
   none has Lunar Magic export hashes in the fixtures yet. Hacks whose
   headerless SHA-1 is in `fixtures/lunar_magic_map16_bg_export.txt` also have their BG table

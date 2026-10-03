@@ -208,3 +208,28 @@ pub fn tool(tool: Tool, require: &str) -> Option<std::path::PathBuf> {
         Err(e) => panic!("invalid {tool} configuration: {e}"),
     }
 }
+
+/// Lunar Magic's `-ExportAllMap16` file of a copy of `rom`.
+#[allow(dead_code)]
+pub fn export_map16(lunar_magic: &std::path::Path, rom: &Rom, name: &str) -> Vec<u8> {
+    let dir = std::env::temp_dir().join(format!("kobo-lm-map16-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut headered = vec![0; 0x200];
+    headered.extend_from_slice(rom.data());
+    std::fs::write(dir.join("rom.smc"), headered).unwrap();
+    let lm = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/lunar-magic/lm");
+    let status = std::process::Command::new(&lm)
+        .args(["-ExportAllMap16", "rom.smc", "all.map16"])
+        .current_dir(&dir)
+        .env("KOBO_LM_DIR", lunar_magic)
+        .output()
+        .unwrap();
+    assert!(
+        status.status.success(),
+        "Lunar Magic -ExportAllMap16: {status:?}"
+    );
+    let file = std::fs::read(dir.join("all.map16")).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    file
+}

@@ -403,30 +403,6 @@ fn without_checked_bytes(built: &Rom) -> Rom {
     without
 }
 
-/// Lunar Magic's `-ExportAllMap16` file of a copy of `rom`.
-fn export_map16(lunar_magic: &Path, rom: &Rom, name: &str) -> Vec<u8> {
-    let dir = std::env::temp_dir().join(format!("kobo-lm-map16-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    let mut headered = vec![0; 0x200];
-    headered.extend_from_slice(rom.data());
-    fs::write(dir.join("rom.smc"), headered).unwrap();
-    let lm = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/lunar-magic/lm");
-    let status = Command::new(&lm)
-        .args(["-ExportAllMap16", "rom.smc", "all.map16"])
-        .current_dir(&dir)
-        .env("KOBO_LM_DIR", lunar_magic)
-        .output()
-        .unwrap();
-    assert!(
-        status.status.success(),
-        "Lunar Magic -ExportAllMap16: {status:?}"
-    );
-    let file = fs::read(dir.join("all.map16")).unwrap();
-    let _ = fs::remove_dir_all(&dir);
-    file
-}
-
 /// Where Lunar Magic 3.70's full Map16 export disagrees with what the ROM
 /// holds as Kobo reads it: `acts-like`, `pages 0-1 of tileset T`, `page 2
 /// of tileset T`, or `page P`, each once. The file lists its
@@ -533,13 +509,13 @@ fn lunar_magic_reads_the_map16_a_build_writes() {
         let base = common::base_as(&clean, sa1);
         let project = project(&base);
         let built = common::build_as(&clean, &project, sa1).unwrap();
-        let file = export_map16(&lunar_magic, &built, &tag("with", sa1));
+        let file = common::export_map16(&lunar_magic, &built, &tag("with", sa1));
         let mismatches = map16_export_mismatches(&file, &built, &project);
         assert!(mismatches.is_empty(), "{mismatches:?}");
 
         // Without the marker at $06F5FC, Lunar Magic reads what tiles act like,
         // each tileset's page 2, and the pages past $0F from elsewhere.
-        let file = export_map16(
+        let file = common::export_map16(
             &lunar_magic,
             &without_checked_bytes(&built),
             &tag("without", sa1),

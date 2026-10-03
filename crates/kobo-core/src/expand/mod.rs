@@ -39,8 +39,8 @@ pub(crate) use load::expand_controlled;
 pub use load::{
     Called, ENTRY_FRAME_COUNTER, PlayedFrame, ReadTrace, Registers, call_after_frames,
     call_in_level, decompress_gfx_file, enter_by_exit, expand_level, expand_level_traced,
-    expand_level_with_control, play_game_loop, play_game_loop_from, play_game_loop_lagging,
-    play_level, play_level_entered, resolve_map16,
+    expand_level_with_control, map16_addresses, play_game_loop, play_game_loop_from,
+    play_game_loop_lagging, play_level, play_level_entered, resolve_map16,
 };
 pub use loaded::LoadedLevel;
 pub use map16::{FG_PAGES, PAGE_TILES};

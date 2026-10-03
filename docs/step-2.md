@@ -701,7 +701,10 @@ on the built ROM.
      Magic's save keeps level `105` in 118 builds; in the other 57 it changes it only as
      it does every level it re-imports (SP4's bit 12 in 53, the header's
      screen count in 7), which now shows in 18 more hacks because their level `105`
-     builds.
+     builds. Map16 pages in an older Lunar Magic's layout (12 hacks, 1.62 to 2.52), which
+     imports had left out, import since 2026-10-04 through the ROM's own Map16 routine, as
+     Lunar Magic 3.70's export shows them (lunar-magic.md); more of those hacks' levels
+     draw as the hacks (apes 5 to 30, Grand Poo World 21 to 44, Learn 2 Kaizo 4 to 72).
   3. **Lunar Magic's added layer 2 scroll rates**: done (2026-10-01), above.
   4. **Refusals that observation did not settle**, each in review.md with how to settle
      it: four layer 3 settings, out-of-order sprite lists, taller-level corners

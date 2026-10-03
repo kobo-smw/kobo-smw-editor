@@ -1140,8 +1140,8 @@ pub type Map16Import = (Vec<(u8, Map16Page)>, Vec<String>);
 /// act like, but empty tiles ([`Map16Entry::default`]), which a page file
 /// leaves out, and pages with nothing else, which a build writes for the
 /// pages of a group a project does not list.
-/// A group whose table is in no RATS block is in an older Lunar Magic's
-/// layout (2.43 and before) and is left out, with a note.
+/// A group with no table where 2.52 and later keep it, or one in no RATS
+/// block, is in an older Lunar Magic's layout ([`read_map16_older`]).
 pub fn read_map16(rom: &Rom) -> Result<Map16Import, ImportError> {
     let mut out = Vec::new();
     let mut notes = Vec::new();
@@ -1157,19 +1157,15 @@ pub fn read_map16(rom: &Rom) -> Result<Map16Import, ImportError> {
         let pc = rom.pc(at).ok()?.as_usize();
         Some(pc..pc + PAGE_TILES as usize * 8)
     };
+    let mut older = Vec::new();
     for group in &PAGE_GROUPS {
         let first = *group.pages().start();
-        let Some(start) = group.definition(rom, first as u16 * PAGE_TILES)? else {
-            continue;
-        };
-        let block = page_span(group, first)
+        let block = group
+            .definition(rom, first as u16 * PAGE_TILES)?
+            .and_then(|_| page_span(group, first))
             .and_then(|span| blocks.iter().find(|b| b.contains(&span.start)).cloned());
         let Some(block) = block else {
-            notes.push(format!(
-                "Map16 pages {first:02X}-{:02X}: their table at {start} is in no RATS block, \
-                 an older Lunar Magic's layout; not imported",
-                group.pages().end()
-            ));
+            older.push(group.pages());
             continue;
         };
         for page in group.pages() {
@@ -1202,6 +1198,134 @@ pub fn read_map16(rom: &Rom) -> Result<Map16Import, ImportError> {
                 out.push((page, tiles));
             }
         }
+    }
+    // A group without a table beside groups in the current layout is one
+    // Lunar Magic has not allocated.
+    if older.len() == PAGE_GROUPS.len() {
+        let (pages, more) = read_map16_older(rom, &older, &blocks, tileset_page2)?;
+        out.extend(pages);
+        out.sort_by_key(|(page, _)| *page);
+        notes.extend(more);
+    }
+    Ok((out, notes))
+}
+
+/// Map16 pages past 1 in an older Lunar Magic's layout (before 2.52, or a
+/// ROM a later one saved without saving its Map16): read through the ROM's
+/// own Map16 routine, which finds a tile in its version's layout. A page is
+/// the ROM's where its first tile lies past the game's 512 KiB, outside the
+/// acts-like tables (which a 16-page install's routine reads for the pages
+/// it does not have), and not where an earlier page's is (a 64-page
+/// install's routine reads pages `40` and up as `00` and up, and unused
+/// pages may share one empty page). A group of 16 pages keeps to the RATS
+/// block its first page is in, up to the block's end (a later page in
+/// another block is not the group's), or to no block, a page whole: what
+/// Lunar Magic 3.70's full export of the ROM shows (ten corpus hacks, Lunar
+/// Magic 1.62 to 2.52, 2026-10-04).
+fn read_map16_older(
+    rom: &Rom,
+    groups: &[std::ops::RangeInclusive<u8>],
+    blocks: &[Range<usize>],
+    tileset_page2: bool,
+) -> Result<Map16Import, ImportError> {
+    const GAME_END: usize = 0x8_0000;
+    const PAGE_BYTES: usize = PAGE_TILES as usize * 8;
+    let mut out = Vec::new();
+    let mut notes = Vec::new();
+    // Pages 0 and 1 first, which only say where those are. Pages `40` and
+    // up came with 2.50, two versions before the current layout, and the
+    // routines of older ones read them as something else.
+    let pages: Vec<u8> = [0, 1]
+        .into_iter()
+        .chain(groups.iter().flat_map(|g| g.clone()).filter(|&p| p < 0x40))
+        .collect();
+    let tiles: Vec<u16> = pages
+        .iter()
+        .flat_map(|&p| p as u16 * PAGE_TILES..(p as u16 + 1) * PAGE_TILES)
+        .collect();
+    let addresses = match crate::expand::map16_addresses(rom, 0x105, &tiles) {
+        Ok(addresses) => addresses,
+        Err(e) => {
+            notes.push(format!(
+                "Map16 pages past 1 are in an older Lunar Magic's layout, which the ROM's own \
+                 routine did not read ({e}); not imported"
+            ));
+            return Ok((out, notes));
+        }
+    };
+    let pc = |at: Option<SnesAddr>| at.and_then(|a| rom.pc(a).ok()).map(|p| p.as_usize());
+    let mut acts = Vec::new();
+    for pointer in [map16_pages::ACTS_LIKE, map16_pages::ACTS_LIKE_UPPER] {
+        let table = rom.read_u24(pointer)?;
+        if let Some(start) = (table >> 16 != 0xFF)
+            .then(|| pc(Some(SnesAddr::new(table))))
+            .flatten()
+        {
+            acts.push(start..start + 0x8000);
+        }
+    }
+    let mut read = Vec::new();
+    let mut seen = BTreeSet::new();
+    // A group's pages are in the RATS block of the first the ROM has, up
+    // to its end, or in none.
+    let mut group_block: Option<(u8, Option<&Range<usize>>)> = None;
+    for (i, &page) in pages.iter().enumerate() {
+        let at = &addresses[i * PAGE_TILES as usize..(i + 1) * PAGE_TILES as usize];
+        let Some(start) = pc(at[0]) else {
+            continue;
+        };
+        if !seen.insert(start)
+            || page < 2
+            || start < GAME_END
+            || acts
+                .iter()
+                .any(|a| a.start < start + PAGE_BYTES && start < a.end)
+        {
+            continue;
+        }
+        let block = blocks.iter().find(|b| b.contains(&start));
+        match group_block {
+            Some((group, first)) if group == page / 16 => {
+                if block != first {
+                    continue;
+                }
+            }
+            _ => group_block = Some((page / 16, block)),
+        }
+        let end = block.map_or(start + PAGE_BYTES, |b| b.end);
+        let mut entries = Map16Page::default();
+        for (j, &tile_at) in at.iter().enumerate() {
+            let tile = page as u16 * PAGE_TILES + j as u16;
+            let inside = pc(tile_at).is_some_and(|p| p >= start && p + 8 <= end);
+            let gfx = match tile_at {
+                Some(a) if inside && !(tileset_page2 && page == 0x02) => {
+                    Map16Tile::from_bytes(rom.read(a, 8)?.try_into().expect("8 bytes"))
+                }
+                _ => Map16Tile::default(),
+            };
+            // The upper acts-like table's pointer is something else in an
+            // older layout, and may lead outside the image.
+            let acts = map16_pages::acts_like(rom, tile).ok().flatten();
+            let entry = Map16Entry {
+                gfx,
+                acts: acts.unwrap_or(DEFAULT_ACTS),
+            };
+            if entry != Map16Entry::default() {
+                entries.tiles.insert(tile, entry);
+            }
+        }
+        if !entries.tiles.is_empty() {
+            out.push((page, entries));
+            read.push(page);
+        }
+    }
+    if !read.is_empty() {
+        let list: Vec<String> = read.iter().map(|p| format!("{p:02X}")).collect();
+        notes.push(format!(
+            "Map16 pages {} are in an older Lunar Magic's layout, read through the ROM's own \
+             Map16 routine",
+            list.join(", ")
+        ));
     }
     Ok((out, notes))
 }

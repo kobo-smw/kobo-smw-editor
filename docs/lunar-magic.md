@@ -45,6 +45,20 @@ from that). Vanilla behaviour is in [smw.md](smw.md).
   `map16::pages` and `import::read_map16` read them so. Super Dram World 2 (2.43) has other
   values there, which point at no block. The BG Map16 tables at `$0EFD50` are allocated
   the same way.
+- Older layouts (the corpus's 1.62 to 2.43 ROMs, and Super Gracie World, whose 2.52 save
+  did not convert its Map16): the ROM's own routine finds every tile, and Lunar Magic 3.70's
+  `-ExportAllMap16` agrees with what it finds on these rules (2026-10-04, `import::
+  read_map16_older`, checked on eight hacks by `examples/map16_export_check.rs` and
+  `tests/map16_pages.rs`): a page is there where its first tile lies past the game's 512
+  KiB, outside the acts-like table (a 1.6x install has pages 0 to `F`, and its routine
+  reads the acts-like table for the pages past them), and not where an earlier page's is
+  (pages 0 to 1 included: a 64-page install's routine reads pages `40` and up as `00` and
+  up, and unused pages share one page of Lunar Magic's empty tile, `$1004` four times);
+  only pages below `40` (2.50 brought the rest); and a group of 16 keeps to the RATS
+  block its first page is in, up to the block's end, a later page in another block not
+  being the group's, or to no block (the 1.6x installs), a page whole. Change history
+  (`changes.txt`): 16 FG pages from 1.30, `40` from 1.70, `80` from 2.50; FG Map16 in a
+  RATS block from 1.64.
 - The BG Map16 pages (`200`-`3FF`, Lunar Magic's file index `8000+`) are a separate block from
   layer 1 pages 2-3 and `$06F540` does not find them. Lunar Magic 2.3+ replaces `STA $0A` at
   `$058DA4` in the layer 2 tilemap upload with a `JSL` (to `$0EFD00`) that leaves the level's BG
