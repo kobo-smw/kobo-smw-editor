@@ -176,6 +176,11 @@ Early stage: roadmap step 1 is complete; step 2 is next, planned in `docs/step-2
   modes. Take names from there; do not write lists of them elsewhere.
 - `kobo_core::mwl` reads and writes MWL files: `MwlFile` is the container, byte for byte,
   and `Mwl` the level decoded through the codecs above.
+- `kobo_core::pixi` is the one place that knows what PIXI leaves in a ROM: its sites and
+  the blocks its tables lead to, read as PIXI's own cleanup reads them. An import without
+  the hack's PIXI folder carries that insert as compiled code (`[pixi] compiled`,
+  `source::pixi`), which a build writes back where PIXI put it; with it (`--pixi`), the
+  project takes the folder's inputs as `[pixi] dir`.
 - `kobo_core::rats::FreeSpace` is the one way Kobo's library takes free space: everything it
   writes outside fixed addresses goes in a RATS-tagged block placed there. Kobo's own Asar
   patches take theirs with `freecode`/`freedata`, before anything else takes space. Asar
@@ -210,7 +215,7 @@ cargo fmt --all
 cargo run -- rom info [-r rom]               # header, checksum, hash, identity
 cargo run -- rom expand 2M out.sfc [-r rom]  # a copy expanded, with the checksum fixed
 cargo run -- rom rats [-r rom]               # RATS blocks from $108000 on, and free space
-cargo run -- import hack.smc dir [--all]     # a ROM's changed (or all) levels as a new project
+cargo run -- import hack.smc dir [--all] [--pixi folder]  # a ROM's changed (or all) levels as a new project
 cargo run -- import level.mwl dir [--level 105] [--sizes-from hack.smc]  # an MWL file's level into a project
 cargo run -- build [dir] [-o out.sfc] [--bps out.bps]  # a project onto the clean ROM (and as a patch)
 cargo run -- fmt [dir] [--check]             # rewrite a project's files in Kobo's format

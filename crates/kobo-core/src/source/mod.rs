@@ -17,6 +17,7 @@ use toml_edit::{Decor, DocumentMut, Item};
 pub mod animation;
 pub mod level;
 pub mod map16;
+pub mod pixi;
 pub mod project;
 
 /// A user's own-line comments, by where they stood, so that a file
@@ -345,6 +346,16 @@ pub fn format_project(dir: &std::path::Path) -> Result<Vec<Formatted>, FormatErr
                 formatted,
             });
         }
+    }
+    if let Some(file) = &manifest.pixi_compiled {
+        let (path, text) = read(dir.join(file))?;
+        let (compiled, comments) = pixi::Compiled::from_toml(&text).map_err(source_error(&path))?;
+        let formatted = compiled.to_toml(&comments);
+        files.push(Formatted {
+            path,
+            text,
+            formatted,
+        });
     }
     if let Some(file) = &manifest.map16_pipes {
         let (path, text) = read(dir.join(file))?;

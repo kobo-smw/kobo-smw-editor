@@ -345,6 +345,52 @@ pub fn gps(rom: &Rom, tool: &Path, files: &Path, asar: &Path) -> Result<Rom, Too
     .run(rom, tool, files, asar)
 }
 
+/// What a PIXI folder holds as input: its list, the sprites of each type,
+/// and the shared routines and the user's additions to its patches
+/// (PIXI's `src/config.h`, `DefaultPaths`). The rest of a PIXI folder is
+/// PIXI itself: the program, its patches, its documentation.
+pub const PIXI_INPUTS: &[&str] = &[
+    "list.txt",
+    "sprites",
+    "shooters",
+    "generators",
+    "extended",
+    "cluster",
+    "misc_sprites",
+    "routines",
+    "asm/ExtraDefines",
+    "asm/ExtraHijacks",
+];
+
+/// Copies the inputs of the PIXI folder `from` ([`PIXI_INPUTS`]) into
+/// `to`, for a project to build them with Kobo's PIXI, and returns those
+/// it found. A folder without a list is refused, as a build would refuse
+/// it.
+pub fn copy_pixi_inputs(from: &Path, to: &Path) -> Result<Vec<&'static str>, ToolError> {
+    let list = from.join("list.txt");
+    if !list.is_file() {
+        return Err(ToolError::Missing(list));
+    }
+    let mut found = Vec::new();
+    for &input in PIXI_INPUTS {
+        let path = from.join(input);
+        if !path.exists() {
+            continue;
+        }
+        let target = to.join(input);
+        if path.is_dir() {
+            copy_overlay(&path, &target)?;
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(io_error(parent))?;
+            }
+            fs::copy(&path, &target).map_err(io_error(&path))?;
+        }
+        found.push(input);
+    }
+    Ok(found)
+}
+
 /// Runs PIXI on a copy of `rom`, in a copy of its folder `tool` with the
 /// project's PIXI folder (`list.txt`, `sprites/`, `routines/`, ...) laid
 /// over it: without prompts, and with MeiMei off, since it reads the

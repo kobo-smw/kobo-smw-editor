@@ -56,6 +56,9 @@ pub struct Manifest {
     /// A folder of PIXI's input files (`list.txt`, `sprites/`,
     /// `routines/`, ...), laid over PIXI's folder.
     pub pixi: Option<PathBuf>,
+    /// A hack's PIXI insert carried as compiled code (`source::pixi`), for
+    /// a project imported without its sprites' sources; never with `pixi`.
+    pub pixi_compiled: Option<PathBuf>,
     /// A folder of AddmusicK's input files (`Addmusic_list.txt`, `music/`,
     /// `samples/`, ...), laid over the user's AddmusicK folder.
     pub music: Option<PathBuf>,
@@ -163,9 +166,14 @@ impl Manifest {
             out.table("uberasm");
             out.key("uberasm", "dir", quoted(uberasm));
         }
-        if let Some(pixi) = &self.pixi {
+        if self.pixi.is_some() || self.pixi_compiled.is_some() {
             out.table("pixi");
+        }
+        if let Some(pixi) = &self.pixi {
             out.key("pixi", "dir", quoted(pixi));
+        }
+        if let Some(compiled) = &self.pixi_compiled {
+            out.key("pixi", "compiled", quoted(compiled));
         }
         if let Some(gps) = &self.gps {
             out.table("gps");
@@ -407,8 +415,21 @@ impl Manifest {
                             .ok_or_else(|| invalid("pixi.dir", "must be a folder path"))?;
                         manifest.pixi = Some(PathBuf::from(dir));
                     }
+                    "compiled" => {
+                        let file = item
+                            .as_str()
+                            .ok_or_else(|| invalid("pixi.compiled", "must be a file path"))?;
+                        manifest.pixi_compiled = Some(PathBuf::from(file));
+                    }
                     _ => return Err(invalid("pixi", format!("unknown key `{key}`"))),
                 }
+            }
+            if manifest.pixi.is_some() && manifest.pixi_compiled.is_some() {
+                return Err(invalid(
+                    "pixi",
+                    "has `dir` and `compiled`: sprites come from their sources or from a \
+                     hack's compiled insert, not both",
+                ));
             }
         }
         if let Some(gps) = doc.get("gps") {
@@ -637,6 +658,7 @@ mod tests {
             uberasm: Some(PathBuf::from("uberasm")),
             gps: Some(PathBuf::from("blocks")),
             pixi: Some(PathBuf::from("sprites")),
+            pixi_compiled: None,
             gfx: BTreeMap::from([(0x00, PathBuf::from("graphics/GFX00.png"))]),
             four_bpp: true,
             animation_global: Some(PathBuf::from("animation/global.toml")),
@@ -783,5 +805,22 @@ size = \"2M\"
         assert!(bad("format = 1\n[map16_tileset]\n0x0F = \"a.toml\"\n"));
         assert!(bad("format = 1\n[map16]\n0x80 = \"a.toml\"\n"));
         assert!(!bad("format = 1\n"));
+        assert!(bad(
+            "format = 1\n[pixi]\ndir = \"pixi\"\ncompiled = \"pixi/compiled.toml\"\n"
+        ));
+    }
+
+    #[test]
+    fn compiled_pixi() {
+        let manifest = Manifest {
+            pixi_compiled: Some(PathBuf::from("pixi/compiled.toml")),
+            ..Manifest::default()
+        };
+        let text = manifest.to_toml(&Comments::default());
+        assert_eq!(
+            text,
+            "format = 1\n\n[pixi]\ncompiled = \"pixi/compiled.toml\"\n\n[levels]\n"
+        );
+        assert_eq!(Manifest::from_toml(&text).unwrap().0, manifest);
     }
 }

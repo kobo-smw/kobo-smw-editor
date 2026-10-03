@@ -158,6 +158,58 @@ are placed as well as that old ones are kept.
   `$7FAF00` through `$02A856` and its other hooks, which Kobo's loader calls as the game's,
   and clears `$0FFFE0` bit 0; a build then takes levels of up to 255 sprites
   (`sprites::max_sprites`).
+- Importing a PIXI hack (2026-10-03). With the hack's PIXI folder (`kobo import hack.smc
+  dir --pixi folder`), the import copies its inputs (`tools::PIXI_INPUTS`: `list.txt`, the
+  sprite folders, `routines/`, `asm/ExtraDefines` and `asm/ExtraHijacks`; not PIXI's own
+  patches, nor `pixi_settings.json`, whose options Kobo's run sets) into `pixi/` as
+  `[pixi] dir`, runs the build as far as PIXI, and notes whether PIXI 1.43 makes the
+  hack's size table from them. Without it, the import carries the insert PIXI left in the
+  ROM as compiled code (`[pixi] compiled`, `pixi/compiled.toml` and a `.bin` file a
+  block; `source::pixi`), which builds write back where PIXI put it.
+- The insert (`kobo_core::pixi`) is found as PIXI's own cleanup finds an earlier run's
+  (`clean_hack`, `src/sprite.cpp`): `STSD` and the version byte at `$02FFE2` (`$02` for
+  1.02, `$19`-`$23` for 1.2.5-1.2.15, `$30`-`$32`, then 140-143), the main block that
+  `$02FFEE` points into (its code and the global sprites' 16-byte entries, init and main
+  pointers at 8 and 11), the per-level tables (`$02FFEA`'s banks before 1.30, `$02FFF1`'s
+  table and the two blocks its `PROT` list ends with from 1.30), the custom status
+  pointers (`$02FFFD`), the shared routines' pointers (`$03E05C`, up to 310), the size
+  table, each sprite type's table from the pointer after its hook (`$00A686`, `$029B1B`,
+  `$029633`, `$028B6C`, `$029054`, `$0296C0`, `$0299D4`, `$02ADBA`), and every block a
+  carried block's `PROT` list names. Pointers may be in the FastROM banks (`$90xxxx`).
+  The fixed sites are `pixi::SITES`, the union of `main.asm` and the sprite types'
+  patches from 1.02 to 1.43 (`org` lines compared across the tags); a site is carried
+  where the ROM differs from the base and its bytes have the shape PIXI writes there.
+  Five sites are Lunar Magic's too (`$01C089`, `$02A846`, `$02A8D8`, `$02ABF2`, and
+  `$02A9D7` on SA-1; lunar-magic-install.md, "Sprites"), so their bytes may be its code,
+  which an import must not copy: there a jump is carried only when its target is inside
+  PIXI's main block, and other bytes only when they are PIXI's exactly. The test reads
+  the target and says nothing of it; a jump that fails is left out with a note naming
+  only the site (decided with the maintainer, 2026-10-03, as within the clean-room rule).
+  `tests/tool_stages.rs` checks that the insert read from PIXI 1.43's output, with a
+  sprite of every type and a shared routine, written onto the image PIXI ran on gives
+  PIXI's image again, and that a hack imported either way plays its sprite.
+- A compiled insert's blocks go in at their own addresses before Kobo's install
+  (`Stage::SpriteBlocks`), since code is not relocatable; Kobo's patches and blocks then
+  take space around them. Its sites go in at the sprites stage, where PIXI would run. A
+  build fails if a block's space is not free. The blocks leave the free space in pieces,
+  so the import takes a ROM 1 MiB larger than the hack's, up to 4 MiB. A block the base
+  image has is never PIXI's: on SA-1, a hack's older SA-1 Pack has hooks at some of
+  PIXI's sites that jump into SA-1 Pack's blocks. Where the hack's PIXI put a block that
+  the base holds something else in (an SA-1 hack made with an older SA-1 Pack, whose
+  blocks are smaller than 1.40's: 13 QLDC entries), the code cannot be carried; the
+  import then carries PIXI's size table alone (`size_table` in `compiled.toml`), which a
+  build places in free space and points `$0EF30C` at, so the levels build with their
+  sprites' extension bytes but the custom sprites have no code.
+- Kobo's own Asar patches run after the carried blocks, and Asar 1.91's free space search
+  goes wrong around them in two ways: inside a block that starts at a bank's start (the
+  limitation below), and, on SA-1, at a free run of fewer than eight bytes before a bank's
+  end, where it puts a tag and its contents across the bank's end (`trypcfreespace` checks
+  only that the tag starts in the bank's last eight bytes). Every stage that runs Asar or
+  a tool therefore runs with the blocks' `$00` bytes, and such short runs after them, set
+  to `$FF` (`pixi::mask_blocks`), and puts them back after. What a compiled sprite reads from another
+  block without a `PROT` (a table placed by hand), or calls in another tool's code
+  (UberASM Tool's or GPS's shared routines), is not carried: such a sprite may break in
+  play though the levels build.
 
 ## GPS 1.4.4 (no licence)
 

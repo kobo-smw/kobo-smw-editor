@@ -80,6 +80,12 @@ enum Command {
         /// table says how many extension bytes each sprite has.
         #[arg(long)]
         sizes_from: Option<PathBuf>,
+        /// For a ROM made with PIXI, the PIXI folder its sprites were
+        /// inserted from: the project takes its list and sprites as source.
+        /// Without it, the sprites are carried as the compiled code the ROM
+        /// holds.
+        #[arg(long)]
+        pixi: Option<PathBuf>,
         /// The clean ROM. Defaults to the configured vanilla ROM.
         #[command(flatten)]
         rom: RomArg,
@@ -585,6 +591,7 @@ fn main() -> Result<()> {
             all,
             level,
             sizes_from,
+            pixi,
             rom,
         } => import(
             &from,
@@ -592,6 +599,7 @@ fn main() -> Result<()> {
             all,
             level.as_deref(),
             sizes_from.as_deref(),
+            pixi.as_deref(),
             &rom.load()?,
         ),
         Command::Build {
@@ -1253,6 +1261,7 @@ fn import(
     all: bool,
     level: Option<&str>,
     sizes_from: Option<&Path>,
+    pixi: Option<&Path>,
     clean: &Rom,
 ) -> Result<()> {
     let is_mwl = from
@@ -1263,6 +1272,9 @@ fn import(
     }
     if !is_mwl && (level.is_some() || sizes_from.is_some()) {
         bail!("--level and --sizes-from are for importing an MWL file");
+    }
+    if is_mwl && pixi.is_some() {
+        bail!("--pixi is for importing a ROM");
     }
     let report = if is_mwl {
         let bytes = fs::read(from).with_context(|| format!("reading {}", from.display()))?;
@@ -1277,7 +1289,16 @@ fn import(
         kobo_core::import::import_mwl_sized(&bytes, clean, dir, level, sizes)?
     } else {
         let rom = Rom::load(from).with_context(|| format!("loading {}", from.display()))?;
-        kobo_core::import::import_rom(&rom, clean, dir, all)?
+        if let Some(folder) = pixi {
+            for tool in [Tool::Asar, Tool::Pixi] {
+                announce_download(tool);
+            }
+            if !folder.is_dir() {
+                bail!("--pixi: {} is not a folder", folder.display());
+            }
+        }
+        let options = kobo_core::import::Options { all, pixi };
+        kobo_core::import::import_rom_with(&rom, clean, dir, &options)?
     };
     for note in &report.notes {
         println!("note: {note}");

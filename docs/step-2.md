@@ -624,9 +624,9 @@ on the built ROM.
      Kobo imports none of its levels. Lunar Magic sees none of them either, so it is
      treated as a locked ROM ([lunar-magic.md](lunar-magic.md), 2026-10-02). What blocks the rest, by hacks and levels:
      - Sprite entries longer than the vanilla size table says (74 hacks, 522 levels; the
-       only blocker of 47 hacks): a PIXI hack's project has no `[pixi]`, so the build
-       sizes sprites by vanilla's table. Needs either the hack's PIXI folder in the
-       project or the size table imported as data; a decision to take.
+       only blocker of 47 hacks): a PIXI hack's project had no `[pixi]`, so the build
+       sized sprites by vanilla's table. Done (2026-10-03, below): an import carries the
+       hack's PIXI insert as compiled code, or takes its PIXI folder as source.
      - Graphics lists naming ExGFX the project does not have (15 hacks, 111 levels): the
        six locked ROMs, whose ExGFX are not imported (Invictus alone 81 levels), and
        levels naming a file the hack does not have either (QLDC 2021 `08_Lizstar`: ExGFX
@@ -668,10 +668,9 @@ on the built ROM.
      `render_hashes` draws 5,400 of the 13,276 built levels as the hack does; every hack
      keeps 68 KB and more of changes the import does not carry (Lunar Magic's own code
      among them), so the pictures do not single out a blocker.
-     What the sweep suggests taking next, by what it unblocks for its cost: decide how a
-     project gets a PIXI hack's sprite sizes
-     (74 hacks); then Lunar Magic's objects and the scroll rates
-     (item 3). Grand Poo World 2's level data and SP4's bit 12 were observed
+     What the sweep suggests taking next, by what it unblocks for its cost: a PIXI
+     hack's sprites (74 hacks; done 2026-10-03, below); then Lunar Magic's objects and
+     the scroll rates (item 3). Grand Poo World 2's level data and SP4's bit 12 were observed
      (2026-10-02; lunar-magic.md): the first is hidden as a lock hides it, the second
      changes nothing a load leaves.
   3. **Lunar Magic's added layer 2 scroll rates**: done (2026-10-01), above.
@@ -713,6 +712,23 @@ on the built ROM.
   builds with SA-1 Pack. PIXI and GPS need the
   acts-like chain, which is done, and PIXI Lunar Magic's VRAM patch at `$00F6E4`, a hook
   a save restores.
+- PIXI hacks imported (2026-10-03; the maintainer decided both ways): `kobo import
+  --pixi folder` takes a hack's PIXI folder as the project's sprites' source, and checks
+  that PIXI 1.43 makes the hack's size table from it; without it, the import carries the
+  insert PIXI left in the ROM as compiled code (`[pixi] compiled`, `kobo_core::pixi`,
+  toolchain.md "PIXI 1.43"), which builds write back where PIXI put it before anything
+  else takes space. The 74 corpus hacks the sprite sizes blocked (PIXI 1.02 to 1.42; 47
+  LoROM, 27 SA-1) all import and build: 63 carry their code, and 11 SA-1 QLDC entries
+  made on an older SA-1 Pack, whose PIXI blocks are where SA-1 Pack 1.40 has its own,
+  their size table alone. Levels refused across them went from 847 to 46 (none for
+  sprite sizes), 68 build whole (none did), and `kobo diff` finds every build the same
+  as its hack. Each of the 63 imports its own build back to the same insert, and Lunar
+  Magic's save keeps it (checked on six); its save changes level `105` only as it does
+  any level it re-imports (SP4's bit 12, the screen count), which shows now that level
+  `105` builds in more of them. Played in Mesen against the hacks, ten levels of five of them
+  (PIXI 1.02, 1.2.9, 1.2.13, and 1.32, LoROM and SA-1) have the same sprites in the same
+  slots, doing the same, 240 frames in; what differs is the status bar, the hacks' own
+  patch, which the import reports and does not carry.
 - 2c progress, PIXI: `[pixi] dir` (its `list.txt`, `sprites/`, `routines/`, ...), laid
   over the pinned PIXI 1.43 (or `tools.pixi`, `KOBO_PIXI`), runs as the sprites stage
   after Map16 and before GPS, with MeiMei off; the levels stage sizes sprite entries by

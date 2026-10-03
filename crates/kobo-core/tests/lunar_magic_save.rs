@@ -305,6 +305,7 @@ fn project(clean: &Rom) -> Project {
         exgfx: Vec::new(),
         animation_global: Some(animation_list(0x2400)),
         animation_files: vec![(0x60, (0..0x800).map(|i| i as u8).collect())],
+        pixi_compiled: None,
     }
 }
 

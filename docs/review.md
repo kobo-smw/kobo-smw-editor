@@ -354,15 +354,6 @@ settle it.
   PIXI, and after Lunar Magic saves it (`a_pixi_build_survives_a_lunar_magic_save`). On
   LoROM PIXI jumps from `$02A9DB` and Kobo's code still runs. Settles it: whether
   anything other than the goal tape reads `$187B` from the loader on SA-1.
-- **How a project gets a PIXI hack's sprite sizes is not decided** (2026-10-01, corpus
-  sweep, [step-2.md](step-2.md) item 2). An import keeps each sprite's extension bytes,
-  sized by the hack's PIXI table, but the project has no `[pixi]`, so its build sizes
-  sprites by vanilla's table and refuses those levels: 522 levels of 74 corpus hacks, the
-  only blocker of 47. Two ways: the project carries the hack's PIXI folder (`list.txt` and
-  the sprites, which the ROM does not hold as source, so the user supplies them), or the
-  import writes the size table as data and builds without PIXI use it (a build then
-  places sprites whose code is the hack's, not the project's). Settles it: the maintainer's
-  choice; nothing observable decides it.
 - **A screen exit in Lunar Magic's format writes its whole destination** (2026-10-02,
   `source::level`). Long screen exits name entrances up to `1FFF`, so an exit with
   `lm_format` now has `dest` as the whole number (`dest = 0x320`), where it was the low
@@ -398,3 +389,41 @@ settle it.
   before the save. For vanilla's overworld the two agree. Settles it: an overworld that
   puts a level on a submap its number does not say, built and played before and after
   a save.
+- **A compiled PIXI insert's blocks go in before Kobo's own patches** (2026-10-03,
+  `build::Stage::SpriteBlocks`; toolchain.md, "PIXI 1.43"). The maintainer chose that a
+  PIXI hack imported without its sources carries the insert as compiled code. Code is not
+  relocatable, so its blocks must be where the hack has them, and they go in straight
+  after the base image, before Kobo's install takes space with `freecode`. That reverses,
+  for such projects, the 2026-09-27 decision that Kobo's patches run first: Asar then
+  places them around the hack's blocks, the same way for the same project. Settles it:
+  whether the maintainer accepts the order; the other way would need a PIXI insert to be
+  reassembled, which needs its sources.
+- **Importing with sources: what is copied, and with which PIXI** (2026-10-03,
+  `tools::PIXI_INPUTS`). `kobo import --pixi folder` copies the list, the sprite folders,
+  `routines/`, and `asm/ExtraDefines` and `asm/ExtraHijacks`, not `pixi_settings.json`
+  (whose options Kobo's run sets: MeiMei off, the 255-sprite option on) nor PIXI's own
+  patches; the build runs Kobo's pinned PIXI 1.43 on them, whatever version made the
+  hack. The import builds as far as PIXI and notes it if PIXI fails or sizes a sprite
+  differently from the hack. Per-level sprites (`-pl`) are not passed, as no build passes
+  it. Settles it: a hack whose sources need an older PIXI or its settings.
+- **A compiled insert is one file a block** (2026-10-03, `source::pixi`). `compiled.toml`
+  lists the sites as hex and the blocks as `.bin` files named by address
+  (`compiled/108008.bin`), a hundred or more for a big hack; one file of all of them would
+  be fewer files but a larger diff for any change. The bytes are the hack's, compiled
+  from its authors' sprites and PIXI's GPL code: a project carries them from its user's
+  own ROM, and Kobo never distributes them. Settles it: the maintainer's taste.
+- **An import that carries a compiled insert takes a megabyte more** (2026-10-03,
+  `import::import_rom_with`). The insert's blocks stay where the hack has them, which
+  breaks the free space around them into pieces, and a build's own tables take whole
+  banks (the acts-like table past `$4000`, BG Map16): ValuableAndBeautiful's 233 blocks
+  left no free bank in its 2 MiB, and it built with every level the same at 3 MiB. So such
+  an import sets `[rom] size` to the hack's size and 1 MiB more, up to 4 MiB. Settles it:
+  whether a build should rather say which size would fit.
+- **A PIXI insert whose code cannot go where the hack has it carries its size table alone**
+  (2026-10-03, `pixi::conflicts`, `Insert::size_table`). On 13 SA-1 QLDC entries made with
+  an older SA-1 Pack, PIXI's blocks are where SA-1 Pack 1.40, the only version Kobo
+  supports, has its own; compiled code cannot move. The import then carries the size
+  table, which the build places anywhere, so the levels build with their sprites'
+  extension bytes, as the maintainer's "copy the size table" option had it; the custom
+  sprites have no code, which a note says, pointing at `--pixi`. Settles it: whether such
+  a hack should rather fail its import, or keep its other blocks.

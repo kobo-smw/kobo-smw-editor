@@ -342,6 +342,13 @@ impl FreeSpace {
             .pc_to_snes(PcAddr::new(pc as u32))
             .expect("the image is mapped")
     }
+
+    /// Whether every byte of the file range is free.
+    pub fn contains(&self, range: Range<usize>) -> bool {
+        self.runs
+            .iter()
+            .any(|run| run.start <= range.start && range.end <= run.end)
+    }
 }
 
 #[cfg(test)]

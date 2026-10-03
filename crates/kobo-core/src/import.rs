@@ -72,6 +72,8 @@ pub enum ImportError {
         #[source]
         source: crate::source::SourceError,
     },
+    #[error("the PIXI folder: {0}")]
+    Pixi(#[from] crate::tools::ToolError),
 }
 
 /// A level read from a ROM, with notes on what it holds that a build
@@ -354,6 +356,38 @@ pub struct Report {
 /// differs from it outside the levels is reported, and so is a level whose
 /// data does not read, which is left out.
 pub fn import_rom(rom: &Rom, clean: &Rom, dir: &Path, all: bool) -> Result<Report, ImportError> {
+    import_rom_with(
+        rom,
+        clean,
+        dir,
+        &Options {
+            all,
+            ..Options::default()
+        },
+    )
+}
+
+/// How [`import_rom_with`] imports.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct Options<'a> {
+    /// Every level, not only those that differ from the base.
+    pub all: bool,
+    /// The hack's PIXI folder: its inputs ([`crate::tools::PIXI_INPUTS`])
+    /// become the project's sprites' sources (`[pixi] dir`), which PIXI
+    /// builds. Without it, a hack's PIXI insert is carried as the compiled
+    /// code the ROM holds (`[pixi] compiled`, [`crate::pixi`]).
+    pub pixi: Option<&'a Path>,
+}
+
+/// [`import_rom`], with the PIXI folder the hack's sprites came from, if
+/// there is one.
+pub fn import_rom_with(
+    rom: &Rom,
+    clean: &Rom,
+    dir: &Path,
+    options: &Options,
+) -> Result<Report, ImportError> {
+    let all = options.all;
     // As large as the ROM, if that is more than a build's default.
     let manifest = Manifest {
         sa1: rom.mapping().is_sa1(),
@@ -553,8 +587,142 @@ pub fn import_rom(rom: &Rom, clean: &Rom, dir: &Path, all: bool) -> Result<Repor
         manifest.map16_pipes = Some(file);
     }
     report.map16.sort_unstable();
-    write(&manifest_path, manifest.to_toml(&Comments::default()))?;
+    let insert = crate::pixi::read(rom, base)?;
+    let mut manifest_comments = Comments::default();
+    if let Some(folder) = options.pixi {
+        let found = crate::tools::copy_pixi_inputs(folder, &dir.join("pixi"))?;
+        manifest.pixi = Some(PathBuf::from("pixi"));
+        report.notes.push(format!(
+            "sprites: PIXI's inputs ({}) copied from {} into pixi/, which the build runs \
+             PIXI 1.43 on",
+            found.join(", "),
+            folder.display()
+        ));
+    } else if let Some((found, notes)) = &insert {
+        let version = crate::pixi::version_name(found.version);
+        // Code that cannot go where the hack has it cannot go anywhere: only
+        // the size table, which is data, is carried then.
+        let conflicts = crate::pixi::conflicts(found, base);
+        let carried = if conflicts.is_empty() {
+            found.clone()
+        } else {
+            crate::pixi::Insert {
+                version: found.version,
+                size_table: crate::pixi::size_table(rom),
+                ..Default::default()
+            }
+        };
+        let folder = PathBuf::from("pixi");
+        let mut files: Vec<(PathBuf, &[u8])> = carried
+            .blocks
+            .iter()
+            .map(|(&at, bytes)| (crate::source::pixi::block_file(at), bytes.as_slice()))
+            .collect();
+        let size_file = PathBuf::from("compiled").join("sizes.bin");
+        if let Some(table) = &carried.size_table {
+            files.push((size_file.clone(), table));
+        }
+        for (file, bytes) in files {
+            let path = dir.join(&folder).join(file);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).map_err(|source| ImportError::Io {
+                    path: parent.to_path_buf(),
+                    source,
+                })?;
+            }
+            fs::write(&path, bytes).map_err(|source| ImportError::Io { path, source })?;
+        }
+        let compiled = crate::source::pixi::Compiled {
+            version: carried.version,
+            sprites_255: carried.sprites_255,
+            sites: carried.sites.clone(),
+            blocks: carried
+                .blocks
+                .keys()
+                .map(|&at| (at, crate::source::pixi::block_file(at)))
+                .collect(),
+            size_table: carried.size_table.as_ref().map(|_| size_file.clone()),
+        };
+        let mut top = Comments::default();
+        top.add(
+            Comments::TOP,
+            if conflicts.is_empty() {
+                vec![
+                    format!(
+                        "# PIXI {version}'s insert, carried from the hack by `kobo import`: the"
+                    ),
+                    "# compiled code and tables the ROM holds, which a build writes back where"
+                        .to_string(),
+                    "# PIXI put them. It is not source and cannot be edited as such.".to_string(),
+                ]
+            } else {
+                vec![
+                    format!("# PIXI {version}'s size table alone, carried from the hack by `kobo"),
+                    "# import`: its code could not go where the hack has it. The levels build"
+                        .to_string(),
+                    "# with their sprites' extension bytes, but the custom sprites have no code."
+                        .to_string(),
+                ]
+            },
+        );
+        let file = folder.join("compiled.toml");
+        write(&dir.join(&file), compiled.to_toml(&top))?;
+        manifest.pixi_compiled = Some(file);
+        manifest_comments.add(
+            "pixi",
+            [
+                "# The hack's sprites, compiled, as its ROM holds them. With their sources,"
+                    .to_string(),
+                "# import again with `--pixi <folder>`, or give `dir` in place of `compiled`."
+                    .to_string(),
+            ],
+        );
+        if conflicts.is_empty() {
+            // The blocks stay where the hack has them, which leaves the free
+            // space around them in pieces; Kobo's own tables take whole
+            // banks. A megabyte more gives them room, up to 4 MiB.
+            let size = manifest.rom_size.unwrap_or(crate::build::DEFAULT_ROM_SIZE);
+            if size < 0x40_0000 {
+                manifest.rom_size = Some((rom.len().max(size) + 0x10_0000).min(0x40_0000));
+            }
+            report.notes.push(format!(
+                "sprites: PIXI {version}'s insert ({} blocks, {} bytes, {} sites) carried as \
+                 compiled code in pixi/compiled.toml; with the sprites' sources, import with \
+                 `--pixi <folder>` to build them from source",
+                found.blocks.len(),
+                found.block_bytes(),
+                found.sites.len()
+            ));
+            report
+                .notes
+                .extend(notes.iter().map(|n| format!("sprites: {n}")));
+        } else {
+            let at: Vec<String> = conflicts.iter().take(4).map(|a| a.to_string()).collect();
+            report.notes.push(format!(
+                "sprites: PIXI {version}'s code is not carried: {} of its blocks ({}{}) are \
+                 where the base has something of its own{}; only its size table is, so the \
+                 levels build with their sprites' extension bytes but the custom sprites have \
+                 no code. With their sources, import with `--pixi <folder>`",
+                conflicts.len(),
+                at.join(", "),
+                if conflicts.len() > 4 { ", ..." } else { "" },
+                if manifest.sa1 {
+                    " (SA-1 Pack 1.40's, where the hack has another version)"
+                } else {
+                    ""
+                }
+            ));
+        }
+    }
+    write(&manifest_path, manifest.to_toml(&manifest_comments))?;
+    if options.pixi.is_some() {
+        report.notes.extend(check_pixi_sources(rom, clean, dir));
+    }
     let mut read = read_spans(rom)?;
+    // PIXI's insert, which the project carries or builds again.
+    if let Some((insert, _)) = &insert {
+        read.extend(crate::pixi::spans(rom, insert));
+    }
     // The tag of a block that holds something read is read with it: an
     // SA-1 base reaches past the vanilla image, where such blocks go.
     for block in rats::blocks(rom) {
@@ -581,6 +749,47 @@ pub fn import_rom(rom: &Rom, clean: &Rom, dir: &Path, all: bool) -> Result<Repor
         })
         .collect();
     Ok(report)
+}
+
+/// Builds the project in `dir` as far as PIXI, and compares the size table
+/// PIXI makes from the project's sources with the hack's: an entry that
+/// differs makes a level that places that sprite fail to build.
+fn check_pixi_sources(rom: &Rom, clean: &Rom, dir: &Path) -> Vec<String> {
+    use crate::build::{Project, Stage, build_through};
+    let built = Project::load(dir).and_then(|p| build_through(clean, &p, Stage::Sprites));
+    let built = match built {
+        Ok(built) => built,
+        Err(e) => {
+            return vec![format!(
+                "sprites: PIXI did not build the project's sources ({e}); a build fails until \
+                 it does"
+            )];
+        }
+    };
+    let ours = sprites::pixi_size_table(&built).ok().flatten();
+    let theirs = sprites::pixi_size_table(rom).ok().flatten();
+    let (Some(ours), Some(theirs)) = (ours, theirs) else {
+        return Vec::new();
+    };
+    let differ: Vec<String> = (0..0x400)
+        .filter(|&i| ours[i].max(3) != theirs[i].max(3))
+        .map(|i| format!("{:02X} with extra bits {}", i & 0xFF, i >> 8))
+        .collect();
+    if differ.is_empty() {
+        return vec!["sprites: PIXI builds the sources with the hack's sprite sizes".to_string()];
+    }
+    vec![format!(
+        "sprites: PIXI sizes {} sprites differently from the hack ({}{}); levels that place \
+         them do not build",
+        differ.len(),
+        differ
+            .iter()
+            .take(8)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", "),
+        if differ.len() > 8 { ", ..." } else { "" }
+    )]
 }
 
 /// Whether the level's background, which [`read_level`] names by its

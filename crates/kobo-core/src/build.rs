@@ -112,6 +112,8 @@ pub enum BuildError {
     Install { message: String },
     #[error("Map16: {0}")]
     Map16(String),
+    #[error("PIXI's compiled insert: {0}")]
+    Pixi(String),
     #[error("the build cache at {path}: {source}")]
     Cache {
         path: PathBuf,
@@ -154,6 +156,59 @@ pub struct Project {
     pub animation_global: Option<exanimation::List>,
     /// The uncompressed ExGFX files `60`-`63` ExAnimation reads.
     pub animation_files: Vec<(u16, Vec<u8>)>,
+    /// A hack's PIXI insert carried as compiled code (`[pixi] compiled`).
+    pub pixi_compiled: Option<CompiledPixi>,
+}
+
+/// A compiled PIXI insert and the files it was read from.
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
+pub struct CompiledPixi {
+    pub insert: crate::pixi::Insert,
+    /// Its file and its blocks' files, relative to the project's folder.
+    pub files: Vec<PathBuf>,
+}
+
+impl CompiledPixi {
+    /// Reads the insert from `file`, relative to the project's folder.
+    pub fn load(root: &Path, file: &Path) -> Result<Self, BuildError> {
+        let path = root.join(file);
+        let text = fs::read_to_string(&path).map_err(|source| BuildError::Io {
+            path: path.clone(),
+            source,
+        })?;
+        let (compiled, _) = crate::source::pixi::Compiled::from_toml(&text)
+            .map_err(|source| BuildError::Source { path, source })?;
+        let folder = file.parent().unwrap_or(Path::new(""));
+        let mut files = vec![file.to_path_buf()];
+        let size_table = match &compiled.size_table {
+            Some(table) => {
+                let relative = folder.join(table);
+                let path = root.join(&relative);
+                let bytes = fs::read(&path).map_err(|source| BuildError::Io { path, source })?;
+                files.push(relative);
+                Some(bytes)
+            }
+            None => None,
+        };
+        let mut blocks = BTreeMap::new();
+        for (&at, block) in &compiled.blocks {
+            let relative = folder.join(block);
+            let path = root.join(&relative);
+            let bytes = fs::read(&path).map_err(|source| BuildError::Io { path, source })?;
+            blocks.insert(at, bytes);
+            files.push(relative);
+        }
+        Ok(Self {
+            insert: crate::pixi::Insert {
+                version: compiled.version,
+                sprites_255: compiled.sprites_255,
+                sites: compiled.sites,
+                blocks,
+                size_table,
+            },
+            files,
+        })
+    }
 }
 
 impl Project {
@@ -258,6 +313,10 @@ impl Project {
                 map16_game.push((page, tiles));
             }
         }
+        let pixi_compiled = match &manifest.pixi_compiled {
+            Some(file) => Some(CompiledPixi::load(dir, file)?),
+            None => None,
+        };
         let pipes = match &manifest.map16_pipes {
             Some(file) => {
                 let path = dir.join(file);
@@ -280,6 +339,7 @@ impl Project {
             exgfx,
             animation_global,
             animation_files,
+            pixi_compiled,
         })
     }
 
@@ -360,6 +420,7 @@ impl Project {
             || self.tileset_page2()
             || self.manifest.gps.is_some()
             || self.manifest.pixi.is_some()
+            || self.pixi_compiled.is_some()
             || self.levels.iter().any(|(number, level)| {
                 level.entrances.iter().any(|e| e.id >> 8 != number >> 8)
                     || level.settings != LevelSettings::default()
@@ -447,6 +508,10 @@ impl Project {
 pub enum Stage {
     /// The clean ROM, expanded to the project's size.
     Base,
+    /// The blocks of a compiled PIXI insert, where PIXI put them in the
+    /// hack, before anything else takes space: its code is not
+    /// relocatable.
+    SpriteBlocks,
     /// Kobo's code for Lunar Magic's layout, if the project uses it.
     Install,
     /// The project's early Asar patches.
@@ -457,8 +522,8 @@ pub enum Stage {
     Graphics,
     /// Map16 pages past 1 and the acts-like tables.
     Map16,
-    /// PIXI, with the project's sprites: its size table sets how long
-    /// each sprite entry of a level is.
+    /// PIXI, with the project's sprites, or a compiled insert's sites:
+    /// its size table sets how long each sprite entry of a level is.
     Sprites,
     /// GPS, with the project's blocks. It rewrites the acts-like table.
     Blocks,
@@ -472,8 +537,9 @@ pub enum Stage {
 }
 
 impl Stage {
-    pub const ALL: [Stage; 11] = [
+    pub const ALL: [Stage; 12] = [
         Stage::Base,
+        Stage::SpriteBlocks,
         Stage::Install,
         Stage::EarlyPatches,
         Stage::Music,
@@ -489,6 +555,7 @@ impl Stage {
     pub fn name(self) -> &'static str {
         match self {
             Stage::Base => "base",
+            Stage::SpriteBlocks => "sprite blocks",
             Stage::Install => "install",
             Stage::EarlyPatches => "early patches",
             Stage::Music => "music",
@@ -642,7 +709,32 @@ impl Stage {
                 tools::hash_tree(&mut hash, &project.root.join(music))?;
                 hash.finalize().to_vec()
             }
+            Stage::SpriteBlocks => {
+                let Some(compiled) = &project.pixi_compiled else {
+                    return Ok(Vec::new());
+                };
+                let mut hash = Sha1::new();
+                for (at, bytes) in &compiled.insert.blocks {
+                    hash.update(at.raw().to_le_bytes());
+                    hash.update((bytes.len() as u64).to_le_bytes());
+                    hash.update(bytes);
+                }
+                hash.finalize().to_vec()
+            }
             Stage::Sprites => {
+                if let Some(compiled) = &project.pixi_compiled {
+                    let mut bytes = vec![u8::from(compiled.insert.sprites_255)];
+                    if let Some(table) = &compiled.insert.size_table {
+                        bytes.extend(b"sizes");
+                        bytes.extend(table);
+                    }
+                    for (at, site) in &compiled.insert.sites {
+                        bytes.extend(at.raw().to_le_bytes());
+                        bytes.extend((site.len() as u64).to_le_bytes());
+                        bytes.extend(site);
+                    }
+                    return Ok(bytes);
+                }
                 let Some(files) = &project.manifest.pixi else {
                     return Ok(Vec::new());
                 };
@@ -697,6 +789,27 @@ impl Stage {
         })
     }
 
+    /// [`Stage::run`], with a compiled PIXI insert's free bytes masked
+    /// while Asar or a tool runs ([`crate::pixi::mask_blocks`]).
+    fn run_guarded(self, rom: &mut Rom, clean: &Rom, project: &Project) -> Result<(), BuildError> {
+        let runs_asar = matches!(
+            self,
+            Stage::Install
+                | Stage::EarlyPatches
+                | Stage::Music
+                | Stage::Blocks
+                | Stage::UberAsm
+                | Stage::LatePatches
+        );
+        let Some(compiled) = project.pixi_compiled.as_ref().filter(|_| runs_asar) else {
+            return self.run(rom, clean, project);
+        };
+        crate::pixi::mask_blocks(rom, &compiled.insert)?;
+        self.run(rom, clean, project)?;
+        crate::pixi::unmask_blocks(rom, &compiled.insert)?;
+        Ok(())
+    }
+
     fn run(self, rom: &mut Rom, clean: &Rom, project: &Project) -> Result<(), BuildError> {
         match self {
             Stage::Base => {
@@ -711,6 +824,12 @@ impl Stage {
                     *rom = apply_sa1pack(rom, rom_size(clean, project))?;
                 }
                 rom.expand(rom_size(clean, project))?;
+            }
+            Stage::SpriteBlocks => {
+                if let Some(compiled) = &project.pixi_compiled {
+                    crate::pixi::write_blocks(rom, &compiled.insert)
+                        .map_err(|e| BuildError::Pixi(e.to_string()))?;
+                }
             }
             Stage::Install => {
                 if project.installs_lunar_magic(clean) {
@@ -781,6 +900,13 @@ impl Stage {
                 }
             }
             Stage::Sprites => {
+                if let Some(compiled) = &project.pixi_compiled {
+                    crate::pixi::write_sites(rom, &compiled.insert)?;
+                    if let Some(table) = &compiled.insert.size_table {
+                        crate::pixi::write_size_table(rom, table)
+                            .map_err(|e| BuildError::Pixi(e.to_string()))?;
+                    }
+                }
                 if let Some(files) = &project.manifest.pixi {
                     let tool = Tool::Pixi.locate()?.path;
                     let asar = Tool::Asar.locate()?.path;
@@ -854,7 +980,11 @@ fn patch_can_include(project: &Project, path: &Path) -> bool {
         || m.music.as_ref().is_some_and(|dir| path.starts_with(dir))
         || m.uberasm.as_ref().is_some_and(|dir| path.starts_with(dir))
         || m.gps.as_ref().is_some_and(|dir| path.starts_with(dir))
-        || m.pixi.as_ref().is_some_and(|dir| path.starts_with(dir));
+        || m.pixi.as_ref().is_some_and(|dir| path.starts_with(dir))
+        || project
+            .pixi_compiled
+            .as_ref()
+            .is_some_and(|c| c.files.iter().any(|file| path == file));
     !(hidden || image || owned)
 }
 
@@ -898,7 +1028,8 @@ fn rom_size(clean: &Rom, project: &Project) -> usize {
         || m.music.is_some()
         || m.uberasm.is_some()
         || m.gps.is_some()
-        || m.pixi.is_some();
+        || m.pixi.is_some()
+        || m.pixi_compiled.is_some();
     m.rom_size.unwrap_or(if writes {
         DEFAULT_ROM_SIZE
     } else {
@@ -1071,12 +1202,29 @@ pub fn build_on(base: &Rom, project: &Project, cache: Option<&Cache>) -> Result<
         None => (0, Rom::from_headerless(base.data().to_vec())?),
     };
     for (i, stage) in Stage::ALL.iter().enumerate().skip(first) {
-        stage.run(&mut rom, base, project)?;
+        stage.run_guarded(&mut rom, base, project)?;
         if let Some(cache) = cache {
             cache.put(&keys[i], rom.data())?;
         }
     }
     rom.fix_checksum()?;
+    Ok(rom)
+}
+
+/// The image a build of the project leaves after `last`, for a check that
+/// needs only the stages up to it: an import runs PIXI so, to compare the
+/// size table it makes with a hack's.
+pub fn build_through(clean: &Rom, project: &Project, last: Stage) -> Result<Rom, BuildError> {
+    if clean.identify() != RomIdentity::VanillaUsa {
+        return Err(BuildError::NotClean(clean.sha1_hex()));
+    }
+    let mut rom = Rom::from_headerless(clean.data().to_vec())?;
+    for stage in Stage::ALL {
+        stage.run_guarded(&mut rom, clean, project)?;
+        if stage == last {
+            break;
+        }
+    }
     Ok(rom)
 }
 

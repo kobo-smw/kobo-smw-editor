@@ -381,7 +381,12 @@ how each oracle is produced, where its data lives, and what is known not to matc
   a level (`pixi_inserts_sprites`, with the ROM); `tests/lunar_magic_save.rs`
   (`a_pixi_build_survives_a_lunar_magic_save`) has Lunar Magic save such a build and
   plays level `0EB` across its secret-exit goal tape in the clean ROM, the build, and the
-  saved copy.
+  saved copy. `pixi_insert_is_read_whole` runs PIXI on the synthetic image with a sprite
+  of every type and a shared routine and requires `pixi::read`'s insert, written onto the
+  image PIXI ran on, to give PIXI's image again; `pixi_sprites_carry_through_an_import`
+  (with the ROM) imports a PIXI build both ways, compiled and with the folder, and plays
+  the sprite in each rebuild. `pixi`'s unit tests cover the walk on a synthetic insert,
+  `PROT` lists, and a jump at a site Lunar Magic shares that is not into PIXI's block.
 - **Lunar Magic's objects**: `examples/lm_objects.rs make` writes MWL files with every form
   of objects `22`, `23`, `27`, and `29` (groups 0 and 1 for level `105`, group 2 for the
   vertical level `1CE`); Lunar Magic imports them into vanilla, and `lm_objects grid`

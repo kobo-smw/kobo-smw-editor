@@ -644,3 +644,214 @@ fn pixi_lets_a_level_have_255_sprites() {
     assert!(error.contains("255-sprite loader"), "{error}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A PIXI folder with one of each kind of thing PIXI inserts: a normal
+/// sprite that calls a shared routine, and a sprite of each other type.
+fn pixi_files_of_every_kind(dir: &Path) {
+    pixi_files(dir);
+    write(
+        dir,
+        "pixi/list.txt",
+        "00 test.cfg\n01 routine.cfg\n\
+         CLUSTER:\n00 cluster.asm\nEXTENDED:\n00 extended.asm\n\
+         MINOREXTENDED:\n00 minor.asm\nBOUNCE:\n00 bounce.asm\nSMOKE:\n00 smoke.asm\n\
+         SPINNINGCOIN:\n00 coin.asm\nSCORE:\n00 score.asm\n",
+    );
+    write(
+        dir,
+        "pixi/sprites/routine.cfg",
+        "01\n36\n00 00 00 00 00 00\n00 00\nroutine.asm\n0:0\n",
+    );
+    write(
+        dir,
+        "pixi/sprites/routine.asm",
+        "print \"INIT \",pc\n    RTL\nprint \"MAIN \",pc\n    %SubOffScreen()\n    RTL\n",
+    );
+    let main = "print \"MAIN \",pc\n    RTL\n";
+    for file in [
+        "cluster/cluster.asm",
+        "extended/extended.asm",
+        "misc_sprites/minorextended/minor.asm",
+        "misc_sprites/bounce/bounce.asm",
+        "misc_sprites/smoke/smoke.asm",
+        "misc_sprites/spinningcoin/coin.asm",
+        "misc_sprites/score/score.asm",
+    ] {
+        write(dir, &format!("pixi/{file}"), main);
+    }
+}
+
+/// PIXI's insert, as `pixi::read` finds it from PIXI's tables, holds every
+/// byte PIXI 1.43 writes, and written back onto the image PIXI ran on gives
+/// PIXI's image again: an import carries a hack's sprites whole.
+#[test]
+fn pixi_insert_is_read_whole() {
+    let Some(tool) = common::tool(Tool::Pixi, "KOBO_REQUIRE_PIXI") else {
+        return;
+    };
+    let Some(asar) = common::tool(Tool::Asar, "KOBO_REQUIRE_ASAR") else {
+        return;
+    };
+    let mut data = vec![0; 0x10_0000];
+    data[0x7FC0..0x7FD5].copy_from_slice(b"SUPER MARIOWORLD     ");
+    data[0x7FD5] = 0x20;
+    data[0x7FD7] = 0x0A;
+    let mut rom = kobo_core::Rom::from_bytes(data).unwrap();
+    rom.write(SnesAddr::new(0x06F624), &[0x00, 0x80, 0x11])
+        .unwrap();
+    rom.write(SnesAddr::new(0x00F6E4), &[0x5C, 0x00, 0x80, 0x12])
+        .unwrap();
+    rom.write(SnesAddr::new(0x029B39), &[0xFF, 0xFF]).unwrap();
+    // As vanilla has it: 128 sprites a level.
+    rom.write_u8(SnesAddr::new(0x0FFFE0), 0xFF).unwrap();
+    let dir = temp_dir("pixi-insert");
+    pixi_files_of_every_kind(&dir);
+    let out = kobo_core::tools::run_pixi(&rom, &tool, &dir.join("pixi"), &asar).unwrap();
+    let (insert, notes) = kobo_core::pixi::read(&out, &rom).unwrap().unwrap();
+    assert!(notes.is_empty(), "{notes:?}");
+    assert_eq!(insert.version, 143);
+    assert!(insert.sprites_255);
+    // PIXI's block, the size table, the sprites' code, the routine, and
+    // each type's table and code.
+    assert!(insert.blocks.len() >= 14, "{:?}", insert.blocks.keys());
+
+    let mut again = kobo_core::Rom::from_headerless(rom.data().to_vec()).unwrap();
+    kobo_core::pixi::write_blocks(&mut again, &insert).unwrap();
+    kobo_core::pixi::write_sites(&mut again, &insert).unwrap();
+    // The internal header's checksum, which PIXI fixes, aside.
+    let checksum = 0x7FDC..0x7FE0;
+    let differ: Vec<SnesAddr> = (0..out.len())
+        .filter(|i| !checksum.contains(i) && out.data()[*i] != again.data()[*i])
+        .map(|i| {
+            out.mapping()
+                .pc_to_snes(kobo_core::PcAddr::new(i as u32))
+                .unwrap()
+        })
+        .collect();
+    assert!(
+        differ.is_empty(),
+        "{} bytes, from {:?}",
+        differ.len(),
+        differ.first()
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A hack made with PIXI imports with its sprites carried as the compiled
+/// code it holds, and the project built from that writes PIXI's insert
+/// where the hack has it and plays the sprite as the hack does. Imported
+/// with the PIXI folder instead, the project builds the sprites from it.
+#[test]
+fn pixi_sprites_carry_through_an_import() {
+    if common::tool(Tool::Pixi, "KOBO_REQUIRE_PIXI").is_none() {
+        return;
+    }
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    if common::asar().is_none() {
+        return;
+    }
+    use kobo_core::ram::RamAddr;
+    let dir = temp_dir("pixi-carry");
+    pixi_files(&dir);
+    let (mut level, _) = kobo_core::import::read_level(&clean, 0x105).unwrap();
+    let at = level.sprites.list.iter().position(|s| s.x > 8).unwrap();
+    level.sprites.list.insert(
+        at,
+        kobo_core::source::level::Sprite {
+            id: 0x00,
+            x: 8,
+            y: 20,
+            extra_bits: 2,
+            extension: vec![0x12, 0x34],
+        },
+    );
+    let project = Project {
+        root: dir.clone(),
+        manifest: Manifest {
+            pixi: Some(PathBuf::from("pixi")),
+            ..Manifest::default()
+        },
+        levels: vec![(0x105, level.clone())],
+        ..Default::default()
+    };
+    let hack = build::build(&clean, &project).unwrap();
+    // The sprite stores $42 in $0DBF every frame.
+    let coins = |rom: &kobo_core::Rom| {
+        kobo_core::expand::play_level(rom, 0x105, 60, |_, _| {})
+            .unwrap()
+            .u8(RamAddr::new(0x7E_0DBF))
+    };
+    assert_eq!(coins(&hack), 0x42);
+
+    let carried = temp_dir("pixi-carried");
+    fs::remove_dir_all(&carried).unwrap();
+    let report = kobo_core::import::import_rom(&hack, &clean, &carried, false).unwrap();
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("carried as compiled code")),
+        "{:?}",
+        report.notes
+    );
+    let imported = Project::load(&carried).unwrap();
+    assert!(imported.manifest.pixi.is_none());
+    let compiled = imported.pixi_compiled.as_ref().unwrap();
+    let built = build::build(&clean, &imported).unwrap();
+    for (&at, bytes) in compiled.insert.blocks.iter().chain(&compiled.insert.sites) {
+        assert_eq!(
+            built.read(at, bytes.len()).unwrap(),
+            hack.read(at, bytes.len()).unwrap(),
+            "{at}"
+        );
+    }
+    assert_eq!(
+        kobo_core::import::read_level(&built, 0x105).unwrap().0,
+        level
+    );
+    assert_eq!(coins(&built), 0x42);
+    // A build of it again is the same, and so is one from the cache.
+    assert_eq!(
+        build::build(&clean, &imported).unwrap().data(),
+        built.data()
+    );
+    let cache = Cache::new(carried.join("cache"));
+    build::build_cached(&clean, &imported, Some(&cache)).unwrap();
+    assert_eq!(
+        build::build_cached(&clean, &imported, Some(&cache))
+            .unwrap()
+            .data(),
+        built.data()
+    );
+
+    let sources = temp_dir("pixi-sources");
+    fs::remove_dir_all(&sources).unwrap();
+    let options = kobo_core::import::Options {
+        all: false,
+        pixi: Some(&dir.join("pixi")),
+    };
+    let report = kobo_core::import::import_rom_with(&hack, &clean, &sources, &options).unwrap();
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("with the hack's sprite sizes")),
+        "{:?}",
+        report.notes
+    );
+    let imported = Project::load(&sources).unwrap();
+    assert_eq!(imported.manifest.pixi, Some(PathBuf::from("pixi")));
+    assert!(imported.pixi_compiled.is_none());
+    assert!(sources.join("pixi/sprites/test.asm").is_file());
+    let built = build::build(&clean, &imported).unwrap();
+    assert_eq!(
+        kobo_core::import::read_level(&built, 0x105).unwrap().0,
+        level
+    );
+    assert_eq!(coins(&built), 0x42);
+    for dir in [dir, carried, sources] {
+        let _ = fs::remove_dir_all(dir);
+    }
+}

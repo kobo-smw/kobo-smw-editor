@@ -25,6 +25,7 @@ pub mod mwl;
 pub mod names;
 pub mod operation;
 pub mod palette;
+pub mod pixi;
 pub mod ram;
 pub mod rats;
 pub mod render;
