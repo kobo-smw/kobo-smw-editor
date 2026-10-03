@@ -36,7 +36,9 @@ address, "PC" an offset in the headerless file.
   always get that note, since Kobo can pin no build of them.
 - Reproducibility of the builds themselves: the Linux ones are made in a pinned Debian 12
   image with packages from a pinned snapshot of Debian's archive, and a rebuild gives the
-  same bytes; they need glibc 2.35 (Ubuntu 22.04) or later. The Windows and macOS ones
+  same bytes; they need glibc 2.35 (Ubuntu 22.04) or later, which `build.py test` checks.
+  Older systems configure their own build of a tool (accepted, maintainer, 2026-10-03;
+  Debian 11, the older image first tried, has left Debian's mirrors). The Windows and macOS ones
   depend on the compilers of GitHub's runner images, which cannot be pinned: rebuilt on
   the same image they match, and a newer image may not. That is accepted (maintainer,
   2026-10-03): Kobo pins every build by hash, so what users run and what a project builds

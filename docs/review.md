@@ -13,10 +13,6 @@ settle it.
 
 ## Open
 
-- **The pinned Linux builds need glibc 2.35 or later** (2026-09-27, kobo-tools `pins.py`
-  `MAX_GLIBC`). Debian 11, the older image first tried, has left Debian's mirrors;
-  building on Debian 12 makes Ubuntu 22.04 the oldest distribution the builds run on
-  (checked by `build.py test`). Older systems configure their own build of a tool.
 - **The .NET runtime is not rehosted as source** (2026-09-27, kobo-tools `pins.py`). The
   UberASM Tool source archive holds UberASM Tool's source and Pidgin's (MIT, bundled);
   the .NET runtime bundled beside them (MIT) is treated as the platform it runs on, named
