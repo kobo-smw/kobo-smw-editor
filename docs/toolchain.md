@@ -38,8 +38,11 @@ address, "PC" an offset in the headerless file.
   depend on the compilers of GitHub's runner images, which cannot be pinned: rebuilt on
   the same image they match, and a newer image may not. kobo-tools's `verify` workflow
   rebuilds a release from its source archives and compares every file: all twelve
-  builds of `r1` came out byte-identical (2026-09-27), and the Linux ones match a local
-  rebuild in Docker too.
+  builds of `r1` came out byte-identical (2026-10-03), and the Linux ones match a local
+  rebuild in Docker too. `r1` was built once before Actions were turned on
+  in `kobo-smw/kobo-tools`; republished by its CI (2026-10-03), its builds differ from
+  that one's only in the repository named on the first line of `KOBO-TOOLS.txt`, so
+  every hash changed.
 
 ## Asar 1.91, and every tool built on it
 
