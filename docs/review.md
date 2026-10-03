@@ -13,14 +13,6 @@ settle it.
 
 ## Open
 
-- **The pinned UberASM Tool is self-contained, about 29 MB per platform** (2026-09-27,
-  `kobo-smw/kobo-tools`, `build.py`'s `build_uberasm`). Upstream's is a 32-bit Windows
-  program needing .NET 8; Kobo's builds bundle the .NET runtime in one file so nothing
-  has to be installed, at 29 MB instead of about 1 MB framework-dependent. Trimming would
-  make it about 12 MB, but .NET warns that Pidgin, its parser library, is not trim-safe,
-  so it is not trimmed. Settles it: whether a download that size is acceptable, or
-  users should install .NET 8 (whose support ends November 2026, which would also need
-  UberASM Tool moved to a newer .NET).
 - **PIXI's and UberASM Tool's pinned builds carry no Asar library** (2026-09-27,
   [toolchain.md](toolchain.md#kobos-pinned-builds)). Kobo lays the Asar it uses beside
   each (`FolderTool`), so one build runs one Asar and `KOBO_ASAR_LIB` reaches every tool;

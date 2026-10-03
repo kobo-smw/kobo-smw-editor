@@ -285,7 +285,10 @@ are placed as well as that old ones are kept.
   pinned build is the same source published self-contained as a single file
   (`--self-contained true -p:PublishSingleFile=true`, with `InvariantGlobalization`), for
   x64, or arm64 on Apple silicon, which needs neither; trimming it warns that Pidgin, its
-  parser library, is not trim-safe, so it is not trimmed. A checkout's
+  parser library, is not trim-safe, so it is not trimmed. The cost is about 29 MB per
+  platform against about 1 MB framework-dependent, accepted (maintainer, 2026-10-03) so
+  that nothing has to be installed; since .NET 8's support ends 2026-11-10, kobo-tools
+  `r2` builds it against .NET 10 (supported to 2028-11) instead. A checkout's
   `.gitkeep` files are taken for library binaries ("Zero insert size"); a release has none.
   Kobo's stage lays the project's folder over a copy of the tool's without hidden files,
   and refuses a project folder with no `list.txt`, which would run the tool's own.
