@@ -19,7 +19,9 @@ address, "PC" an offset in the headerless file.
   UberASM Tool self-contained (no .NET to install) for x64 or arm64, without the 32-bit
   `asar.dll` its repository holds; and no Asar library in PIXI's or UberASM Tool's folder:
   Kobo lays the one it uses beside them ([`FolderTool`](../crates/kobo-core/src/tools/mod.rs)),
-  so a build runs one Asar throughout.
+  so a build runs one Asar throughout. A release used without Kobo needs the library
+  copied from the Asar archive, as its README says; kept so (maintainer, 2026-10-03),
+  since the releases are made for Kobo, which would replace a bundled copy anyway.
 - `Tool::locate` takes a configured path first (the environment variable, then `[tools]`),
   then the pinned build for the platform: from the cache (`KOBO_TOOL_CACHE`, else
   `kobo/tools` in the user's cache directory, one folder per build named by its hash), or

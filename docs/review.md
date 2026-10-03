@@ -13,11 +13,6 @@ settle it.
 
 ## Open
 
-- **PIXI's and UberASM Tool's pinned builds carry no Asar library** (2026-09-27,
-  [toolchain.md](toolchain.md#kobos-pinned-builds)). Kobo lays the Asar it uses beside
-  each (`FolderTool`), so one build runs one Asar and `KOBO_ASAR_LIB` reaches every tool;
-  someone using a kobo-tools release without Kobo has to copy the library from the Asar
-  archive. Settles it: whether the releases should also work unpacked on their own.
 - **Windows and macOS tool builds are reproducible only on the same runner image**
   (2026-09-27, kobo-tools README). The Linux builds are made in a pinned Debian image
   with packages from a pinned snapshot, and two local runs and CI gave the same bytes;
