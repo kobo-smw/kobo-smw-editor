@@ -798,6 +798,10 @@ fn pixi_sprites_carry_through_an_import() {
     );
     let imported = Project::load(&carried).unwrap();
     assert!(imported.manifest.pixi.is_none());
+    // The manifest says, for good, what the compiled insert is and how to
+    // replace it.
+    let manifest = fs::read_to_string(carried.join("kobo.toml")).unwrap();
+    assert!(manifest.contains("--pixi <folder>"), "{manifest}");
     let compiled = imported.pixi_compiled.as_ref().unwrap();
     let built = build::build(&clean, &imported).unwrap();
     for (&at, bytes) in compiled.insert.blocks.iter().chain(&compiled.insert.sites) {

@@ -643,40 +643,15 @@ pub fn import_rom_with(
                 .collect(),
             size_table: carried.size_table.as_ref().map(|_| size_file.clone()),
         };
+        // Kept in the files, so that whoever opens the project later learns
+        // what the compiled insert is, what it cannot do, and how to leave it.
+        let explained = compiled_pixi_comment(&version, !conflicts.is_empty(), manifest.sa1);
         let mut top = Comments::default();
-        top.add(
-            Comments::TOP,
-            if conflicts.is_empty() {
-                vec![
-                    format!(
-                        "# PIXI {version}'s insert, carried from the hack by `kobo import`: the"
-                    ),
-                    "# compiled code and tables the ROM holds, which a build writes back where"
-                        .to_string(),
-                    "# PIXI put them. It is not source and cannot be edited as such.".to_string(),
-                ]
-            } else {
-                vec![
-                    format!("# PIXI {version}'s size table alone, carried from the hack by `kobo"),
-                    "# import`: its code could not go where the hack has it. The levels build"
-                        .to_string(),
-                    "# with their sprites' extension bytes, but the custom sprites have no code."
-                        .to_string(),
-                ]
-            },
-        );
+        top.add(Comments::TOP, explained.clone());
         let file = folder.join("compiled.toml");
         write(&dir.join(&file), compiled.to_toml(&top))?;
         manifest.pixi_compiled = Some(file);
-        manifest_comments.add(
-            "pixi",
-            [
-                "# The hack's sprites, compiled, as its ROM holds them. With their sources,"
-                    .to_string(),
-                "# import again with `--pixi <folder>`, or give `dir` in place of `compiled`."
-                    .to_string(),
-            ],
-        );
+        manifest_comments.add("pixi", explained);
         if conflicts.is_empty() {
             // The blocks stay where the hack has them, which leaves the free
             // space around them in pieces; Kobo's own tables take whole
@@ -749,6 +724,61 @@ pub fn import_rom_with(
         })
         .collect();
     Ok(report)
+}
+
+/// The comment an import puts before `[pixi]` in the manifest and at the
+/// top of `compiled.toml`: what a compiled insert is, what it cannot do, and
+/// how a project moves to its sprites' sources. `size_only` when the code
+/// could not be carried and only the size table was.
+fn compiled_pixi_comment(version: &str, size_only: bool, sa1: bool) -> Vec<String> {
+    let text = if size_only {
+        format!(
+            "The hack's custom sprites could not be carried. `kobo import` had no sources \
+             for them, and the code PIXI {version} compiled for them sits where {} has \
+             something of its own, and compiled code cannot move. Only PIXI's size table \
+             is carried (pixi/compiled.toml, pixi/compiled/sizes.bin), so every level \
+             builds with its sprites' extension bytes, but the custom sprites have no code \
+             and will not work in play. To fix it, give the sprites' sources: import \
+             again with `--pixi <folder>`, or give `dir` in place of `compiled`, a folder \
+             holding every sprite the hack uses.",
+            if sa1 {
+                "SA-1 Pack 1.40, which this project builds on (the hack was made with \
+                 another version),"
+            } else {
+                "the image this project builds on"
+            }
+        )
+    } else {
+        format!(
+            "The hack's custom sprites, carried by `kobo import` as the code PIXI \
+             {version} compiled for them, since the import had no sources for them. \
+             pixi/compiled.toml lists PIXI's hooks, and pixi/compiled/ holds each block of \
+             its code and tables as a .bin file, which a build writes back at the same \
+             address; the ROM is up to a megabyte larger than the hack's, to leave room \
+             around them. They cannot be edited, and code they call in other tools (UberASM Tool, \
+             GPS, patches) is not carried, so a sprite may misbehave in play. They are a \
+             stopgap, meant to be replaced with the sprites' sources: import again with \
+             `--pixi <folder>`, or give `dir` in place of `compiled`. It is one or the \
+             other, since PIXI installs its own code over the compiled one, so the folder \
+             must hold every sprite the hack uses."
+        )
+    };
+    wrap_comment(&text, 88)
+}
+
+/// `text` as `# ` comment lines of at most `width` characters.
+fn wrap_comment(text: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::from("#");
+    for word in text.split_whitespace() {
+        if line.len() + 1 + word.len() > width && line != "#" {
+            lines.push(std::mem::replace(&mut line, String::from("#")));
+        }
+        line.push(' ');
+        line.push_str(word);
+    }
+    lines.push(line);
+    lines
 }
 
 /// Builds the project in `dir` as far as PIXI, and compares the size table

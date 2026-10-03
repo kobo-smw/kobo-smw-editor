@@ -428,7 +428,9 @@ impl Manifest {
                 return Err(invalid(
                     "pixi",
                     "has `dir` and `compiled`: sprites come from their sources or from a \
-                     hack's compiled insert, not both",
+                     hack's compiled insert, not both. PIXI would install its own code over \
+                     the compiled one, so `dir` replaces every compiled sprite at once: give \
+                     it a folder that holds them all, and remove `compiled`",
                 ));
             }
         }

@@ -163,9 +163,20 @@ are placed as well as that old ones are kept.
   sprite folders, `routines/`, `asm/ExtraDefines` and `asm/ExtraHijacks`; not PIXI's own
   patches, nor `pixi_settings.json`, whose options Kobo's run sets) into `pixi/` as
   `[pixi] dir`, runs the build as far as PIXI, and notes whether PIXI 1.43 makes the
-  hack's size table from them. Without it, the import carries the insert PIXI left in the
+  hack's size table from them. The pinned PIXI runs them whatever version made the
+  hack, with Kobo's options, not the hack's settings: per-level sprites (`-pl`) and
+  a project's own PIXI version come when a hack needs them (accepted with the
+  maintainer, 2026-10-03). Without it, the import carries the insert PIXI left in the
   ROM as compiled code (`[pixi] compiled`, `pixi/compiled.toml` and a `.bin` file a
-  block; `source::pixi`), which builds write back where PIXI put it.
+  block; `source::pixi`), which builds write back where PIXI put it. A file a block
+  keeps a project's changes to it small in git (decided with the maintainer,
+  2026-10-03). A project has `dir` or `compiled`, never both: PIXI would install its own
+  code and tables over the compiled insert's, so moving to sources replaces every
+  compiled sprite at once, which the manifest's error and the import's comment say.
+  Keeping some compiled sprites beside sources is not supported (decided with the
+  maintainer, 2026-10-03). The bytes are
+  the hack's sprites compiled with PIXI's own (GPL) code: a project carries them from
+  its user's own ROM, and Kobo never distributes them.
 - The insert (`kobo_core::pixi`) is found as PIXI's own cleanup finds an earlier run's
   (`clean_hack`, `src/sprite.cpp`): `STSD` and the version byte at `$02FFE2` (`$02` for
   1.02, `$19`-`$23` for 1.2.5-1.2.15, `$30`-`$32`, then 140-143), the main block that
@@ -188,18 +199,33 @@ are placed as well as that old ones are kept.
   `tests/tool_stages.rs` checks that the insert read from PIXI 1.43's output, with a
   sprite of every type and a shared routine, written onto the image PIXI ran on gives
   PIXI's image again, and that a hack imported either way plays its sprite.
+- A compiled insert is a workaround for migrating a hack, not a first-party format: a
+  project is meant to replace it with its sprites' sources (`[pixi] dir`), and Kobo
+  favours whatever keeps such an import building over polishing it (decided with the
+  maintainer, 2026-10-03).
 - A compiled insert's blocks go in at their own addresses before Kobo's install
   (`Stage::SpriteBlocks`), since code is not relocatable; Kobo's patches and blocks then
-  take space around them. Its sites go in at the sprites stage, where PIXI would run. A
+  take space around them, so for such a project Asar places them around the hack's
+  blocks rather than first on the bare base (accepted with the maintainer,
+  2026-10-03). Its sites go in at the sprites stage, where PIXI would run. A
   build fails if a block's space is not free. The blocks leave the free space in pieces,
-  so the import takes a ROM 1 MiB larger than the hack's, up to 4 MiB. A block the base
+  so the import takes a ROM 1 MiB larger than the hack's, up to 4 MiB (accepted with the
+  maintainer, 2026-10-03; a project can lower `[rom] size` once its sprites come from
+  source). A block the base
   image has is never PIXI's: on SA-1, a hack's older SA-1 Pack has hooks at some of
   PIXI's sites that jump into SA-1 Pack's blocks. Where the hack's PIXI put a block that
   the base holds something else in (an SA-1 hack made with an older SA-1 Pack, whose
   blocks are smaller than 1.40's: 13 QLDC entries), the code cannot be carried; the
   import then carries PIXI's size table alone (`size_table` in `compiled.toml`), which a
   build places in free space and points `$0EF30C` at, so the levels build with their
-  sprites' extension bytes but the custom sprites have no code.
+  sprites' extension bytes but the custom sprites have no code (accepted with the
+  maintainer, 2026-10-03).
+- Either way, the import writes a comment before `[pixi]` in the manifest and at the top
+  of `compiled.toml` saying what the insert is and why it is `.bin` files, what it cannot
+  do (no editing; other tools' code not carried; with the size table alone, no sprite
+  code at all), and how to move to the sprites' sources. It is the user's comment from
+  then on, which `kobo fmt` keeps, so it stays with the project rather than in an
+  import's output alone.
 - Kobo's own Asar patches run after the carried blocks, and Asar 1.91's free space search
   goes wrong around them in two ways: inside a block that starts at a bank's start (the
   limitation below), and, on SA-1, at a free run of fewer than eight bytes before a bank's
