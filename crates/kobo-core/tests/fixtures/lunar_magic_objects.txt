@@ -1,0 +1,30 @@
+# Lunar Magic's placed objects in every form (tests/common/object_cases.rs), imported by
+# Lunar Magic 3.70 into the vanilla ROM as MWL files (examples/lm_objects.rs make, then
+# -ImportLevel into level 105 for groups 0 and 1, 1CE for group 2). Columns: SHA-1 of the
+# case's grid as `lm_objects grid` prints it (after the name), then the case's name.
+# tests/project_build.rs checks Kobo's code against these.
+a3ceeecd5c4122a355af442720f5d5433f24a684 22 1x1
+d257868b637ed1e6be549a915e230f892ec6ce80 22 4x3
+0fd2ed38f6e3ce01ee4b3688c17519d56c202d6c 23 16x1 across
+4684584fdff074295f86c2218248fea0202ff929 22 1x4 at the bottom
+21b06907428a5dee368212752894b576a803d2f8 27 single 5x3
+f6a36de3ef228a128c5daf570608e5dace58607b 27 single across
+a0456621950f17ea1ea90875e7342f6b3216cc5f 27 block 4x3
+bb1e50aeefe15bd0e32bad01796c6f2677b95501 27 block 16x1
+492cbc707b2f001a99d1b98fbada233d9837e8b1 27 block across a page
+786cb0eb7c202b345d4381c65e323394c6f0284b 27 stretch 7x6 of 3x2
+4d301302b756b16f56bdd85760ce1de6217dc74f 27 stretch 2x2 of 4x3
+77b1dd2a594426f674e5bff3510f169b3376eeb9 27 stretch 7x7 of 3x3
+234a2eb90045b28f7ba4711f4574207b9c057814 27 stretch 4x4 of 4x4
+f65bd796744baabe012a7f93d914e19e6531b42a 27 stretch 5x1 of 1x1
+938082a084dc7ddfce23aa63248fc058d80c1738 27 wide 20x3 of 3x2
+b76646bd4b2b3dc265a01a5622a1f20224b8a4dd 27 wide 3x20 of 2x3
+da39a3ee5e6b4b0d3255bfef95601890afd80709 27 flag 4x3 of 1x1, show
+dae3f80be2c590d77f41252e6fae991b5b82197d 27 flag 4x3 of 1x1, +100
+14ee78d9724dc8380492b19801374c00801138cf 29 single 2x2
+971eba51ec30d59d0f58f89e90880af9cef0d352 29 block 2x2
+09b2b164e0650474685201f436bffb62f78bf2e2 v 27 block 4x3 across
+2cbe1c5c57dbb0e19ea24a182892afdb0f82556f v 27 single 1x20 down
+6c79932d7e8a5c3acee5155065ded076020f2156 v 27 wide 21x2 of 3x2
+9084bff2d5e1969aa8181a693a345ec8015ab2c3 v 22 4x4 across and down
+8838af177cba68423b963c30ebcb842be74a2052 v 27 wide 2x40 of 1x3

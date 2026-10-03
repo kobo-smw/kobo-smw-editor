@@ -1,0 +1,62 @@
+#!/bin/bash
+# A Lunar Magic-saved ROM with ExAnimation installed, with Kobo's ExAnimation code
+# (asm/lunar-magic/exanimation.asm) in place of Lunar Magic's, keeping the ROM's
+# level and global lists, alternative files, and settings:
+#   with-kobo-exanim lm.smc out.sfc
+# then compare the two frame by frame with examples/exanim_probe.rs (ab) and in
+# pictures with examples/render_hashes.
+# Lunar Magic's change to the palette copy at $00A5E1, which Kobo's code does not make,
+# is put back to the game's bytes.
+# Needs `kobo` (KOBO, default on PATH), Asar's library (KOBO_ASAR_LIB), and the vanilla
+# ROM (KOBO_SMW_ROM or kobo's configuration), or for an SA-1
+# ROM the vanilla ROM with SA-1 Pack (KOBO_SA1_BASE, base-rom).
+set -euo pipefail
+here=$(dirname "$(realpath "$0")")
+K=${KOBO:-kobo}; A=$here/../../crates/kobo-core/asm/lunar-magic
+# The game's bytes: the vanilla ROM's, or SA-1 Pack's for an SA-1 ROM (base-rom).
+vanilla=$("$here/base-rom" "$1")
+t=$(mktemp -d)
+trap 'rm -rf "$t"' EXIT
+python3 - "$1" "$t/0.sfc" "$vanilla" <<'PY'
+import sys
+def load(p):
+    d = open(p, 'rb').read(); return bytearray(d[len(d) % 0x8000:])
+def pc(a): return ((a >> 16) & 0x7F) * 0x8000 + (a & 0x7FFF)
+d, v = load(sys.argv[1]), load(sys.argv[3])
+if d[pc(0x0583AD)] != 0x22:
+    sys.exit('no ExAnimation installed (no JSL at $0583AD)')
+d[pc(0x00A5E1):pc(0x00A5E7)] = v[pc(0x00A5E1):pc(0x00A5E7)]
+# exanimation.asm autocleans the operand at $0583AD: nothing of the ROM's to free.
+d[pc(0x0583AE):pc(0x0583AE) + 3] = b'\xff' * 3
+open(sys.argv[2], 'wb').write(d)
+PY
+"$K" asm "$A/exanimation.asm" "$t/1.sfc" -r "$t/0.sfc" >/dev/null
+# The ROM's pointers, which exanimation.asm initialises: the level table's and the
+# global list's (at +$EA, +$5B, +$65 of the hook's target), the alternative files, and
+# the levels' settings.
+python3 - "$1" "$t/1.sfc" "$t/2.sfc" <<'PY'
+import sys
+def load(p):
+    d = open(p, 'rb').read(); return bytearray(d[len(d) % 0x8000:])
+def pc(a): return ((a >> 16) & 0x7F) * 0x8000 + (a & 0x7FFF)
+# A pointer the ROM holds may name any bank: on SA-1 $80-$BF and $C0-$FF are
+# other megabytes of ROM, not mirrors (Super MMC's reset, or 04-07 past 4 MiB).
+def rom_pc(d, a):
+    if d[0x7FD5] != 0x23:
+        return pc(a)
+    bank = a >> 16
+    if bank >= 0xC0:
+        return (((bank >> 4) & 3) + (4 if len(d) > 0x400000 else 0)) * 0x100000 + (a & 0xFFFFF)
+    return (((bank >> 5) & 1) | ((bank >> 6) & 2)) * 0x100000 + (bank & 0x1F) * 0x8000 + (a & 0x7FFF)
+def r3(d, a): return d[pc(a)] | d[pc(a) + 1] << 8 | d[pc(a) + 2] << 16
+s, d = load(sys.argv[1]), load(sys.argv[2])
+ts, td = r3(s, 0x0583AE), r3(d, 0x0583AE)
+for off, n in ((0xEA, 3), (0x5B, 2), (0x65, 2)):
+    d[rom_pc(d, td + off):rom_pc(d, td + off) + n] = s[rom_pc(s, ts + off):rom_pc(s, ts + off) + n]
+d[pc(0x03BCC0):pc(0x03BCC0) + 16] = s[pc(0x03BCC0):pc(0x03BCC0) + 16]
+d[pc(0x03FE00):pc(0x03FE00) + 512] = s[pc(0x03FE00):pc(0x03FE00) + 512]
+open(sys.argv[3], 'wb').write(d)
+PY
+# Kobo fixes the checksum.
+echo lorom > "$t/empty.asm"
+"$K" asm "$t/empty.asm" "$2" -r "$t/2.sfc" >/dev/null

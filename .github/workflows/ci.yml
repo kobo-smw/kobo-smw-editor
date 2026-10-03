@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: fmt and clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  licences:
+    name: dependency licences
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Every dependency's licence must be one deny.toml allows: MPL-2.0
+      # and those compatible with it.
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses
+
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+      - uses: Swatinem/rust-cache@v2
+      # The builds of Asar and UberASM Tool (and PIXI) that Kobo pins, from
+      # kobo-smw/kobo-tools, checked against pinned.toml's hashes. kobo-tools
+      # builds them from upstream source and can rebuild a release to
+      # compare (its verify workflow).
+      - name: Tool cache
+        shell: bash
+        run: echo "KOBO_TOOL_CACHE=$RUNNER_TEMP/kobo-tools" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/kobo-tools
+          key: kobo-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('crates/kobo-core/src/tools/pinned.toml') }}
+      - name: Fetch the pinned tools
+        run: cargo run -p kobo-cli -- tools fetch
+      # ROM-backed tests skip themselves: no ROM data exists in CI. The
+      # tests never download: they find the tools in the cache.
+      - run: cargo test --workspace
+        env:
+          KOBO_OFFLINE: "1"
+          KOBO_REQUIRE_ASAR: "1"
+          KOBO_REQUIRE_UBERASM: "1"
+          KOBO_REQUIRE_PIXI: "1"

@@ -1,0 +1,28 @@
+# cargo-deny's configuration; CI runs `cargo deny check licenses`.
+#
+# Kobo is MPL-2.0, and every dependency must be under a licence compatible
+# with it. Add one here only after checking it is.
+
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
+
+[licenses]
+allow = [
+    "MPL-2.0",
+    "MIT",
+    "Apache-2.0",
+    "ISC",
+    "BSD-3-Clause",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "Unicode-3.0",
+    # webpki-roots: Mozilla's root certificates, as data.
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.9

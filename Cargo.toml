@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+members = ["crates/kobo-core", "crates/kobo-cli"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+license = "MPL-2.0"
+repository = "https://github.com/kobo-smw/kobo-smw-editor"
+rust-version = "1.98"
+
+[workspace.dependencies]
+kobo-core = { path = "crates/kobo-core" }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+dirs = "6"
+flate2 = "1"
+libc = "0.2"
+libloading = "0.9"
+png = "0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+sha2 = "0.10"
+tar = { version = "0.4", default-features = false }
+thiserror = "2"
+toml = "0.9"
+toml_edit = "0.25"
+# Downloads the pinned tool builds, over rustls with ring and webpki-roots.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+
+[workspace.lints.clippy]
+all = "warn"

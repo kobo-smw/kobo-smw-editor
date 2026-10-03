@@ -1,0 +1,45 @@
+#!/bin/bash
+# A Lunar Magic-saved ROM with Kobo's code for Lunar Magic's layout (asm/lunar-magic/:
+# the Map16 routine, the acts-like chain, the placed objects, the level number,
+# backgrounds, and custom palettes) in place of Lunar Magic's, keeping the ROM's Map16
+# page tables, acts-like tables, level flags, and BG Map16 pointers, so a hack's content
+# runs through both implementations:
+#   with-kobo lm.smc out.sfc
+# then compare the two with examples/render_hashes and ramdiff.py. The operands Kobo's
+# patches autoclean are cleared first, so that Asar frees nothing of the ROM's.
+# entrance.asm is left out: swapping it in alone changes $5B and $0BE7, which come with
+# the hook at $05DA17 (docs/lunar-magic-install.md), so Kobo's entrance code is checked
+# against Kobo's builds instead (examples/entry_probe.rs).
+# Needs `kobo` (KOBO, default on PATH) and Asar's library (KOBO_ASAR_LIB).
+set -euo pipefail
+here=$(dirname "$(realpath "$0")")
+K=${KOBO:-kobo}; A=$here/../../crates/kobo-core/asm/lunar-magic
+t=$(mktemp -d)
+python3 - "$1" $t/0.sfc <<'PY'
+import sys
+d=open(sys.argv[1],'rb').read(); d=bytearray(d[len(d)%0x8000:])
+def pc(a): return ((a>>16)&0x7f)*0x8000+(a&0x7fff)
+for x in (0x06F540, 0x06F624, 0x06F660): d[pc(x):pc(x)+4]=b'\xff'*4
+open(sys.argv[2],'wb').write(d)
+PY
+$K asm $A/map16.asm $t/1.sfc -r $t/0.sfc >/dev/null
+$K asm $A/actslike.asm $t/1b.sfc -r $t/1.sfc >/dev/null
+$K asm $A/objects.asm $t/1c.sfc -r $t/1b.sfc >/dev/null
+$K asm $A/level.asm $t/1d.sfc -r $t/1c.sfc >/dev/null
+$K asm $A/background.asm $t/1e.sfc -r $t/1d.sfc >/dev/null
+$K asm $A/palette.asm $t/1f.sfc -r $t/1e.sfc >/dev/null
+$K asm $A/exits.asm $t/2.sfc -r $t/1f.sfc >/dev/null
+python3 - "$1" $t/2.sfc $t/3.sfc <<'PY'
+import sys
+def ld(p):
+  d=open(p,'rb').read(); return bytearray(d[len(d)%0x8000:])
+def pc(a): return ((a>>16)&0x7f)*0x8000+(a&0x7fff)
+a=ld(sys.argv[1]); k=ld(sys.argv[2])
+keep=[(0x0EF310,512),(0x0EFD50,48),(0x06F547,1),(0x06F553,2),(0x06F557,1),(0x06F55C,2),(0x06F560,1),(0x06F567,2),(0x06F56B,1),(0x06F570,2),(0x06F574,1),(0x06F586,2),(0x06F58A,1),(0x06F594,2),(0x06F598,1),(0x06F59D,2),(0x06F5A1,1),(0x06F5A8,2),(0x06F5AC,1),(0x06F5B1,2),(0x06F5B5,1),(0x06F624,3),(0x06F63A,3)]
+for x,n in keep: k[pc(x):pc(x)+n]=a[pc(x):pc(x)+n]
+open(sys.argv[3],'wb').write(k)
+PY
+# Kobo fixes the checksum, mirroring a size that is not a power of two.
+echo lorom > $t/empty.asm
+$K asm $t/empty.asm "$2" -r $t/3.sfc >/dev/null
+rm -rf $t

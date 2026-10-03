@@ -1,0 +1,6 @@
+# GFX files of Lunar Magic hacks, as exported by Lunar Magic 3.21 -ExportGFX. Columns:
+# headerless ROM SHA-1, SHA-1 of GFX00.bin to GFX33.bin concatenated in that order.
+# Lunar Magic will not export from a headerless ROM without asking to add a copier
+# header, which stalls a headless run: give it a copy with 512 zero bytes in front.
+# QLDC 2021 34_idol (BPS patch; graphics stored as LC_LZ3)
+4236c2f097677097e2395928b2454898af3b9f11 00bd53bbf6e6b0a3d07fa9767687cab1755406c8

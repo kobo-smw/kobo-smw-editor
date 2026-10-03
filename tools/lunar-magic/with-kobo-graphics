@@ -1,0 +1,59 @@
+#!/bin/bash
+# A Lunar Magic-saved ROM with 4bpp GFX (and ExGFX and graphics lists, if it has them)
+# with Kobo's graphics loader (asm/lunar-magic/graphics.asm) in place of Lunar Magic's:
+# the sites its 4bpp and ExGFX pieces changed that Kobo's does not replace put back to
+# the game's bytes, then graphics.asm applied, keeping the ROM's GFX, ExGFX, pointers,
+# and lists:
+#   with-kobo-graphics lm.smc out.sfc
+# then compare the two with examples/gfx_probe.rs (loads 0000-8000) and
+# examples/render_hashes. With WITH_VRAM=1, Kobo's VRAM patch is swapped in first
+# (with-kobo-vram).
+# Needs `kobo` (KOBO, default on PATH), Asar's library (KOBO_ASAR_LIB), and the vanilla
+# ROM (KOBO_SMW_ROM or kobo's configuration), or for an SA-1
+# ROM the vanilla ROM with SA-1 Pack (KOBO_SA1_BASE, base-rom).
+set -euo pipefail
+here=$(dirname "$(realpath "$0")")
+K=${KOBO:-kobo}; A=$here/../../crates/kobo-core/asm/lunar-magic
+# The game's bytes: the vanilla ROM's, or SA-1 Pack's for an SA-1 ROM (base-rom).
+vanilla=$("$here/base-rom" "$1")
+t=$(mktemp -d)
+trap 'rm -rf "$t"' EXIT
+src=$1
+if [ "${WITH_VRAM:-}" = 1 ]; then
+  "$here/with-kobo-vram" "$1" "$t/v.sfc"
+  src=$t/v.sfc
+fi
+python3 - "$src" "$vanilla" "$t/0.sfc" <<'PY'
+import sys
+def load(p):
+    d = open(p, 'rb').read(); return bytearray(d[len(d) % 0x8000:])
+def pc(a): return ((a >> 16) & 0x7F) * 0x8000 + (a & 0x7FFF)
+d, v = load(sys.argv[1]), load(sys.argv[2])
+# Lunar Magic's 4bpp and ExGFX pieces outside what graphics.asm replaces: the credits,
+# cutscenes, overworld, MARIO START and Mode 7 boss conversions, and the switch
+# palace blocks' RAM (docs/lunar-magic-install.md, "Graphics").
+for a, b in [(0x0093F7, 0x0093FB), (0x0095E9, 0x0095F5), (0x00A82F, 0x00A832),
+             (0x03DDC8, 0x03DDCB), (0x048000, 0x0480D0), (0x04F2B6, 0x04F3CD),
+             (0x009471, 0x009475), (0x00A140, 0x00A14C), (0x049DFD, 0x049E00),
+             (0x00A873, 0x00A876)]:
+    d[pc(a):pc(b) + 1] = v[pc(a):pc(b) + 1]
+# graphics.asm autocleans the operand at $0583B8: nothing of the ROM's to free there.
+d[pc(0x0583B8):pc(0x0583B8) + 4] = b'\xff' * 4
+open(sys.argv[3], 'wb').write(d)
+PY
+"$K" asm "$A/graphics.asm" "$t/1.sfc" -r "$t/0.sfc" >/dev/null
+# The ROM's tables, which graphics.asm initialises.
+python3 - "$src" "$t/1.sfc" "$t/2.sfc" <<'PY'
+import sys
+def load(p):
+    d = open(p, 'rb').read(); return bytearray(d[len(d) % 0x8000:])
+def pc(a): return ((a >> 16) & 0x7F) * 0x8000 + (a & 0x7FFF)
+s, d = load(sys.argv[1]), load(sys.argv[2])
+for a, b in [(0x0FF200, 0x0FF780), (0x0FF7FF, 0x0FF802), (0x0FF873, 0x0FF876),
+             (0x0FF937, 0x0FF93A)]:
+    d[pc(a):pc(b)] = s[pc(a):pc(b)]
+open(sys.argv[3], 'wb').write(d)
+PY
+# Kobo fixes the checksum.
+echo lorom > "$t/empty.asm"
+"$K" asm "$t/empty.asm" "$2" -r "$t/2.sfc" >/dev/null

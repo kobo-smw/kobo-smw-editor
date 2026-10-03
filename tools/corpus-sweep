@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""Imports and builds every hack of the corpus, and lists what blocks each.
+
+    corpus-sweep out/ [hack.smc|patch.bps ...] [--no-render] [--no-save] [--only text]
+
+Takes the hacks named, else those in KOBO_LM_ROMS. For each it imports the
+hack's changed levels into a project and builds it; a build refused for a
+level drops that level from the project and builds again, until the rest
+builds or a refusal names no level. The build that results is compared with
+the hack (`kobo diff`, and `render_hashes` over the levels it holds) and
+saved by Lunar Magic (`tools/lunar-magic/save-check`). Writes
+`out/<hack>/` (the project, the build, each step's output),
+`out/results.json`, and `out/summary.md`. Reads `kobo` and the
+`render_hashes` example from target/release: build both first.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from collections import defaultdict
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+KOBO = Path(os.environ.get("KOBO_BIN", ROOT / "target/release/kobo"))
+RENDER = ROOT / "target/release/examples/render_hashes"
+SAVE_CHECK = ROOT / "tools/lunar-magic/save-check"
+
+
+def run(args, cwd=None, log=None, timeout=1800):
+    env = dict(os.environ, PATH=f"{KOBO.parent}:{os.environ['PATH']}")
+    try:
+        p = subprocess.run(
+            [str(a) for a in args],
+            cwd=cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=timeout,
+        )
+        out, code = p.stdout + p.stderr, p.returncode
+    except subprocess.TimeoutExpired:
+        out, code = f"timed out after {timeout}s\n", -1
+    if log:
+        with open(log, "a") as f:
+            f.write(f"$ {' '.join(str(a) for a in args)}\n{out}(exit {code})\n\n")
+    return code, out
+
+
+def kind(message):
+    """A message with its numbers taken out, to group alike ones."""
+    message = re.sub(r"\bExGFX[0-9A-F]+\b", "ExGFX#", message)
+    message = re.sub(r"\bbyte [0-9A-F]{2}\b", "byte #", message)
+    message = re.sub(r"\b[0-9A-Fa-f]*[0-9][0-9A-Fa-f]*\b", "#", message)
+    message = re.sub(r"(?<=[A-Za-z])[0-9]+\b", "#", message)
+    message = re.sub(r"\((?:[0-9A-F]{2}|#)\)", "(#)", message)
+    return re.sub(r"\$#", "#", message)
+
+
+def error_of(output):
+    """The `Error:` line of a failed command, with its causes."""
+    lines = output.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("Error: "):
+            causes = [l.strip() for l in lines[i + 1 :] if l.strip() and l.strip() != "Caused by:"]
+            return line[len("Error: ") :], causes
+    tail = [l for l in lines if l.strip()]
+    return (tail[-1] if tail else "no output"), []
+
+
+def manifest_levels(project):
+    text = (project / "kobo.toml").read_text()
+    section = text.split("\n[levels]\n", 1)
+    if len(section) < 2:
+        return []
+    return re.findall(r"^0x([0-9A-Fa-f]+) = ", section[1].split("\n[", 1)[0], re.M)
+
+
+def drop_level(project, level):
+    path = project / "kobo.toml"
+    head, sep, rest = path.read_text().partition("\n[levels]\n")
+    body, more, tail = rest.partition("\n[")
+    body, n = re.subn(rf"^0x0*{int(level, 16):X} = .*\n?", "", body, flags=re.M | re.I)
+    if n == 0:
+        body, n = re.subn(rf"^0x0*{int(level, 16):03X} = .*\n?", "", body, flags=re.M | re.I)
+    path.write_text(head + sep + body + more + tail)
+    return n > 0
+
+
+def import_report(output):
+    report = {"notes": defaultdict(int), "note_levels": defaultdict(set)}
+    for line in output.splitlines():
+        if line.startswith("note: "):
+            note = line[len("note: ") :]
+            m = re.match(r"level ([0-9A-F]{3}): (.*)", note)
+            k = kind(m.group(2) if m else note)
+            report["notes"][k] += 1
+            if m:
+                report["note_levels"][k].add(m.group(1))
+        m = re.match(r"not imported: (\d+) ranges \((\d+) bytes\)", line)
+        if m:
+            report["ranges"], report["range_bytes"] = int(m.group(1)), int(m.group(2))
+        m = re.match(r"not imported: (\d+) tagged blocks \((\d+) bytes\)", line)
+        if m:
+            report["blocks"], report["block_bytes"] = int(m.group(1)), int(m.group(2))
+        m = re.search(r": (\d+) levels and (\d+) Map16 pages imported", line)
+        if m:
+            report["levels"], report["pages"] = int(m.group(1)), int(m.group(2))
+    report["notes"] = dict(report["notes"])
+    report["note_levels"] = {k: len(v) for k, v in report["note_levels"].items()}
+    return report
+
+
+def render_compare(hack, built, levels, log):
+    if not levels:
+        return {"levels": 0, "same": 0, "differ": [], "errors": []}
+    hashes = []
+    for rom in (hack, built):
+        code, out = run([RENDER, rom, *levels], timeout=7200)
+        with open(log, "a") as f:
+            f.write(f"$ render_hashes {rom}\n{out}(exit {code})\n\n")
+        hashes.append({l.split()[0]: l.split(" ", 1)[1] for l in out.splitlines() if l.strip()})
+    a, b = hashes
+    same, differ, errors = 0, [], []
+    for level in sorted(a):
+        if "error" in a[level] or "error" in b.get(level, "error"):
+            errors.append(level)
+        elif a[level] == b.get(level):
+            same += 1
+        else:
+            differ.append(level)
+    return {"levels": len(a), "same": same, "differ": differ, "errors": errors}
+
+
+def sweep(hack, out, render, save):
+    name = hack.stem if hack.parent.name not in ("QLDC 2021", "QLDC 2022") else f"{hack.parent.name}/{hack.stem}"
+    work = out / re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+    subprocess.run(["rm", "-rf", str(work)])
+    work.mkdir(parents=True)
+    log = work / "log.txt"
+    result = {"hack": name, "path": str(hack)}
+    started = time.time()
+
+    rom = hack
+    if hack.suffix.lower() == ".bps":
+        rom = work / "hack.sfc"
+        code, output = run([KOBO, "bps", "apply", hack, rom], log=log)
+        if code:
+            result["stage"] = "patch"
+            result["error"] = error_of(output)[0]
+            return result
+    code, output = run([KOBO, "rom", "info", "-r", rom], log=log)
+    m = re.search(r"^mapping:\s*(.*)$", output, re.M | re.I)
+    result["mapping"] = m.group(1).strip() if m else None
+    m = re.search(r"^lunar magic:\s*(.*)$", output, re.M)
+    result["lunar_magic"] = m.group(1).strip() if m else None
+
+    project = work / "project"
+    code, output = run([KOBO, "import", rom, project], log=log)
+    result["import"] = import_report(output)
+    if code:
+        result["stage"] = "import"
+        result["error"], result["causes"] = error_of(output)
+        return result
+    result["imported_levels"] = len(manifest_levels(project))
+
+    built = work / "build.sfc"
+    refusals = []
+    while True:
+        code, output = run([KOBO, "build", project, "-o", built], log=log)
+        if code == 0:
+            break
+        message, causes = error_of(output)
+        m = re.match(r"level ([0-9A-F]{3}): (.*)", message)
+        if not m or not drop_level(project, m.group(1)):
+            result["stage"] = "build"
+            result["error"], result["causes"] = message, causes
+            result["refusals"] = refusals
+            return result
+        refusals.append({"level": m.group(1), "message": m.group(2), "kind": kind(m.group(2))})
+    result["refusals"] = refusals
+    levels = manifest_levels(project)
+    result["built_levels"] = len(levels)
+
+    code, output = run([KOBO, "diff", rom, built, "--project", project], log=log)
+    lines = [l for l in output.splitlines() if l.strip()]
+    result["diff"] = {"same": code == 0, "lines": lines[:40]}
+
+    if render:
+        result["render"] = render_compare(rom, built, levels, log)
+    if save:
+        code, output = run([SAVE_CHECK, built, "105", project], log=log, timeout=900)
+        lines = [l for l in output.splitlines() if l.strip()]
+        result["save"] = {"same": code == 0 and "the levels are the same" in output, "lines": lines[-20:]}
+    result["stage"] = "done"
+    result["seconds"] = round(time.time() - started)
+    return result
+
+
+def summary(results):
+    rows = [
+        "| Hack | LM | Mapping | Stage | Levels | Built | Refused | Not imported | Diff | Render same | Save |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    kinds = defaultdict(lambda: [set(), 0])
+    for r in results:
+        imp = r.get("import", {})
+        refused = r.get("refusals", [])
+        for x in refused:
+            kinds[kind(x["message"])][0].add(r["hack"])
+            kinds[kind(x["message"])][1] += 1
+        stop = r.get("error")
+        if stop:
+            kinds["stopped: " + kind(stop)][0].add(r["hack"])
+            kinds["stopped: " + kind(stop)][1] += 1
+        render = r.get("render")
+        rows.append(
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+                r["hack"],
+                r.get("lunar_magic") or "",
+                r.get("mapping") or "",
+                r.get("stage", ""),
+                r.get("imported_levels", ""),
+                r.get("built_levels", ""),
+                len(refused),
+                f"{imp.get('ranges', 0)} ranges / {imp.get('blocks', 0)} blocks" if imp else "",
+                "" if "diff" not in r else ("same" if r["diff"]["same"] else (r["diff"]["lines"] or ["?"])[0]),
+                "" if not render else f"{render['same']}/{render['levels']}",
+                "" if "save" not in r else ("same" if r["save"]["same"] else "differs"),
+            )
+        )
+    table = ["| Refusal or stop | Hacks | Levels |", "|---|---|---|"]
+    for k, (hacks, n) in sorted(kinds.items(), key=lambda kv: (-len(kv[1][0]), -kv[1][1])):
+        table.append(f"| {k.replace('|', '/')} | {len(hacks)} | {n} |")
+    notes = defaultdict(lambda: [0, 0])
+    for r in results:
+        for k, n in r.get("import", {}).get("notes", {}).items():
+            k = kind(k)
+            notes[k][0] += 1
+            notes[k][1] += n
+    note_table = ["| Import note | Hacks | Times |", "|---|---|---|"]
+    for k, (h, n) in sorted(notes.items(), key=lambda kv: (-kv[1][0], -kv[1][1])):
+        note_table.append(f"| {k.replace('|', '/')} | {h} | {n} |")
+    return "\n".join(
+        ["# Corpus sweep", "", "## Per hack", "", *rows, "", "## Refusals", "", *table, "",
+         "## Import notes", "", *note_table, ""]
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("out", type=Path)
+    parser.add_argument("hacks", nargs="*", type=Path)
+    parser.add_argument("--no-render", action="store_true")
+    parser.add_argument("--no-save", action="store_true")
+    parser.add_argument("--only", help="only hacks whose path contains this")
+    parser.add_argument("--summary", action="store_true", help="only rewrite summary.md from results.json")
+    args = parser.parse_args()
+    hacks = args.hacks or [Path(p) for p in os.environ.get("KOBO_LM_ROMS", "").split(":") if p]
+    if args.only:
+        hacks = [h for h in hacks if args.only in str(h)]
+    args.out.mkdir(parents=True, exist_ok=True)
+    results_path = args.out / "results.json"
+    if args.summary:
+        (args.out / "summary.md").write_text(summary(json.loads(results_path.read_text())))
+        return
+    # A sweep that stopped part way resumes: hacks already swept keep their result.
+    done = {}
+    if results_path.exists():
+        for r in json.loads(results_path.read_text()):
+            if not str(r.get("error", "")).startswith("failed to write"):
+                done[r["path"]] = r
+    results = []
+    for i, hack in enumerate(hacks, 1):
+        if str(hack) in done:
+            results.append(done[str(hack)])
+            continue
+        print(f"[{i}/{len(hacks)}] {hack.name}", flush=True)
+        result = sweep(hack, args.out, not args.no_render, not args.no_save)
+        print(f"    {result.get('stage')}: {len(result.get('refusals', []))} refused"
+              + (f"; {result['error']}" if result.get("error") else ""), flush=True)
+        results.append(result)
+        results_path.write_text(json.dumps(results, indent=1))
+        (args.out / "summary.md").write_text(summary(results))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,33 @@
+#!/bin/bash
+# Builds a probe ROM for examples/contact_probe.rs: vanilla saved once by
+# Lunar Magic 3.70 (its one-time install), with GPS's probe block at tile
+# $200 (acting like $130, cement) placed in level 105 at (x, y).
+#   make-rom out-dir [x y]
+# Needs: the vanilla ROM (KOBO_SMW_ROM or kobo's config, with a copier
+# header for Lunar Magic's restore system), Lunar Magic under Wine
+# (../lm), GPS 1.4.4 built for this system in $KOBO_GPS (a folder with the
+# program as `gps`, its asm files, and libasar), and cargo.
+# Clean room: this observes what Lunar Magic's code does in RAM when the
+# game runs; it never shows Lunar Magic's code.
+set -euo pipefail
+out=$(realpath -m "$1"); x=${2:-6}; y=${3:-20}
+here=$(dirname "$(realpath "$0")")
+repo=$(realpath "$here/../../..")
+vanilla=${KOBO_SMW_ROM:-$(sed -n 's/^smw *= *"\(.*\)"/\1/p' "${XDG_CONFIG_HOME:-$HOME/.config}/kobo/config.toml")}
+rm -rf "$out" && mkdir -p "$out/lm/sysLMRestore" "$out/gps"
+if [ $(( $(stat -c%s "$vanilla") % 1024 )) -eq 512 ]; then
+  cp "$vanilla" "$out/lm/sysLMRestore/smwOrig.smc"
+else
+  { head -c 512 /dev/zero; cat "$vanilla"; } > "$out/lm/sysLMRestore/smwOrig.smc"
+fi
+tail -c "$((0x80000))" "$vanilla" > "$out/lm/probe.smc"
+cd "$out/lm"
+"$here/../lm" -ExportLevel probe.smc level.mwl 105 >/dev/null
+( cd "$repo" && cargo run -q --release --example contact_probe -- place "$out/lm/level.mwl" "$out/lm/placed.mwl" "$x" "$y" )
+"$here/../lm" -ImportLevel probe.smc placed.mwl 105 | tail -1
+cp -r "$KOBO_GPS"/. "$out/gps/"
+cp "$here/probe.asm" "$out/gps/blocks/probe.asm"
+printf '200:0130 probe.asm\n' > "$out/gps/list.txt"
+tail -c "$((0x100000))" probe.smc > "$out/probe.sfc"
+( cd "$out/gps" && LD_LIBRARY_PATH=. ./gps "$out/probe.sfc" | tail -1 )
+echo "$out/probe.sfc"

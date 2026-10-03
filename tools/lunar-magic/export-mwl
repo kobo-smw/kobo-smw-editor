@@ -1,0 +1,26 @@
+#!/bin/bash
+# Export every level of each ROM as MWL files: export-mwl outdir rom...
+# Each ROM is copied to outdir/<name>/<name>.smc and Lunar Magic writes
+# outdir/<name>/level NNN.mwl from the copy, all 512 levels, so the directory
+# is what KOBO_MWL_DIR's test reads (docs/testing.md). The originals are never
+# opened by Lunar Magic. A ROM Lunar Magic refuses is reported and left out.
+set -euo pipefail
+out=$1
+shift
+lm=$(dirname "$(readlink -f "$0")")/lm
+for rom in "$@"; do
+  name=$(basename "${rom%.*}")
+  dir=$out/$name
+  mkdir -p "$dir"
+  cp "$rom" "$dir/$name.smc"
+  # Flags 0: every level, not only those Lunar Magic considers modified.
+  if ! (cd "$dir" && "$lm" -ExportMultLevels "$name.smc" level 0 | tail -1); then
+    # Lunar Magic refuses ROMs locked by their authors.
+    echo "$name: export failed" >&2
+    rm -r "$dir"
+    continue
+  fi
+  if ! cmp -s "$rom" "$dir/$name.smc"; then
+    echo "$name: Lunar Magic changed the ROM while exporting" >&2
+  fi
+done

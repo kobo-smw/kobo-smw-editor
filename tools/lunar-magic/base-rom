@@ -1,0 +1,20 @@
+#!/bin/bash
+# The ROM a hack's hook sites go back to before Kobo's code goes over them, for the
+# with-kobo scripts:
+#   base-rom hack.smc
+# prints the vanilla ROM's path (KOBO_SMW_ROM or kobo's configuration), or for an SA-1
+# hack ($00FFD5 = $23) the vanilla ROM with SA-1 Pack applied (docs/sa1.md):
+# KOBO_SA1_BASE, by default ~/.local/share/kobo/roms/sa1/smw-sa1.sfc.
+set -euo pipefail
+sa1=$(python3 - "$1" <<'PY'
+import sys
+d = open(sys.argv[1], 'rb').read()
+d = d[len(d) % 0x8000:]
+print(1 if d[0x7FD5] == 0x23 else 0)
+PY
+)
+if [ "$sa1" = 1 ]; then
+  echo "${KOBO_SA1_BASE:-$HOME/.local/share/kobo/roms/sa1/smw-sa1.sfc}"
+else
+  echo "${KOBO_SMW_ROM:-$(sed -n 's/^smw *= *"\(.*\)"/\1/p' "${XDG_CONFIG_HOME:-$HOME/.config}/kobo/config.toml")}"
+fi

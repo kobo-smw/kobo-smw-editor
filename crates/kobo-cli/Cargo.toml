@@ -1,0 +1,21 @@
+[package]
+name = "kobo-cli"
+description = "Command-line interface for Kobo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "kobo"
+path = "src/main.rs"
+
+[dependencies]
+kobo-core.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+libc.workspace = true
+
+[lints]
+workspace = true

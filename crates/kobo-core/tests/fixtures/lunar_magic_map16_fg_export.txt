@@ -1,0 +1,11 @@
+# Foreground pages 2-3 from existing Lunar Magic 3.21 -ExportAllMap16 exports.
+# Tile definitions are read at file offset $B0 + tile * 8. No ROM or export bytes.
+# Columns: headerless ROM SHA-1, level, comma-separated tile numbers, SHA-1 of definitions.
+# qw/qw.smc
+b27297217808ffe5474895b914fd114c874507ea 105 221,222,223 aa6c48df7cde307c18ca1626fb2e9547cebe0d29
+# cand/KaizoKindergartenv106/rom.smc
+2e99a4c03755e91482f09e62853118d93fc80eab 105 201,207,208,211,217,218,265,266,337,347 799c0a343d268a2203408e0ddff6e6dac81e6da6
+# cand/Akogare2/rom.smc
+79ed6bc4c1217720ed586b1fe217eaaba4fa6951 105 3AD a984f1b9970bd0916d4748bfd6e2f27c8c9218bc
+# gpw2/gpw2.smc
+390583d5faa0cc02e0c4f414f7638228661b2dc9 105 343,344,345,346,353,354,355,356,362,363,372,373,382,383 667c7481beb7f20efe403e75f165ca1a021e3891

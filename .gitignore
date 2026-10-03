@@ -1,0 +1,8 @@
+/target
+# Never commit ROM data.
+*.smc
+*.sfc
+*.srm
+# Agent worktrees.
+/.claude/worktrees/
+__pycache__/

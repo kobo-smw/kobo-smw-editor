@@ -1,0 +1,34 @@
+#!/bin/bash
+# A Lunar Magic-saved ROM with Kobo's VRAM patch (asm/lunar-magic/vram.asm) in place of
+# Lunar Magic's: the group's sites, and the tile change branches its taller levels piece
+# changed, put back to the game's bytes, then vram.asm applied:
+#   with-kobo-vram lm.smc out.sfc
+# then compare the two with examples/gfx_probe.rs (loads, scroll, play). The rest of
+# Lunar Magic's install stays, as vram.asm calls the BG Map16 routine at $0EFD00.
+# Needs `kobo` (KOBO, default on PATH), Asar's library (KOBO_ASAR_LIB), and the vanilla
+# ROM (KOBO_SMW_ROM or kobo's configuration), or for an SA-1
+# ROM the vanilla ROM with SA-1 Pack (KOBO_SA1_BASE, base-rom).
+set -euo pipefail
+here=$(dirname "$(realpath "$0")")
+K=${KOBO:-kobo}; A=$here/../../crates/kobo-core/asm/lunar-magic
+# The game's bytes: the vanilla ROM's, or SA-1 Pack's for an SA-1 ROM (base-rom).
+vanilla=$("$here/base-rom" "$1")
+t=$(mktemp -d)
+trap 'rm -rf "$t"' EXIT
+python3 - "$1" "$vanilla" "$t/0.sfc" <<'PY'
+import sys
+def load(p):
+    d = open(p, 'rb').read(); return bytearray(d[len(d) % 0x8000:])
+def pc(a): return ((a >> 16) & 0x7F) * 0x8000 + (a & 0x7FFF)
+d, v = load(sys.argv[1]), load(sys.argv[2])
+# The group's sites (docs/lunar-magic-install.md, "Graphics"), and CODE_00C0FB's
+# branches, which Kobo's tile address code answers as the game's do.
+for a, b in [(0x008072, 0x008074), (0x0081E2, 0x0081E5), (0x008209, 0x00820C),
+             (0x0085D2, 0x0085DE), (0x00A5A2, 0x00A5A5), (0x00F6E4, 0x00F6E7),
+             (0x0580A9, 0x0580AC), (0x0586F7, 0x0586FA), (0x00C116, 0x00C123)]:
+    d[pc(a):pc(b) + 1] = v[pc(a):pc(b) + 1]
+# vram.asm autocleans the first JSL's operand: nothing of the ROM's to free there.
+d[pc(0x0580BF):pc(0x0580BF) + 4] = b'\xff' * 4
+open(sys.argv[3], 'wb').write(d)
+PY
+"$K" asm "$A/vram.asm" "$2" -r "$t/0.sfc" >/dev/null

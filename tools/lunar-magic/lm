@@ -1,0 +1,9 @@
+#!/bin/bash
+# Run Lunar Magic headlessly under Wine: lm -Command rom.smc args...
+# Uses the x64 build of the release in $KOBO_LM_DIR (default: the 3.70 tools directory).
+# Always run it on a copy of a ROM.
+dir=${KOBO_LM_DIR:-$HOME/.local/share/kobo/tools/lunar-magic-3.70}
+export WINEDLLOVERRIDES="mscoree,mshtml=" WINEDEBUG=-all
+timeout 180 xvfb-run -a wine "$dir/x64/Lunar Magic.exe" "$@" 2>&1 \
+  | grep -v -e syswow64 -e "X connection" | tr -d '\r'
+exit "${PIPESTATUS[0]}"

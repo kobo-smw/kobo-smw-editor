@@ -1,0 +1,40 @@
+#!/bin/bash
+# A hack's content moved into the vanilla ROM saved once by Lunar Magic 3.70 (an SA-1
+# hack's into the vanilla ROM with SA-1 Pack, base-rom), through its
+# command line: its GFX and ExGFX, Map16, shared palette, levels (from their MWL exports,
+# tools/lunar-magic/export-mwl), and ExAnimation, with none of the hack's own code:
+#   transfer hack.smc mwl-dir out.smc
+# Then swap Kobo's pieces into a copy (with-kobo, with-kobo-vram, with-kobo-graphics) and
+# compare (docs/testing.md). The vanilla ROM comes from KOBO_SMW_ROM or kobo's
+# configuration.
+set -euo pipefail
+here=$(dirname "$(realpath "$0")")
+hack=$(realpath "$1"); mwl=$(realpath "$2"); out=$(realpath -m "$3")
+vanilla=${KOBO_SMW_ROM:-$(sed -n 's/^smw *= *"\(.*\)"/\1/p' "${XDG_CONFIG_HOME:-$HOME/.config}/kobo/config.toml")}
+t=$(mktemp -d)
+trap 'rm -rf "$t"' EXIT
+mkdir "$t/sysLMRestore"
+if [ $(( $(stat -c%s "$vanilla") % 1024 )) -eq 512 ]; then
+  cp "$vanilla" "$t/sysLMRestore/smwOrig.smc"
+else
+  { head -c 512 /dev/zero; cat "$vanilla"; } > "$t/sysLMRestore/smwOrig.smc"
+fi
+base=$("$here/base-rom" "$1")
+cd "$t"
+cp "$base" out.smc
+cp "$hack" hack.smc
+"$here/lm" -ExportLevel out.smc 105.mwl 105 >/dev/null
+"$here/lm" -ImportLevel out.smc 105.mwl 105 >/dev/null
+# ExGFX before the levels: a level's list naming files the ROM lacks is not kept.
+"$here/lm" -ExportGFX hack.smc >/dev/null
+"$here/lm" -ExportExGFX hack.smc >/dev/null
+"$here/lm" -ImportAllGraphics out.smc | tail -1
+"$here/lm" -ExportAllMap16 hack.smc all.map16 >/dev/null
+"$here/lm" -ImportAllMap16 out.smc all.map16 >/dev/null
+"$here/lm" -ExportSharedPalette hack.smc shared.smwpal >/dev/null
+"$here/lm" -ImportSharedPalette out.smc shared.smwpal >/dev/null
+mkdir levels
+cp "$mwl"/level*.mwl levels/
+"$here/lm" -ImportMultLevels out.smc levels | tail -1
+"$here/lm" -TransferLevelGlobalExAnim out.smc hack.smc >/dev/null
+cp out.smc "$out"

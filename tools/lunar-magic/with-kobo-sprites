@@ -1,0 +1,55 @@
+#!/bin/bash
+# A Lunar Magic-saved ROM with Kobo's sprite loader (asm/lunar-magic/sprites.asm) in
+# place of Lunar Magic's, so the two can be compared with examples/sprite_probe.rs:
+#   with-kobo-sprites lm.smc out.sfc
+#   cargo run --release --example sprite_probe -- compare lm.smc out.sfc 105 ...
+# Every site of Lunar Magic's sprite loader group (docs/lunar-magic-install.md,
+# "Sprites") is put back to the game's bytes first, since Kobo's patch leaves some of
+# them as the game has them. A ROM with PIXI keeps PIXI's goal tape init at $01C089,
+# which PIXI writes over Kobo's in a build, and the jump PIXI's 255-sprite option
+# puts at $02ABF2.
+# Needs `kobo` (KOBO, default on PATH), Asar's library (KOBO_ASAR_LIB), and the vanilla
+# ROM (KOBO_SMW_ROM or `kobo`'s configuration), or for an SA-1
+# ROM the vanilla ROM with SA-1 Pack (KOBO_SA1_BASE, base-rom).
+set -euo pipefail
+here=$(dirname "$(realpath "$0")")
+K=${KOBO:-kobo}; A=$here/../../crates/kobo-core/asm/lunar-magic
+# The game's bytes: the vanilla ROM's, or SA-1 Pack's for an SA-1 ROM (base-rom).
+vanilla=$("$here/base-rom" "$1")
+t=$(mktemp -d)
+trap 'rm -rf "$t"' EXIT
+python3 - "$vanilla" "$1" $t/0.sfc <<'PY'
+import sys
+def ld(p):
+    d = open(p, 'rb').read()
+    return bytearray(d[len(d) % 0x8000:])
+def pc(a): return ((a >> 16) & 0x7f) * 0x8000 + (a & 0x7fff)
+v, d = ld(sys.argv[1]), ld(sys.argv[2])
+for s, e in [(0x02A826, 0x02A83B), (0x02A846, 0x02A84D), (0x02A95B, 0x02A95E),
+             (0x02A968, 0x02A968), (0x02A9D7, 0x02A9D9), (0x02AA61, 0x02AA64),
+             (0x02AB54, 0x02AB58), (0x02ABD0, 0x02ABD4), (0x02AC64, 0x02AC67),
+             (0x02ACA4, 0x02ACA7), (0x02AF3D, 0x02AF40), (0x02AFA7, 0x02AFAA),
+             (0x01AC40, 0x01AC49), (0x02D03A, 0x02D043), (0x02FED6, 0x02FEDF),
+             (0x03B86C, 0x03B875), (0x01C08C, 0x01C093), (0x01C0E2, 0x01C0E2)]:
+    d[pc(s):pc(e) + 1] = v[pc(s):pc(e) + 1]
+open(sys.argv[3], 'wb').write(d)
+PY
+$K asm $A/sprites.asm $t/1.sfc -r $t/0.sfc >/dev/null
+python3 - "$1" $t/1.sfc $t/2.sfc <<'PY'
+import sys
+def ld(p):
+    d = open(p, 'rb').read()
+    return bytearray(d[len(d) % 0x8000:])
+def pc(a): return ((a >> 16) & 0x7f) * 0x8000 + (a & 0x7fff)
+s, d = ld(sys.argv[1]), ld(sys.argv[2])
+if s[pc(0x0EF30F)] == 0x42:
+    d[pc(0x01C089):pc(0x01C093) + 1] = s[pc(0x01C089):pc(0x01C093) + 1]
+# PIXI's 255-sprite option jumps from $02ABF2 to clear its own load flags, over
+# the operand Kobo's patch sets for 128.
+if s[pc(0x02ABF2)] == 0x5C:
+    d[pc(0x02ABF2):pc(0x02ABF2) + 4] = s[pc(0x02ABF2):pc(0x02ABF2) + 4]
+open(sys.argv[3], 'wb').write(d)
+PY
+# Kobo fixes the checksum.
+echo lorom > $t/empty.asm
+$K asm $t/empty.asm "$2" -r $t/2.sfc >/dev/null

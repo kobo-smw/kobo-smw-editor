@@ -1,0 +1,17 @@
+# BG Map16 tiles of Lunar Magic hacks, as exported by Lunar Magic 3.21 -ExportAllMap16
+# (file tile index 8000-81FF, 0x1000 bytes at file offset 0x400B0). Columns: headerless
+# ROM SHA-1, a level whose layer 2 is a background tilemap, SHA-1 of the exported bytes.
+# None of these hacks edit the BG pages, so the hash equals the vanilla export; what the
+# test checks is that the loader finds the table where each Lunar Magic version put it.
+# QuickieWorld1.12 (2.52)
+b27297217808ffe5474895b914fd114c874507ea 105 ed558c8bab89225ddc5aa9db70e3e746d684eb4e
+# Grand Poo World 2 (2.53)
+390583d5faa0cc02e0c4f414f7638228661b2dc9 046 ed558c8bab89225ddc5aa9db70e3e746d684eb4e
+# Kaizo Mario (English) (1.62, vanilla table)
+706ca2641347d7112c9ced31c906360e0403981d 105 ed558c8bab89225ddc5aa9db70e3e746d684eb4e
+# akogare v1.2 (2.53)
+584fd81ca6efce820a0c97d6142eec59fbcd5168 105 ed558c8bab89225ddc5aa9db70e3e746d684eb4e
+# Kaizo Kindergarten v1.06 (3.03)
+2e99a4c03755e91482f09e62853118d93fc80eab 105 ed558c8bab89225ddc5aa9db70e3e746d684eb4e
+# Akogare2 (3.10)
+79ed6bc4c1217720ed586b1fe217eaaba4fa6951 106 ed558c8bab89225ddc5aa9db70e3e746d684eb4e

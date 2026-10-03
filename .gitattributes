@@ -1,0 +1,4 @@
+# Kobo writes its source formats with LF line endings on every platform, and
+# its tests compare them byte for byte.
+*.toml text eol=lf
+*.bps binary
