@@ -688,6 +688,20 @@ on the built ROM.
      the scroll rates (item 3). Grand Poo World 2's level data and SP4's bit 12 were observed
      (2026-10-02; lunar-magic.md): the first is hidden as a lock hides it, the second
      changes nothing a load leaves.
+     Run again on 2026-10-03, after the PIXI import, long exits, tides, and the size table
+     read where its hook says: all 175 import, 163 build whole (85 before), 13,678 of
+     13,766 changed levels build (the count fell with the SA-1 size tables read right),
+     and every build reads back as its hack. What is refused is in the locked ROMs
+     (Invictus, Baby Kaizo World 3, both Super Dram Worlds, SMW_2021-4-3 and -4-24, QLDC
+     2022 `05_Bumpty`: objects past a layer's edge or rows, objects `24` and `25` on layer
+     2, and the entrances to the levels those leave out), but for what stays refused on
+     purpose: more than 128 sprites without a 255-sprite loader (QLDC 2021 `34_idol`, QLDC
+     2022 `30_Fellipe_R`, and QLDC 2021 `48_JamesD28`, whose PIXI code an SA-1 import
+     cannot carry), `34_idol`'s lists out of screen order, and the midway loops. Lunar
+     Magic's save keeps level `105` in 118 builds; in the other 57 it changes it only as
+     it does every level it re-imports (SP4's bit 12 in 53, the header's
+     screen count in 7), which now shows in 18 more hacks because their level `105`
+     builds.
   3. **Lunar Magic's added layer 2 scroll rates**: done (2026-10-01), above.
   4. **Refusals that observation did not settle**, each in review.md with how to settle
      it: four layer 3 settings, out-of-order sprite lists, taller-level corners
