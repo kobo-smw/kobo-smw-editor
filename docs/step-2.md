@@ -213,7 +213,11 @@ on the built ROM.
   not reproducible: `kobo build` prints a note for each tool a build takes from a
   configured path (`Located::note`), AddmusicK, GPS, and SA-1 Pack included.
 - AddmusicK, SA-1 Pack, and GPS have no licence, and AddmusicK contains Nintendo data:
-  never bundled. Kobo fetches them from upstream by hash, or the user supplies them.
+  never bundled. Decided with the maintainer (2026-10-03): Kobo fetches SA-1 Pack 1.40
+  by hash from its author's GitHub release (`VitorVilela7/SMW-SA1-Pack` `v1.40`,
+  `SA1-Pack-140.zip`, Asar patches that serve every platform), which is not
+  redistribution; AddmusicK (whose release has Windows programs only, with an Asar of its
+  own) and GPS (on the Wayback Machine only) stay the user's own configured copy.
   Asking their maintainers to add a licence would help, but nothing waits on it.
 - GPS runs unmodified, as the user supplies it, and Kobo's bank `$06` code has the shape
   GPS patches (decided 2026-09-25). A licence would let the companion repository patch GPS
@@ -686,8 +690,9 @@ on the built ROM.
      pipes file).
   5. **Yoshi's tongue and berries**: done (above). The player's tile words in a whole
      build: settled, as the vanilla ROM has them (review.md).
-  6. **Tools left as the user's own:** AddmusicK, GPS, and SA-1 Pack are not fetched by
-     hash (no licence, no stable source; review.md).
+  6. **Tools left as the user's own:** AddmusicK and GPS are not fetched (no licence, no
+     stable source for every platform). SA-1 Pack 1.40 is to be fetched by hash from its
+     GitHub release (decided 2026-10-03): not started.
   7. **Baserom template projects** ("No base", above): not started.
   8. **Closing step 2:** fold what stays true of this file into the other docs and delete
      it, as its header says.

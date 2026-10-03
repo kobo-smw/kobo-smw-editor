@@ -13,12 +13,6 @@ settle it.
 
 ## Open
 
-- **GPS, AddmusicK, and SA-1 Pack are not fetched from upstream** (2026-09-27). The plan
-  ([step-2.md](step-2.md#tools)) has Kobo fetch them from upstream by hash as well; they
-  have no licence and no stable upstream URL (GPS is on the Wayback Machine only), so they
-  still come only from a configured path, and `kobo build` notes the build is repeatable
-  only with the same copy. Settles it: stable URLs and a decision that fetching an
-  unlicensed tool from its author is acceptable.
 - **Map16 pages 0 and 1 list only what a project changes** (2026-09-27,
   `source::map16::GamePage`, step-2.md "Source formats"). A page 0 or 1 file holds the
   tiles whose graphics or acts-like setting differ from the clean ROM's, each with `acts`,
