@@ -107,6 +107,33 @@ impl Tool {
         pins().tools.get(self.key())
     }
 
+    /// The tool at `version` as kobo-tools builds it: the default pin
+    /// ([`Tool::pinned`]) for no version or its own, else the pin kobo-tools
+    /// keys `<key>-<version>` (PIXI 1.42 beside 1.43).
+    pub fn pinned_version(self, version: Option<&str>) -> Option<&'static Pinned> {
+        match version {
+            None => self.pinned(),
+            Some(v) if self.pinned().is_some_and(|p| p.version == v) => self.pinned(),
+            Some(v) => pins().tools.get(&format!("{}-{v}", self.key())),
+        }
+    }
+
+    /// Every version kobo-tools builds of the tool, the default first.
+    pub fn pinned_versions(self) -> Vec<&'static str> {
+        let prefix = format!("{}-", self.key());
+        self.pinned()
+            .into_iter()
+            .chain(
+                pins()
+                    .tools
+                    .iter()
+                    .filter(|(key, _)| key.starts_with(&prefix))
+                    .map(|(_, pin)| pin),
+            )
+            .map(|pin| pin.version.as_str())
+            .collect()
+    }
+
     /// The pinned build for this platform, if there is one.
     pub fn pinned_build(self) -> Option<&'static PinnedBuild> {
         self.pinned()?.builds.get(platform()?)
@@ -129,7 +156,15 @@ impl Tool {
     /// What Kobo fetches for the tool on this platform, if anything: the
     /// kobo-tools build, or the author's release.
     pub fn source(self) -> Option<Source> {
-        let (version, release, url, build) = match (self.pinned(), self.upstream()) {
+        self.source_version(None)
+    }
+
+    /// [`Tool::source`] at `version` ([`Tool::pinned_version`]).
+    fn source_version(self, version: Option<&str>) -> Option<Source> {
+        if version.is_some() && self.pinned().is_none() {
+            return None;
+        }
+        let (version, release, url, build) = match (self.pinned_version(version), self.upstream()) {
             (Some(pinned), _) => (
                 &pinned.version,
                 &pins().release,
@@ -156,16 +191,28 @@ impl Tool {
     /// downloaded into the cache first if it is not there and downloads
     /// are not off ([`OFFLINE_ENV_VAR`]).
     pub fn locate(self) -> Result<Located, ToolError> {
-        self.locate_with(!offline())
+        self.locate_with(None, !offline())
     }
 
     /// [`Tool::locate`] without the network: the configured path, or the
     /// pinned build if the cache has it.
     pub fn locate_offline(self) -> Result<Located, ToolError> {
-        self.locate_with(false)
+        self.locate_with(None, false)
     }
 
-    fn locate_with(self, download: bool) -> Result<Located, ToolError> {
+    /// [`Tool::locate`] at `version`, which kobo-tools must build
+    /// ([`Tool::pinned_versions`]); a configured path wins, whatever
+    /// version it is.
+    pub fn locate_version(self, version: Option<&str>) -> Result<Located, ToolError> {
+        self.locate_with(version, !offline())
+    }
+
+    /// [`Tool::locate_version`] without the network.
+    pub fn locate_version_offline(self, version: Option<&str>) -> Result<Located, ToolError> {
+        self.locate_with(version, false)
+    }
+
+    fn locate_with(self, version: Option<&str>, download: bool) -> Result<Located, ToolError> {
         if let Some((path, setting)) = self.configured()? {
             return Ok(Located {
                 tool: self,
@@ -173,7 +220,16 @@ impl Tool {
                 origin: Origin::Configured(setting),
             });
         }
-        let Some(source) = self.source() else {
+        if let Some(v) = version
+            && self.pinned_version(Some(v)).is_none()
+        {
+            return Err(ToolError::NoVersion {
+                tool: self.name(),
+                version: v.to_owned(),
+                pinned: self.pinned_versions().join(", "),
+            });
+        }
+        let Some(source) = self.source_version(version) else {
             if self.pinned().is_some() {
                 return Err(ToolError::NoBuild {
                     tool: self.name(),
@@ -700,6 +756,30 @@ mod tests {
     use std::net::TcpListener;
 
     #[test]
+    fn a_second_version_is_pinned_under_its_own_key() {
+        assert_eq!(Tool::Pixi.pinned_versions(), ["1.43", "1.42"]);
+        assert!(std::ptr::eq(
+            Tool::Pixi.pinned_version(Some("1.43")).unwrap(),
+            Tool::Pixi.pinned().unwrap()
+        ));
+        let older = Tool::Pixi.pinned_version(Some("1.42")).unwrap();
+        assert_eq!(older.name, "PIXI");
+        for platform in ["linux-x64", "windows-x64", "macos-arm64", "macos-x64"] {
+            assert_eq!(older.builds[platform].root, format!("pixi-1.42-{platform}"));
+        }
+        assert_eq!(Tool::Asar.pinned_versions(), ["1.91"]);
+        assert!(Tool::Pixi.pinned_version(Some("9.9")).is_none());
+        // Only a configured path would stand in for a version Kobo does not
+        // pin.
+        if Tool::Pixi.configured().unwrap().is_none() {
+            assert!(matches!(
+                Tool::Pixi.locate_version_offline(Some("9.9")),
+                Err(ToolError::NoVersion { .. })
+            ));
+        }
+    }
+
+    #[test]
     fn the_pins_name_every_licensed_tool_for_every_platform() {
         let pins = pins();
         assert!(
@@ -730,7 +810,7 @@ mod tests {
         for tool in [Tool::Gps, Tool::AddmusicK] {
             assert!(tool.source().is_none(), "{tool}");
             assert!(matches!(
-                tool.locate_with(false),
+                tool.locate_with(None, false),
                 Err(ToolError::NotConfigured { .. }) | Ok(_)
             ));
         }

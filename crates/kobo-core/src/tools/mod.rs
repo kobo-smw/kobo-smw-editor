@@ -58,6 +58,15 @@ pub enum ToolError {
     #[error("no cache directory for downloaded tools; set KOBO_TOOL_CACHE")]
     NoCache,
     #[error(
+        "{tool} {version} is not a version Kobo pins ({pinned}); configure a path to it, or \
+         take a pinned one"
+    )]
+    NoVersion {
+        tool: &'static str,
+        version: String,
+        pinned: String,
+    },
+    #[error(
         "{tool} {version} is not in the tool cache ({}) and downloads are off; run \
          `kobo tools fetch` online, or configure a path to it",
         cache.display()
@@ -510,14 +519,24 @@ pub fn run_pixi(
     if !list.is_file() {
         return Err(ToolError::Missing(list));
     }
-    FolderTool {
-        name: "PIXI",
-        program: "pixi",
-        args: &["--script-mode", "-meimei-off", "-l", "list.txt", "rom.sfc"],
-        remove: &[],
-        owns: |_| Vec::new(),
+    let run = |args: &[&str]| {
+        FolderTool {
+            name: "PIXI",
+            program: "pixi",
+            args,
+            remove: &[],
+            owns: |_| Vec::new(),
+        }
+        .run(rom, tool, files, asar, callisto)
+    };
+    match run(&["--script-mode", "-meimei-off", "-l", "list.txt", "rom.sfc"]) {
+        // PIXI before 1.43 has no `--script-mode`; with no input to read,
+        // its prompts take their defaults, which the option would have.
+        Err(ToolError::Failed { output, .. }) if output.contains("\"--script-mode\"") => {
+            run(&["-meimei-off", "-l", "list.txt", "rom.sfc"])
+        }
+        result => result,
     }
-    .run(rom, tool, files, asar, callisto)
 }
 
 /// Runs AddmusicK on a copy of `rom`: in a copy of the AddmusicK folder

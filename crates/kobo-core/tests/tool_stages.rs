@@ -577,11 +577,20 @@ fn pixi_inserts_sprites() {
 /// `$029B39` anything but the zero that means another patch), so it runs
 /// without a ROM: CI runs Kobo's pinned build on every platform, with the
 /// pinned Asar beside it.
+/// Each version kobo-tools builds, 1.42 among them, which has no
+/// `--script-mode` (`tools::run_pixi`).
 #[test]
 fn pixi_runs_without_a_rom() {
-    let Some(tool) = common::tool(Tool::Pixi, "KOBO_REQUIRE_PIXI") else {
-        return;
-    };
+    for version in Tool::Pixi.pinned_versions() {
+        let Some(tool) = common::tool_version(Tool::Pixi, Some(version), "KOBO_REQUIRE_PIXI")
+        else {
+            continue;
+        };
+        pixi_runs_on_an_image(&tool, version);
+    }
+}
+
+fn pixi_runs_on_an_image(tool: &std::path::Path, version: &str) {
     let Some(asar) = common::tool(Tool::Asar, "KOBO_REQUIRE_ASAR") else {
         return;
     };
@@ -595,9 +604,10 @@ fn pixi_runs_without_a_rom() {
     rom.write(SnesAddr::new(0x00F6E4), &[0x5C, 0x00, 0x80, 0x12])
         .unwrap();
     rom.write(SnesAddr::new(0x029B39), &[0xFF, 0xFF]).unwrap();
-    let dir = temp_dir("pixi-synthetic");
+    let dir = temp_dir(&format!("pixi-synthetic-{version}"));
     pixi_files(&dir);
-    let out = kobo_core::tools::run_pixi(&rom, &tool, &dir.join("pixi"), &asar, None).unwrap();
+    let out = kobo_core::tools::run_pixi(&rom, tool, &dir.join("pixi"), &asar, None)
+        .unwrap_or_else(|e| panic!("PIXI {version}: {e}"));
     let code = [0xA9, 0x42, 0x8D, 0xBF, 0x0D, 0x6B];
     assert!(out.data().windows(code.len()).any(|w| w == code));
     assert!(kobo_core::sprites::pixi_size_table(&out).unwrap().is_some());

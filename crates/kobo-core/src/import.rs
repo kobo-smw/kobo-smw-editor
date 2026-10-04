@@ -2193,13 +2193,22 @@ pub fn import_callisto(
             )),
         }
     }
-    if let Some(version) = &options.pixi_version {
-        report.notes.push(format!(
-            "its sprites are written for PIXI {version}; this build of Kobo runs PIXI {}",
-            crate::tools::Tool::Pixi
-                .version()
-                .unwrap_or("as configured")
-        ));
+    if let Some(version) = &options.pixi_version
+        && manifest.pixi.is_some()
+    {
+        let tool = crate::tools::Tool::Pixi;
+        if tool.pinned_version(Some(version)).is_some() {
+            if tool.version() != Some(version.as_str()) {
+                manifest.pixi_version = Some(version.clone());
+            }
+        } else {
+            report.notes.push(format!(
+                "its sprites are written for PIXI {version}, which Kobo does not pin ({}); \
+                 a build runs PIXI {} unless a path to {version} is configured",
+                tool.pinned_versions().join(", "),
+                tool.version().unwrap_or("as configured")
+            ));
+        }
     }
     // Lunar Magic keeps the graphics in folders beside the ROM, and
     // Callisto's output folder, when it is not the root, holds the build

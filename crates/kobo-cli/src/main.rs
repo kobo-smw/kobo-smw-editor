@@ -1644,40 +1644,74 @@ fn tools_list() -> Result<()> {
             .unwrap_or_else(|| "nowhere (set KOBO_TOOL_CACHE)".into())
     );
     for tool in Tool::ALL {
-        let version = tool.version().map(|v| format!(" {v}")).unwrap_or_default();
-        let place = match tool.locate_offline() {
-            Ok(located) => match &located.origin {
-                tools::Origin::Configured(setting) => {
-                    format!("{} (from {setting})", located.path.display())
-                }
-                tools::Origin::Pinned { .. } => format!("{} (pinned)", located.path.display()),
-            },
-            Err(ToolError::NotCached { .. }) => "pinned, not downloaded yet".into(),
-            Err(e) => e.to_string(),
+        let versions = tool.pinned_versions();
+        // A tool kobo-tools builds in more than one version has a line
+        // for each; the first is the one a project gets by default.
+        let lines: Vec<Option<&str>> = match versions.len() {
+            0 | 1 => vec![None],
+            _ => versions.iter().map(|v| Some(*v)).collect(),
         };
-        println!("{:<13}{version:<6} {place}", tool.name());
+        for version in lines {
+            let shown = version
+                .or(tool.version())
+                .map(|v| format!(" {v}"))
+                .unwrap_or_default();
+            let place = match tool.locate_version_offline(version) {
+                Ok(located) => match &located.origin {
+                    tools::Origin::Configured(setting) => {
+                        format!("{} (from {setting})", located.path.display())
+                    }
+                    tools::Origin::Pinned { .. } => {
+                        format!("{} (pinned)", located.path.display())
+                    }
+                },
+                Err(ToolError::NotCached { .. }) => "pinned, not downloaded yet".into(),
+                Err(e) => e.to_string(),
+            };
+            println!("{:<13}{shown:<6} {place}", tool.name());
+        }
     }
     Ok(())
 }
 
 fn tools_fetch(keys: &[String]) -> Result<()> {
-    let tools: Vec<Tool> = if keys.is_empty() {
+    // Each tool with the version asked for (`pixi-1.42`), or every
+    // version kobo-tools builds of every tool.
+    let tools: Vec<(Tool, Option<String>)> = if keys.is_empty() {
         Tool::ALL
             .into_iter()
             .filter(|t| t.version().is_some())
+            .flat_map(|t| {
+                let versions = t.pinned_versions();
+                let extra: Vec<_> = versions
+                    .iter()
+                    .skip(1)
+                    .map(|v| (t, Some(v.to_string())))
+                    .collect();
+                std::iter::once((t, None)).chain(extra)
+            })
             .collect()
     } else {
-        keys.iter().map(|k| parse_tool(k)).collect::<Result<_>>()?
+        keys.iter()
+            .map(|k| match k.split_once('-') {
+                Some((key, version)) => Ok((parse_tool(key)?, Some(version.to_owned()))),
+                None => Ok((parse_tool(k)?, None)),
+            })
+            .collect::<Result<_>>()?
     };
-    for tool in tools {
+    for (tool, version) in tools {
         if tool.version().is_none() {
             bail!("Kobo pins no build of {tool}, which has no licence; configure a path to it");
         }
         announce_download(tool);
-        let located = tool.locate()?;
+        let located = tool.locate_version(version.as_deref())?;
+        let name = match &version {
+            Some(v) => format!("{tool} {v}"),
+            None => tool.to_string(),
+        };
         match located.note() {
-            Some(note) => println!("{tool}: {note}"),
-            None => println!("{tool}: {}", located.path.display()),
+            Some(note) => println!("{name}: {note}"),
+            None => println!("{name}: {}", located.path.display()),
         }
     }
     Ok(())

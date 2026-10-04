@@ -63,6 +63,10 @@ pub struct Manifest {
     /// A hack's PIXI insert carried as compiled code (`source::pixi`), for
     /// a project imported without its sprites' sources; never with `pixi`.
     pub pixi_compiled: Option<PathBuf>,
+    /// The PIXI version `pixi` is built with (`[pixi] version`), when not
+    /// the one Kobo pins by default: one kobo-tools also builds
+    /// (`Tool::pinned_versions`).
+    pub pixi_version: Option<String>,
     /// A folder of AddmusicK's input files (`Addmusic_list.txt`, `music/`,
     /// `samples/`, ...), laid over the user's AddmusicK folder.
     pub music: Option<PathBuf>,
@@ -190,6 +194,11 @@ impl Manifest {
         }
         if let Some(pixi) = &self.pixi {
             out.key("pixi", "dir", quoted(pixi));
+        }
+        match &self.pixi_version {
+            Some(version) => out.key("pixi", "version", toml_edit::Value::from(version.as_str())),
+            None if self.pixi.is_some() => out.key_comments("pixi", "version"),
+            None => {}
         }
 
         if let Some(compiled) = &self.pixi_compiled {
@@ -476,8 +485,20 @@ impl Manifest {
                             .ok_or_else(|| invalid("pixi.compiled", "must be a file path"))?;
                         manifest.pixi_compiled = Some(PathBuf::from(file));
                     }
+                    "version" => {
+                        let version = item.as_str().ok_or_else(|| {
+                            invalid("pixi.version", "must be a version, \"1.42\"")
+                        })?;
+                        manifest.pixi_version = Some(version.to_owned());
+                    }
                     _ => return Err(invalid("pixi", format!("unknown key `{key}`"))),
                 }
+            }
+            if manifest.pixi_version.is_some() && manifest.pixi.is_none() {
+                return Err(invalid(
+                    "pixi.version",
+                    "is the PIXI that builds `dir`, which the table does not give",
+                ));
             }
             if manifest.pixi.is_some() && manifest.pixi_compiled.is_some() {
                 return Err(invalid(
@@ -710,6 +731,7 @@ mod tests {
             sa1: true,
             lz3: true,
             callisto: None,
+            pixi_version: Some("1.42".into()),
             early_patches: vec![PathBuf::from("asm/fastrom.asm")],
             late_patches: vec![PathBuf::from("asm/a.asm"), PathBuf::from("asm/b.asm")],
             music: Some(PathBuf::from("music")),
@@ -759,7 +781,7 @@ mod tests {
             text,
             "format = 1\n\n[rom]\nsize = \"1536K\"\nsa1 = true\nlz3 = true\n\n[patches]\n\
              early = [\"asm/fastrom.asm\"]\nlate = [\"asm/a.asm\", \"asm/b.asm\"]\n\n\
-             [music]\ndir = \"music\"\n\n[uberasm]\ndir = \"uberasm\"\n\n[pixi]\ndir = \"sprites\"\n\n[gps]\ndir = \"blocks\"\n\n\
+             [music]\ndir = \"music\"\n\n[uberasm]\ndir = \"uberasm\"\n\n[pixi]\ndir = \"sprites\"\nversion = \"1.42\"\n\n[gps]\ndir = \"blocks\"\n\n\
              [graphics]\nbpp = 4\n\n\
              [gfx]\n0x00 = \"graphics/GFX00.png\"\n\n[map16]\n0x10 = \"map16/10.toml\"\n\n[map16_bg]\n0x01 = \"map16/bg-01.toml\"\n\n\
              [map16_tileset]\n0x05 = \"map16/tileset-05.toml\"  # pages 0 and 1 also tilesets 4, D\n\n\
@@ -904,6 +926,22 @@ size = \"2M\"
             "format = 1\n\n[pixi]\ncompiled = \"pixi/compiled.toml\"\n\n[levels]\n"
         );
         assert_eq!(Manifest::from_toml(&text).unwrap().0, manifest);
+    }
+
+    #[test]
+    fn a_pixi_version_is_for_a_pixi_folder() {
+        let text = "format = 1\n[pixi]\ndir = \"pixi\"\nversion = \"1.42\"\n";
+        let manifest = Manifest::from_toml(text).unwrap().0;
+        assert_eq!(manifest.pixi_version.as_deref(), Some("1.42"));
+        assert!(
+            manifest
+                .to_toml(&Comments::default())
+                .contains("version = \"1.42\"")
+        );
+        assert!(
+            Manifest::from_toml("format = 1\n[pixi]\ncompiled = \"c.toml\"\nversion = \"1.42\"\n")
+                .is_err()
+        );
     }
 
     #[test]

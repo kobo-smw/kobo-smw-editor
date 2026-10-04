@@ -745,7 +745,9 @@ on the built ROM.
      patch (a ROM Lunar Magic saved, which Kobo does not carry), changes vanilla levels'
      backgrounds and draws the vertical pipes in one colour (known-gaps.md). Not carried:
      its shared palettes (3 colours, known-gaps.md), overworld, title screen, and credits
-     (patches of the ROM, left for Lunar Magic), and FastROM.
+     (patches of the ROM, left for Lunar Magic), and FastROM. Its sprites, written for
+     PIXI 1.42, build with the pinned 1.42 (kobo-tools `r2`, `[pixi] version`) since
+     2026-10-04.
   8. **Closing step 2:** fold what stays true of this file into the other docs and delete
      it, as its header says.
 - 2b then takes Lunar Magic-layout features one at a time, each through its source format,

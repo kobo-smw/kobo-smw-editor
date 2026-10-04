@@ -219,7 +219,17 @@ pub fn asar() -> Option<kobo_core::asar::Asar> {
 /// a failure.
 #[allow(dead_code)]
 pub fn tool(tool: Tool, require: &str) -> Option<std::path::PathBuf> {
-    match tool.locate_offline() {
+    tool_version(tool, None, require)
+}
+
+/// [`tool`] at `version`, one kobo-tools builds beside the default.
+#[allow(dead_code)]
+pub fn tool_version(
+    tool: Tool,
+    version: Option<&str>,
+    require: &str,
+) -> Option<std::path::PathBuf> {
+    match tool.locate_version_offline(version) {
         Ok(located) => Some(located.path),
         Err(
             e @ (ToolError::NotCached { .. }

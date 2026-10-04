@@ -749,7 +749,9 @@ impl Stage {
                     return Ok(Vec::new());
                 };
                 let mut hash = Sha1::new();
-                Tool::Pixi.locate()?.hash_into(&mut hash)?;
+                Tool::Pixi
+                    .locate_version(project.manifest.pixi_version.as_deref())?
+                    .hash_into(&mut hash)?;
                 Tool::Asar.locate()?.hash_into(&mut hash)?;
                 tools::hash_tree(&mut hash, &project.root.join(files))?;
                 hash_callisto(&mut hash, project)?;
@@ -943,7 +945,9 @@ impl Stage {
                     }
                 }
                 if let Some(files) = &project.manifest.pixi {
-                    let tool = Tool::Pixi.locate()?.path;
+                    let tool = Tool::Pixi
+                        .locate_version(project.manifest.pixi_version.as_deref())?
+                        .path;
                     let asar = Tool::Asar.locate()?.path;
                     *rom = tools::run_pixi(
                         rom,
@@ -1257,7 +1261,10 @@ pub fn tools(project: &Project) -> Vec<Tool> {
 pub fn locate_tools(project: &Project) -> Result<Vec<Located>, BuildError> {
     Ok(tools(project)
         .into_iter()
-        .map(Tool::locate)
+        .map(|tool| match tool {
+            Tool::Pixi => tool.locate_version(project.manifest.pixi_version.as_deref()),
+            _ => tool.locate(),
+        })
         .collect::<Result<_, _>>()?)
 }
 

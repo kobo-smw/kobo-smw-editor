@@ -408,7 +408,7 @@ how each oracle is produced, where its data lives, and what is known not to matc
   and without the `JSL` at `$00A01F`.
 - **PIXI**: `tests/tool_stages.rs` runs PIXI (configured, or the pinned build in the
   cache; `KOBO_REQUIRE_PIXI=1` makes its absence a failure, as CI does) on a synthetic
-  image (`pixi_runs_without_a_rom`) and as a build's sprites stage with a sprite placed in
+  image (`pixi_runs_without_a_rom`, every pinned version: 1.43 and 1.42) and as a build's sprites stage with a sprite placed in
   a level (`pixi_inserts_sprites`, with the ROM); `tests/lunar_magic_save.rs`
   (`a_pixi_build_survives_a_lunar_magic_save`) has Lunar Magic save such a build and
   plays level `0EB` across its secret-exit goal tape in the clean ROM, the build, and the

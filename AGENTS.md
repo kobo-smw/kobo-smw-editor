@@ -209,7 +209,8 @@ Early stage: roadmap step 1 is complete; step 2 is next, planned in `docs/step-2
   copied in, Asar's library beside it, and the project's files laid over it. `Tool::locate` is the
   one way to find a tool: a configured path (`KOBO_UBERASM`, `tools.uberasm` in the config
   file, and so on) wins; else Asar, PIXI (`tools::pixi()`), and UberASM Tool come from the
-  builds `tools/pinned.toml` pins, downloaded from `kobo-smw/kobo-tools` on first use,
+  builds `tools/pinned.toml` pins (PIXI 1.43, and 1.42 for a project that asks with
+  `[pixi] version`: `Tool::locate_version`), downloaded from `kobo-smw/kobo-tools` on first use,
   checked by SHA-256, and cached per user (`KOBO_TOOL_CACHE`; `KOBO_OFFLINE` turns
   downloads off); SA-1 Pack comes the same way from its author's release
   (`tools/upstream.toml`). AddmusicK and GPS are only ever the user's. A stage's cache
@@ -249,7 +250,7 @@ cargo run -- level tiles|dump 105 [dir]      # the expanded Map16 grid as hex, o
 cargo run -- level sprites|map16|wram|reads  # sprite list, resolved Map16, RAM dump, read trace
 cargo run -- mwl info level.mwl [-r rom]     # an MWL file's sections (-r: its ROM's PIXI sprite sizes)
 cargo run -- addr '$05E000' [--sa1]          # SNES <-> file offset
-cargo run -- tools [list|fetch [tool]|path tool]  # where each tool comes from; fetch the pinned builds
+cargo run -- tools [list|fetch [tool]|path tool]  # where each tool comes from; fetch the pinned builds (pixi-1.42: a version)
 cargo run -- bps apply hack.bps out.sfc [-r rom]   # patch the clean ROM, headered or not; output headerless
 cargo run -- bps create hack.sfc out.bps [-r rom]  # patch from the clean ROM to a modified one
 cargo run --release --example sprite_census -- rom.smc  # sprite numbers that draw nothing, by level

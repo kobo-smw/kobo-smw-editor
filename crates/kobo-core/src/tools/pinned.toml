@@ -1,8 +1,8 @@
 # The builds of the licensed tools Kobo fetches, from kobo-tools's
-# release r1 (https://github.com/kobo-smw/kobo-tools). Written by its
+# release r2 (https://github.com/kobo-smw/kobo-tools). Written by its
 # `build.py pins manifest.json`; do not edit by hand.
-release = "r1"
-url = "https://github.com/kobo-smw/kobo-tools/releases/download/r1/"
+release = "r2"
+url = "https://github.com/kobo-smw/kobo-tools/releases/download/r2/"
 
 [tools.asar]
 name = "Asar"
@@ -63,6 +63,36 @@ file = "pixi-1.43-macos-x64.tar.gz"
 sha256 = "ce28790784c4ad3a11c8e6866f8cdbd3fea3ae49d8030ca1cf8334a5b5a72288"
 size = 241892
 root = "pixi-1.43-macos-x64"
+
+[tools."pixi-1.42"]
+name = "PIXI"
+version = "1.42"
+licence = "GPL-3.0"
+commit = "034313b857c598cc3ccc2c991134d0dcd6975992"
+
+[tools."pixi-1.42".builds.linux-x64]
+file = "pixi-1.42-linux-x64.tar.gz"
+sha256 = "ca4a4a2fccae88411e315f10c6f829e17f85d227b3a33ff78a239589bd086b58"
+size = 475215
+root = "pixi-1.42-linux-x64"
+
+[tools."pixi-1.42".builds.windows-x64]
+file = "pixi-1.42-windows-x64.tar.gz"
+sha256 = "4bedd44d6bb69da6edb2191784b398ca21b0b321a787fc1120df00b059abe1c0"
+size = 385926
+root = "pixi-1.42-windows-x64"
+
+[tools."pixi-1.42".builds.macos-arm64]
+file = "pixi-1.42-macos-arm64.tar.gz"
+sha256 = "3e1bd0df450c671de6e52e83c3ed21030059706d94909f2114ed715eaef51926"
+size = 223649
+root = "pixi-1.42-macos-arm64"
+
+[tools."pixi-1.42".builds.macos-x64]
+file = "pixi-1.42-macos-x64.tar.gz"
+sha256 = "7b647641b24c4d82960bf145095f7e77896c8324cb441986d977c24a8abb9378"
+size = 236746
+root = "pixi-1.42-macos-x64"
 
 [tools.uberasm]
 name = "UberASM Tool"

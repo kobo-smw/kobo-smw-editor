@@ -133,6 +133,15 @@ are placed as well as that old ones are kept.
 
 ## PIXI 1.43 (GPL-3.0)
 
+Kobo pins 1.43, and 1.42 beside it (kobo-tools `r2`, `pixi-1.42`) for a project whose
+sprites are written for it: `[pixi] version = "1.42"` (`Tool::locate_version`; the
+Romhack Races template sets it). 1.42 has no `--script-mode`, which turns 1.43's prompts
+off: `tools::run_pixi` runs it without the option when PIXI refuses it, and with no input
+its prompts take their defaults. kobo-tools builds 1.42 with upstream's later macOS
+compile fix applied (its README). 1.43 moved `routines/ClusterGetDrawInfo.asm` to
+`routines/Cluster/GetDrawInfo.asm`, so a 1.42 project's routines folder laid over 1.43
+defines the macro twice; built with 1.42 it does not.
+
 - Refuses a ROM where the pointer at `$06F624` (the acts-like table) is `$FFFFFF`, "without
   having modified a level in Lunar Magic", and one where `$00F6E4` is not `$5C`, Lunar
   Magic's VRAM patch (`src/sprite.cpp:1875-1906`). It checks only that byte; what the
