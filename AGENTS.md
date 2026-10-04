@@ -96,7 +96,8 @@ Early stage: roadmap step 1 is complete; step 2 is next, planned in `docs/step-2
   `kobo_core::clean_room` is the one place that tells such a ROM (its marker, or code where
   every save writes its own) and decides what every output withholds once the process has
   loaded one: the trace, a watched write's instruction, CPU errors' addresses, read
-  traces' instructions, a called routine's registers, and the stacks in any RAM dump. A
+  traces' instructions, a called routine's registers, the stacks in any RAM dump, and
+  Map16 definitions the ROM's routine found outside its tables (`Map16Shown`). A
   new output that could show where a ROM's code is goes through it; the scripts in
   `tools/` check through `tools/clean_room.py`.
 - `kobo_core::expand` runs ROM code. `machine` owns the CPU, the bus, and `Call` (the register

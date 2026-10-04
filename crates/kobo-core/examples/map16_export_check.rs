@@ -31,11 +31,19 @@ fn main() {
     }
     let tiles: Vec<u16> = (0x200..0x8000u16).collect();
     let resolved = expand::resolve_map16(&rom, level, &tiles).unwrap();
-    // KOBO_PROBE_DUMP=file: the resolved definitions of tiles 200-7FFF.
+    // KOBO_PROBE_DUMP=file: the resolved definitions of tiles 200-7FFF,
+    // zeros where the clean room withholds one (`Map16Shown`).
     if let Some(path) = std::env::var_os("KOBO_PROBE_DUMP") {
+        let shown = kobo_core::clean_room::Map16Shown::new(&rom);
+        let addresses = expand::map16_addresses(&rom, level, &tiles).unwrap();
         let bytes: Vec<u8> = resolved
             .iter()
-            .flat_map(|t| t.map_or([0; 8], |t| t.to_bytes()))
+            .zip(&tiles)
+            .zip(&addresses)
+            .flat_map(|((t, &n), at)| match (t, at) {
+                (Some(t), Some(at)) if shown.foreground(n, at.raw()) => t.to_bytes(),
+                _ => [0; 8],
+            })
             .collect();
         std::fs::write(path, bytes).unwrap();
     }

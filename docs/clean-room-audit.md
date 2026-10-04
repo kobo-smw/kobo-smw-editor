@@ -54,7 +54,15 @@ changed or removed.
   byte at one of its hook sites across the corpus, and decoded one byte of its code next
   to another hook.
 
-Since 2026-10-02 `kobo_core::clean_room` closes all of these (step-2.md).
+- On 2026-10-04 a session ran `kobo level map16` on a boss arena of a ROM Lunar Magic
+  saved (the Romhack Races baserom, built to try importing it). A definition is the 8 bytes
+  wherever the ROM's Map16 routine points, and in a boss arena that was code: about a
+  kilobyte of it printed as definitions. The session saw what it was, stopped, and deleted
+  the output without studying it; nothing from it is in Kobo.
+
+Since 2026-10-02 `kobo_core::clean_room` closes all of these (step-2.md), the last since
+2026-10-04: an output shows a Map16 definition only where the ROM's tables put that tile
+(`clean_room::Map16Shown`).
 
 ## What was removed or restated
 

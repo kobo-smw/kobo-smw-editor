@@ -40,6 +40,7 @@ fn scene() -> (LoadedLevel, LayerTiles, Palette) {
         low: vec![0; GRID_LEN],
         high: vec![0; GRID_LEN],
         map16: HashMap::from([(0, solid_tile(0)), (0x200, solid_tile(1))]),
+        map16_sources: HashMap::new(),
         pipe_map16: None,
         bg_map16: vec![solid_tile(2); BG_TILE_COUNT],
         bg_map16_at: None,

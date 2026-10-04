@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use crate::level::{Layer2Kind, LevelMode, PrimaryHeader};
 use crate::map16::Map16Tile;
+use crate::rom::Rom;
 
 /// Bytes per plane of the tile grid.
 pub const GRID_LEN: usize = 0x3800;
@@ -121,6 +122,10 @@ pub struct LevelTiles {
     /// tiles, which live in `bg_map16`. Prefer [`LevelTiles::map16_at`],
     /// which also knows the position-dependent pipe tiles.
     pub map16: HashMap<u16, Map16Tile>,
+    /// Where each of `map16` was read: the address the ROM's own Map16
+    /// routine or pointer table gave. Not always a table: an output that
+    /// shows definitions asks [`crate::clean_room::Map16Shown`] first.
+    pub map16_sources: HashMap<u16, u32>,
     /// Vanilla definitions of the vertical pipe tiles `133`-`13A` by
     /// position: the game re-points them for every column (row in vertical
     /// levels) it uploads, choosing variant `(column / 8) % 4` from
@@ -204,6 +209,39 @@ impl LevelTiles {
             .unwrap_or(0);
         (0..pages * super::PAGE_TILES)
             .map(|n| self.map16.get(&(n as u16)).copied())
+            .collect()
+    }
+
+    /// [`Self::foreground_map16`] as an output may show it: `None` too
+    /// where [`crate::clean_room::Map16Shown`] withholds a definition.
+    pub fn foreground_map16_shown(&self, rom: &Rom) -> Vec<Option<Map16Tile>> {
+        let shown = crate::clean_room::Map16Shown::new(rom);
+        let mut tiles = self.foreground_map16();
+        for (n, tile) in tiles.iter_mut().enumerate() {
+            let n = n as u16;
+            if self
+                .map16_sources
+                .get(&n)
+                .is_none_or(|&at| !shown.foreground(n, at))
+            {
+                *tile = None;
+            }
+        }
+        tiles
+    }
+
+    /// `bg_map16` as an output may show it: `None` where
+    /// [`crate::clean_room::Map16Shown`] withholds a definition.
+    pub fn bg_map16_shown(&self, rom: &Rom) -> Vec<Option<Map16Tile>> {
+        let shown = crate::clean_room::Map16Shown::new(rom);
+        self.bg_map16
+            .iter()
+            .enumerate()
+            .map(|(n, &tile)| {
+                self.bg_map16_at
+                    .is_some_and(|base| shown.background(n as u16, base))
+                    .then_some(tile)
+            })
             .collect()
     }
 

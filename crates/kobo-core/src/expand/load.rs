@@ -106,7 +106,7 @@ pub(crate) fn expand_controlled(
         }
         None => (Vec::new(), None, SCREEN_LEN),
     };
-    let map16 = map16::lookup_map16(&mut machine, map16::routine_in_use(rom))?;
+    let (map16, map16_sources) = map16::lookup_map16(&mut machine, map16::routine_in_use(rom))?;
     let pipe_map16 = (!lunar_magic).then(|| map16::read_pipe_map16(&mut machine.bus));
     if let Some(op) = operation {
         op.check()?;
@@ -128,6 +128,7 @@ pub(crate) fn expand_controlled(
         layer2_tilemap: expanded.layer2_tilemap,
         layer2_screen_len,
         map16,
+        map16_sources,
         pipe_map16,
         bg_map16,
         bg_map16_at,
@@ -525,7 +526,7 @@ pub fn resolve_map16(
     let routine = map16::routine_in_use(rom);
     tiles
         .iter()
-        .map(|&n| map16::lookup_one(&mut machine, routine, n))
+        .map(|&n| Ok(map16::lookup_one(&mut machine, routine, n)?.map(|(tile, _)| tile)))
         .collect()
 }
 

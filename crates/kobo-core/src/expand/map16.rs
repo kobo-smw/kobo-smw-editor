@@ -88,10 +88,11 @@ fn read_map16(bus: &mut SmwBus, ptr: u32) -> Map16Tile {
 /// Background definitions stay separate: their tile numbers overlap
 /// foreground pages 2 and 3. A tile the grid does not use and the
 /// routine cannot resolve is left out rather than failing the level.
+/// Returns the definitions and where each was read.
 pub(super) fn lookup_map16(
     machine: &mut Machine,
     lunar_magic: bool,
-) -> Result<HashMap<u16, Map16Tile>, ExpandError> {
+) -> Result<(HashMap<u16, Map16Tile>, Sources), ExpandError> {
     let ram = &machine.bus.ram;
     let mut numbers: Vec<u16> = ram
         .bytes(ram::TILES_LOW, GRID_LEN)
@@ -107,9 +108,11 @@ pub(super) fn lookup_map16(
     pages.sort_unstable();
     pages.dedup();
     let mut out = HashMap::with_capacity(pages.len() * PAGE_TILES);
+    let mut sources = HashMap::with_capacity(pages.len() * PAGE_TILES);
     for n in numbers {
-        if let Some(tile) = lookup_one(machine, lunar_magic, n)? {
+        if let Some((tile, at)) = lookup_one(machine, lunar_magic, n)? {
             out.insert(n, tile);
+            sources.insert(n, at);
         }
     }
     for n in pages.into_iter().flat_map(|page| {
@@ -119,11 +122,12 @@ pub(super) fn lookup_map16(
         if out.contains_key(&n) {
             continue;
         }
-        if let Ok(Some(tile)) = lookup_one(machine, lunar_magic, n) {
+        if let Ok(Some((tile, at))) = lookup_one(machine, lunar_magic, n) {
             out.insert(n, tile);
+            sources.insert(n, at);
         }
     }
-    Ok(out)
+    Ok((out, sources))
 }
 
 /// Whether the first row upload calls the Map16 routine (`JSL $06F540` at
@@ -139,6 +143,9 @@ pub(super) fn routine_in_use(rom: &Rom) -> bool {
     rom.lunar_magic_version().is_some() || uploads_use_routine(rom)
 }
 
+/// Where each resolved foreground definition was read, by tile number.
+pub(super) type Sources = HashMap<u16, u32>;
+
 /// Tiles per Map16 page.
 pub const PAGE_TILES: usize = 0x100;
 
@@ -148,15 +155,16 @@ pub const PAGE_TILES: usize = 0x100;
 /// when the grid uses a tile on them.
 pub const FG_PAGES: usize = 4;
 
-/// The definition of one foreground tile number, or `None` where the ROM
-/// has no such tile (a vanilla ROM has pages 0 and 1 only).
+/// The definition of one foreground tile number and where it was read,
+/// or `None` where the ROM has no such tile (a vanilla ROM has pages 0
+/// and 1 only).
 pub(super) fn lookup_one(
     machine: &mut Machine,
     lunar_magic: bool,
     n: u16,
-) -> Result<Option<Map16Tile>, ExpandError> {
+) -> Result<Option<(Map16Tile, u32)>, ExpandError> {
     Ok(match lookup_address(machine, lunar_magic, n)? {
-        Some(ptr) => Some(read_map16(&mut machine.bus, ptr)),
+        Some(ptr) => Some((read_map16(&mut machine.bus, ptr), ptr)),
         None => None,
     })
 }
@@ -239,13 +247,14 @@ mod tests {
         let mut machine = Machine::new(&rom, 0x105);
         machine.bus.ram.set_u8_at(ram::TILES_HIGH, 0, 2);
         machine.bus.ram.set_u8_at(ram::TILES_HIGH, 1, 3);
-        let result = lookup_map16(&mut machine, true).unwrap();
+        let (result, sources) = lookup_map16(&mut machine, true).unwrap();
         assert_eq!(result[&0x200], page_two);
         assert_eq!(result[&0x300], page_three);
+        assert_eq!(sources[&0x200], 0x10_9000);
         // Every tile of the first four pages is resolved, used or not,
         // and so is the rest of a higher page the grid touches.
         machine.bus.ram.set_u8_at(ram::TILES_HIGH, 2, 0x05);
-        let result = lookup_map16(&mut machine, true).unwrap();
+        let (result, _) = lookup_map16(&mut machine, true).unwrap();
         assert!((0..(FG_PAGES * PAGE_TILES) as u16).all(|n| result.contains_key(&n)));
         assert_eq!(result[&0x3FF], Map16Tile::from_bytes([0; 8]));
         assert!((0x0500..0x0600).all(|n| result.contains_key(&n)));
@@ -253,7 +262,7 @@ mod tests {
         // A page whose table the ROM does not have: the routine's address
         // for page $10 wraps below $8000, outside the image.
         machine.bus.ram.set_u8_at(ram::TILES_HIGH, 2, 0x10);
-        let result = lookup_map16(&mut machine, true).unwrap();
+        let (result, _) = lookup_map16(&mut machine, true).unwrap();
         assert!(!result.contains_key(&0x1000));
     }
 }

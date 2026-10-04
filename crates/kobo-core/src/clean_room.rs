@@ -21,6 +21,9 @@
 //!   not the registers it left.
 //! - `kobo asm` leaves out what a patch prints, and the text of Asar's
 //!   errors and warnings, which can hold what a patch read of the ROM.
+//! - A Map16 definition the ROM's own routine found is shown, as text or
+//!   as a picture of the tile, only where the ROM's tables put that tile
+//!   ([`Map16Shown`]): elsewhere the routine may have pointed into code.
 //!
 //! Whatever ROM is loaded, a RAM dump leaves out the stacks and SA-1
 //! Pack's call pointers ([`withheld`]; dumps read through [`peek`] and
@@ -38,6 +41,7 @@ use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::addr::SnesAddr;
+use crate::map16::{self, GameTables};
 use crate::ram::{Ram, RamAddr, RamMap};
 use crate::rom::Rom;
 
@@ -147,6 +151,104 @@ pub fn may_call(rom: &Rom, vanilla: &Rom, addr: SnesAddr) -> bool {
     intact || hook
 }
 
+/// Which of the Map16 definitions a level's load resolved an output may
+/// show ([`crate::expand::LevelTiles::map16_sources`] and `bg_map16_at`
+/// say where each was read). A definition is the 8 bytes wherever the
+/// ROM's own Map16 routine points, and that is not always a table: in a
+/// boss arena, a Lunar Magic ROM's routine points into code. Once the
+/// process is [`forbidden`], a definition is shown only where the library,
+/// reading the ROM's tables as data, has that tile's definition: the
+/// game's tables for pages 0 and 1 (any object tileset's, and the pipes'),
+/// and Lunar Magic's for the pages past them and for BG Map16, within a
+/// RATS block. Pages in an older Lunar Magic's layout, which the library
+/// finds only through the ROM's routine, are withheld with the rest.
+pub struct Map16Shown<'a> {
+    rom: &'a Rom,
+    forbidden: bool,
+    game: Option<GameTables>,
+    blocks: Vec<std::ops::Range<usize>>,
+}
+
+impl<'a> Map16Shown<'a> {
+    pub fn new(rom: &'a Rom) -> Self {
+        Self::with(rom, forbidden())
+    }
+
+    fn with(rom: &'a Rom, forbidden: bool) -> Self {
+        let blocks = if forbidden {
+            crate::rats::blocks(rom)
+                .into_iter()
+                .filter_map(|b| {
+                    rom.pc(b.start)
+                        .ok()
+                        .map(|pc| pc.as_usize()..pc.as_usize() + b.len)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Self {
+            rom,
+            forbidden,
+            game: forbidden.then(|| GameTables::read(rom).ok()).flatten(),
+            blocks,
+        }
+    }
+
+    /// Whether foreground tile `tile`'s definition, read at bus address
+    /// `at`, may be shown.
+    pub fn foreground(&self, tile: u16, at: u32) -> bool {
+        if !self.forbidden {
+            return true;
+        }
+        let at = SnesAddr::new(at);
+        if (tile as usize) < map16::FG_TILE_COUNT {
+            let game = self.game.as_ref().is_some_and(|game| {
+                (0..map16::TILESET_COUNT).any(|tileset| game.address(tileset, tile) == at)
+            });
+            let pipes = [None, Some(0), Some(2), Some(3)]
+                .into_iter()
+                .any(|set| map16::pipe_address(set, tile) == Some(at));
+            return game || pipes;
+        }
+        let page = (tile / 0x100) as u8;
+        let in_group = map16::pages::PAGE_GROUPS.iter().any(|group| {
+            group.pages().contains(&page)
+                && group.definition(self.rom, tile).ok().flatten() == Some(at)
+        });
+        let per_tileset = page == 2
+            && map16::pages::tileset_page2(self.rom).unwrap_or(false)
+            && (0..map16::TILESET_COUNT).any(|tileset| {
+                map16::pages::tileset_page2_definition(self.rom, tileset, tile).ok() == Some(at)
+            });
+        (in_group || per_tileset) && self.in_block(at)
+    }
+
+    /// Whether background tile `tile`'s definition may be shown, the
+    /// level's definitions starting at bus address `base`.
+    pub fn background(&self, tile: u16, base: u32) -> bool {
+        if !self.forbidden {
+            return true;
+        }
+        let at = SnesAddr::new(base.wrapping_add(8 * tile as u32));
+        if base == map16::tables::MAP16_BG_TILES.raw() {
+            return (tile as usize) < map16::BG_TILE_COUNT;
+        }
+        let table = (0..16).any(|t| {
+            map16::pages::bg_table(self.rom, t).ok().flatten() == Some(SnesAddr::new(base))
+        });
+        table && self.in_block(at)
+    }
+
+    /// Whether the 8 bytes at `at` are within one RATS block.
+    fn in_block(&self, at: SnesAddr) -> bool {
+        self.rom.pc(at).is_ok_and(|pc| {
+            let pc = pc.as_usize();
+            self.blocks.iter().any(|b| b.start <= pc && pc + 8 <= b.end)
+        })
+    }
+}
+
 /// Whether a dump of RAM leaves out the byte at bus address `addr` (as the
 /// S-CPU sees it): the S-CPU's stack page in work RAM, and with SA-1 Pack
 /// the SA-1's in I-RAM and the pointers of the two processors' calls to
@@ -245,6 +347,35 @@ mod tests {
         let filled = rom_with(|d| d[0x200..0x204].copy_from_slice(&[0x22, 0x00, 0x80, 0x10]));
         assert!(!may_call(&filled, &vanilla, at(0x200)));
         assert!(!may_call(&filled, &vanilla, at(0x204)));
+    }
+
+    #[test]
+    fn map16_definitions_are_shown_only_from_the_tables() {
+        // 1.25 MiB of `$FF`: every tile of pages 0 and 1 in the common
+        // table, and group `00`'s table at `$10:8008`, tile `200` first,
+        // in a RATS block of 512 tiles.
+        let mut data = vec![0xFFu8; 0x14_0000];
+        data[0x7FC0 + 0x15] = 0x20;
+        data[0x3_7553..0x3_7555].copy_from_slice(&0x7008u16.to_le_bytes());
+        data[0x3_7557] = 0x10;
+        data[0x8_0000..0x8_0008].copy_from_slice(b"STAR\xFF\x0F\x00\xF0");
+        let rom = Rom::from_bytes(data).unwrap();
+        let open = Map16Shown::with(&rom, false);
+        assert!(open.foreground(0x10, 0x00_8000));
+        assert!(open.background(0x10, 0x00_8000));
+        let shown = Map16Shown::with(&rom, true);
+        assert!(shown.foreground(0x10, 0x0D_8080));
+        assert!(!shown.foreground(0x10, 0x0D_8088));
+        assert!(!shown.foreground(0x10, 0x00_8000));
+        assert!(shown.foreground(0x200, 0x10_8008));
+        assert!(!shown.foreground(0x200, 0x10_8010));
+        assert!(shown.foreground(0x3FF, 0x10_8FF8 + 8));
+        // Tile `400` is where the table says, but past the block's end.
+        assert!(!shown.foreground(0x400, 0x10_9008));
+        assert!(shown.background(0x1FF, 0x0D_9100));
+        assert!(!shown.background(0x200, 0x0D_9100));
+        // No BG Map16 hook: no table but the game's.
+        assert!(!shown.background(0, 0x10_8008));
     }
 
     #[test]

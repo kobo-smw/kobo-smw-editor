@@ -1023,10 +1023,21 @@ fn level_map16(rom: &Rom, level: &str) -> Result<()> {
     let loaded = expand::expand_level(rom, level)?;
     let mut numbers: Vec<_> = loaded.tiles.map16.keys().copied().collect();
     numbers.sort_unstable();
+    let shown = loaded.tiles.foreground_map16_shown(rom);
+    let mut withheld = 0;
     for n in numbers {
-        let b = loaded.tiles.map16[&n].to_bytes();
-        let hex: Vec<String> = b.iter().map(|x| format!("{x:02X}")).collect();
+        let Some(tile) = shown[n as usize] else {
+            withheld += 1;
+            continue;
+        };
+        let hex: Vec<String> = tile.to_bytes().iter().map(|x| format!("{x:02X}")).collect();
         println!("{n:04X}: {}", hex.join(" "));
+    }
+    if withheld > 0 {
+        eprintln!(
+            "{withheld} definitions withheld: the ROM's routine found them outside its Map16 \
+             tables (clean room)"
+        );
     }
     Ok(())
 }
@@ -1129,10 +1140,12 @@ fn map16_png(
                     bail!("--tileset selects the vanilla tables; leave it out with --level");
                 }
                 let (level, loaded) = load_for_sheet(rom, level)?;
+                // Clean room: a definition found outside the ROM's Map16
+                // tables may be code, which the picture would show.
                 let definitions = if layer == 1 {
-                    loaded.tiles.foreground_map16()
+                    loaded.tiles.foreground_map16_shown(rom)
                 } else {
-                    loaded.tiles.bg_map16.iter().copied().map(Some).collect()
+                    loaded.tiles.bg_map16_shown(rom)
                 };
                 // The back area colour is the fixed colour the level set
                 // up, not a CGRAM entry.
