@@ -161,10 +161,14 @@ how each oracle is produced, where its data lives, and what is known not to matc
   on them by design), and the suite's block moves are cut off after 100 cycles, so those
   are compared over the bytes moved. All other opcodes pass in full. SMW itself never sets
   decimal mode; custom code may.
-- **Lunar Magic hacks**: `tests/layer2_background.rs` runs on every ROM listed in `KOBO_LM_ROMS`
-  (`:`-separated paths) as well as the vanilla ROM. It rebuilds the layer 2 tilemap the game
+- **Lunar Magic hacks**: `tests/corpus_levels.rs` loads every level of every ROM listed in
+  `KOBO_LM_ROMS` (`:`-separated paths), and of the vanilla ROM, once, on every core
+  (`common::par_map`), and checks each two ways. It rebuilds the layer 2 tilemap the game
   uploaded to VRAM from the captured background buffer and BG Map16 table, which catches a
-  clobbered buffer or a table read from the wrong place without external data. The corpus
+  clobbered buffer or a table read from the wrong place without external data; and it
+  parses the sprite list against the RATS tag before it. It reports every hack's failures
+  together. (Until 2026-10-04 these were `layer2_background` and `sprite_lists`, each
+  loading the corpus on one core: about 45 of a full run's 57 minutes.) The corpus
   is `~/.local/share/kobo/roms`: loose `.smc` hacks (Lunar Magic 1.62 to 3.33), QLDC 2021
   and 2022 as BPS patches, and `corpus_more/`, later downloads distributed as BPS (3.21 to
   3.51, among them the corpus's first 3.40 and 3.51 saves). `apply_bps.py` in that
@@ -177,7 +181,7 @@ how each oracle is produced, where its data lives, and what is known not to matc
   list and the 128 QLDC patches (175 entries, each test restarted after a failing hack, so
   a hack's first failure only): every loose and `corpus_more` hack passes; of the QLDC
   entries, all rebuild from a patch, and what fails is
-  - `layer2_background`: 2021 `34_idol`'s nine levels and `76_Bench-kun`'s eighteen
+  - `layer2_background` (now `corpus_levels`): 2021 `34_idol`'s nine levels and `76_Bench-kun`'s eighteen
     ([known-gaps.md](known-gaps.md)), and `76_Bench-kun` level `114`, whose
     background is missing entirely (2048 of 2048 words; it renders black, with SA-1
     `$002FFF` and `$420B`, `$2130` reads reported unmodelled);
@@ -185,7 +189,7 @@ how each oracle is produced, where its data lives, and what is known not to matc
     `GfxReader` refuses it (the ROM's own routine gives the same 4095);
   - `level_data`: 2021 `34_idol` level `012`, one of its nine, whose sprite list at
     `$E38008` parses past its 206-byte RATS block;
-  - `sprite_lists`: 2021 `32_theunkaizoing` and `62_Rykon-V73` level `012`, vanilla's
+  - `sprite_lists` (now `corpus_levels`): 2021 `32_theunkaizoing` and `62_Rykon-V73` level `012`, vanilla's
     empty list at `$07E76D` with a RATS tag in front that claims the rest of bank `$07`;
     2021 `69_bebn legg+E-man38` level `1CB` (13 bytes, block 14) and `77_NerDose` level
     `136` (407, block 408), a block one byte longer than the list; and 2022 `09_idol`
@@ -729,6 +733,14 @@ skip into a failure. A configured vanilla ROM must have the reference headerless
 malformed configuration is an error rather than a skip, and an opt-in tier whose variable
 is set but names no ROMs, dumps, or frames fails instead of passing without checking
 anything.
+
+Run the ROM-backed tiers in a release build: `cargo test --release --workspace` (with
+`~/.config/kobo/env.sh` for the corpus and tools). The level loads run the ROM's own code
+in Kobo's 65816 core, about 2 million instructions a level, and unoptimised that is many
+times slower: a debug run of the suite with the corpus did not finish in two hours on
+2026-10-04, where a release run took 57 minutes, and less since `corpus_levels`. CI runs
+`cargo test --workspace` without a ROM, so the ROM-backed tests skip there and a debug
+build is enough.
 
 ## Parser mutation checks
 

@@ -211,6 +211,7 @@ Early stage: roadmap step 1 is complete; step 2 is next, planned in `docs/step-2
 ```
 cargo build --workspace
 cargo test --workspace                       # ROM-backed tests skip if no ROM is configured
+cargo test --release --workspace             # with a ROM configured: the emulator is too slow unoptimised
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 cargo run -- rom info [-r rom]               # header, checksum, hash, identity
@@ -261,7 +262,8 @@ Windows, and macOS. Keep all three green.
   `kobo_core::config::vanilla_rom_path()`: the `KOBO_SMW_ROM` env var, else `roms.smw` in
   `$XDG_CONFIG_HOME/kobo/config.toml`. They print `skipping: ...` and pass when no ROM is
   configured, so CI never needs ROM data; `KOBO_REQUIRE_ROM=1` makes that a failure. A
-  configured ROM must be the vanilla reference. Run them locally before pushing.
+  configured ROM must be the vanilla reference. Run them locally before pushing, in a
+  release build (`cargo test --release --workspace`; docs/testing.md).
 - **Asar-backed tests** (`tests/asar.rs`) load `libasar` through
   `Tool::Asar.locate_offline()`: `KOBO_ASAR_LIB`, else `tools.asar` in the same file, else
   the pinned build if `kobo tools fetch` has cached it. Tests never download. They skip the

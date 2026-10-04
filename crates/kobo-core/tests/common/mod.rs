@@ -3,6 +3,35 @@
 use kobo_core::tools::{Tool, ToolError};
 use kobo_core::{Rom, RomIdentity, SnesAddr, bps, config};
 
+/// `f` of every item, in their order, on every core: a corpus test's
+/// levels are independent, and one core takes it most of a full run.
+#[allow(dead_code)]
+pub fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let workers = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let next = AtomicUsize::new(0);
+    let results: Mutex<Vec<Option<R>>> = Mutex::new((0..items.len()).map(|_| None).collect());
+    std::thread::scope(|scope| {
+        for _ in 0..workers.min(items.len()) {
+            scope.spawn(|| {
+                loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(item) = items.get(i) else { break };
+                    let r = f(item);
+                    results.lock().unwrap()[i] = Some(r);
+                }
+            });
+        }
+    });
+    results
+        .into_inner()
+        .unwrap()
+        .into_iter()
+        .map(|r| r.expect("every item ran"))
+        .collect()
+}
+
 /// The configured vanilla ROM, or `None` (after printing why) so the
 /// calling test can return early and pass.
 #[allow(dead_code)]

@@ -87,7 +87,7 @@ from that). Vanilla behaviour is in [smw.md](smw.md).
   (`JSL` at `$05D9A1`) stores the height in pixels in `$13D7` (vanilla leaves it zero), so
   `expand` derives rows per screen from it and lays screens out with a stride of
   `rows * 16` bytes; layer 1 objects are otherwise the vanilla format plus screen jumps
-  (extended object `01`, and `03` for mode `$1C`). `tests/sprite_lists.rs` checks that
+  (extended object `01`, and `03` for mode `$1C`). `tests/corpus_levels.rs` checks that
   sprites in expanded levels stay inside the level, tying the sprite Y jumps to this.
   A level with layer 2 objects (the size byte's `T`) splits the screens its height allows
   (`level::size`) between the layers: layer 2 starts at the screen whose start is nearest
@@ -108,7 +108,7 @@ from that). Vanilla behaviour is in [smw.md](smw.md).
   one of the 512 levels is the same 31 objects from `$068000`. That hides the levels from
   the editor, as a lock does, and Kobo treats the ROM as locked: out of scope, not looked
   into further (2026-10-02). `LevelTiles::size()` bounds the grid, and
-  `tests/sprite_lists.rs` tolerates the `$FF`.
+  `tests/corpus_levels.rs` tolerates the `$FF`.
 - Custom level palettes: 3-byte pointers at `$0EF600` per level to `$202` bytes (back area
   colour, then 256 colours); `$000000`/`$FFFFFF` = none. Game mode `$12` loads them itself.
 - ExAnimation (1.70 on): a list per level and a global one, found through the `JSL` at
@@ -178,7 +178,7 @@ from that). Vanilla behaviour is in [smw.md](smw.md).
   a sprite whose first byte is `$FF`. PIXI extension bytes: if `$0EF30F` is `$42`, a
   `$400`-byte size table at `read3($0EF30C)` indexed by `extra_bits*256 + id` gives the
   entry size. Lunar Magic relocates sprite data into RATS blocks; take the pointer the game
-  resolved at `$7E00CE` after loading rather than the vanilla table. `tests/sprite_lists.rs`
+  resolved at `$7E00CE` after loading rather than the vanilla table. `tests/corpus_levels.rs`
   checks every parsed list's length against the RATS tag preceding it, on every ROM in
   `KOBO_LM_ROMS`.
 - Sprite load flags: vanilla keeps one per entry at `$1938` (128), and Lunar Magic 3's loader
