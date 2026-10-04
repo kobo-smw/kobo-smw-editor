@@ -901,7 +901,8 @@ NMI before the game loop has ended the frame; `exlevel_probe compare ... lag=N`)
   by an import into that ROM; a hack's list may still name one (nine corpus hacks, ExGFX
   `FF` in level `105` of several), and its slot then loads nothing, as with `7F`: VRAM
   after the load is the same either way (SMW_2021-5-8, 2026-10-02), and so it is with
-  Kobo's loader, which builds such a list as it is.
+  Kobo's loader, which builds such a list as it is (kept so on review, 2026-10-04: an
+  import notes each, and `kobo build` warns of each, `build::warnings`).
 - The block (`$6E00` bytes in Kaizo Kindergarten, Invictus, and `+ExGFX`) starts with
   the ExGFX `100`-`FFF` pointers (`$2D00` bytes), and the lists follow: `read3($0FF7FF)`
   is `read3($0FF873)` plus `$2D00`. `$0FF873` and `$0FF937` both hold the block's start.
@@ -1132,7 +1133,8 @@ leaves `$7FC006`), and the documented decompression entry `$0FF900`; objects `24
 sites (the overworld, cutscenes, credits, switch palace blocks) as the game has them:
 builds keep the overworld's own files, and write lists `200`-`206` as Lunar Magic 3.70
 writes them (the overworld's own files) so its editor and save find them. Overworld
-graphics are left to the overworld work (roadmap step 4; review, 2026-10-04).
+graphics are left to the overworld work (roadmap step 4; review, 2026-10-04); an import
+notes the submaps whose lists name other files (Kaizo Kindergarten's 0-4 and 6).
 
 Against Lunar Magic's (tools/lunar-magic/with-kobo-graphics, gfx_probe `loads`, 2026-09-28):
 - vanilla+LM with 4bpp files: the same VRAM after every level's load, and the same

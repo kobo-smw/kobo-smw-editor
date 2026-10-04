@@ -1044,6 +1044,29 @@ fn rom_size(clean: &Rom, project: &Project) -> usize {
     })
 }
 
+/// What a build of `project` writes but a shell should warn of: each
+/// graphics list slot naming an ExGFX file the project does not have, which
+/// loads nothing, as in a ROM without the file (hacks have such lists, so a
+/// build takes them; a hand-written project may have forgotten a file).
+pub fn warnings(project: &Project) -> Vec<String> {
+    let mut out = Vec::new();
+    for (number, level) in &project.levels {
+        let Some(list) = &level.graphics else {
+            continue;
+        };
+        for (slot, file) in list.files() {
+            if file >= exgfx::EXGFX_FIRST && !project.exgfx.iter().any(|(n, _)| *n == file) {
+                out.push(format!(
+                    "level {number:03X}: its graphics list's {} names ExGFX{file:X}, which the \
+                     project does not have, so the slot loads nothing",
+                    GraphicsList::SLOTS[slot]
+                ));
+            }
+        }
+    }
+    out
+}
+
 /// The tools a build of `project` runs, in the order it first runs them.
 pub fn tools(project: &Project) -> Vec<Tool> {
     let m = &project.manifest;
@@ -1673,7 +1696,7 @@ fn check_graphics_list(
     if list.layer3_tilemap() && list.tilemap_settings() & 3 == 3 {
         return Err(level_error(
             number,
-            "its graphics list gives layer 3's tilemap size 3 (`tilemap` 3, 7, 11, or 15), \
+            "its graphics list gives layer 3's tilemap size 3 (`tilemap_size = 3`), \
              which Lunar Magic does not offer and loads otherwise than size 0; this build \
              cannot write it yet",
         ));
@@ -1693,7 +1716,8 @@ fn check_graphics_list(
         }
         // A file the project does not have loads nothing, as one the ROM
         // does not have loads nothing for Lunar Magic's code and Kobo's:
-        // hacks have lists naming them (an import notes each).
+        // hacks have lists naming them (an import notes each, and
+        // `warnings` reports each to a build).
         let Some((_, data)) = project.exgfx.iter().find(|(n, _)| *n == file) else {
             continue;
         };

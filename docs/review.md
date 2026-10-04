@@ -13,15 +13,6 @@ settle it.
 
 ## Open
 
-- **Project format for Lunar Magic's graphics** (2026-09-28, `source::project`,
-  `source::level`). `[exgfx]` lists ExGFX files as indexed PNGs (4bpp, or
-  `{ file, bpp = 2 }`) or `.bin` bytes; import writes a PNG when every list using the
-  file loads it at one depth (4 for FG/BG/SP and the older lists, 2 for LG) and it is
-  whole rows of 16 tiles, and bytes otherwise (layer 3 tilemaps, AN2 files).
-  `[bypass_lists]` holds the older lists, first file first. A level's `[graphics]` names
-  every slot, with `bypass`, `layer3_files`, `layer3_tilemap`, and `tilemap` (LT3's
-  nibble) apart, and the layer 3 settings in `[graphics.layer3]`; it is written only when the list changes
-  what the level loads. Settles it: review of the names and of PNG versus bytes.
 - **ExAnimation project format** (2026-09-30, `source::animation`). A level's
   `[animation]` has the settings as four booleans (written only when not what a build
   gives the level: all on, level `104`'s lists off), the list's header as optional keys,
@@ -76,10 +67,3 @@ settle it.
   them to the last entrance in use, and its save re-allocates Kobo's so. Sizing them to
   the project would need the patch to take the size as a define. Settles it: whether
   the space matters.
-- **A graphics list may name an ExGFX file the project does not have** (2026-10-02,
-  `build::check_graphics_list`). The slot then loads nothing, as a slot naming a file the
-  ROM lacks does under Lunar Magic's code (the same VRAM as `7F`) and Kobo's. Hacks have
-  such lists (nine corpus hacks), so a build writes them as they are, where it refused
-  them before; an import notes each, but a hand-written project that names a file it
-  forgot to list is no longer stopped. Settles it: whether a build should refuse what
-  Lunar Magic's editor allows.

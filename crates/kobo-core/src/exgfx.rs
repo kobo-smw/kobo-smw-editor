@@ -89,6 +89,13 @@ pub const BYPASS: u16 = 0x8000;
 pub const LAYER3_FILES: u16 = 0x4000;
 pub const LAYER3_TILEMAP: u16 = 0x2000;
 
+/// LT3's high nibble `DDFF`: the bytes of the tilemap `FF` loads (3, which
+/// Lunar Magic's dialog does not offer, is not among them), and the VRAM
+/// word address `DD` puts it at (docs/lunar-magic-install.md, "Layer 3 in
+/// the lists").
+pub const TILEMAP_SIZES: [u16; 3] = [0x2000, 0x1000, 0x800];
+pub const TILEMAP_VRAM: [u16; 4] = [0x50A0, 0x5000, 0x5080, 0x5800];
+
 /// Slots whose high nibble holds Lunar Magic's layer 3 settings
 /// ([`Layer3Settings`]).
 pub const SETTINGS_SLOTS: [usize; 8] = [

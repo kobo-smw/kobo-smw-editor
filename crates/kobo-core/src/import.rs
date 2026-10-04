@@ -963,6 +963,25 @@ pub fn read_exgfx_files(rom: &Rom) -> Result<ExGfxFiles, ImportError> {
             uses.entry(f as u16).or_default().insert(4);
         }
     }
+    // The submaps' lists: a build writes the overworld's own files there,
+    // as it carries no overworld graphics yet (roadmap step 4).
+    let mut submaps = Vec::new();
+    for n in exgfx::SUBMAP_LISTS..exgfx::SUBMAP_LISTS + 7 {
+        let files = |l: &exgfx::GraphicsList| l.0.map(|w| w & 0xFFF);
+        if exgfx::read_list(rom, n)?
+            .is_some_and(|l| files(&l) != files(&exgfx::GraphicsList::SUBMAP_DEFAULT))
+        {
+            submaps.push(n - exgfx::SUBMAP_LISTS);
+        }
+    }
+    if !submaps.is_empty() {
+        let list: Vec<String> = submaps.iter().map(|n| n.to_string()).collect();
+        notes.push(format!(
+            "the graphics lists of submaps {} name other files than the overworld's own, \
+             which builds write there: overworld graphics are not carried yet",
+            list.join(", ")
+        ));
+    }
     for file in exgfx::EXGFX_FIRST..=exgfx::EXGFX_LAST {
         let data = match exgfx::read_exgfx(rom, file, compression) {
             Ok(Some(d)) => d.data,

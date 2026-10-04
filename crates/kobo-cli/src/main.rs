@@ -1336,6 +1336,9 @@ fn import(
 fn build(dir: &Path, out: &Path, patch: Option<&Path>, no_cache: bool, clean: &Rom) -> Result<()> {
     use kobo_core::build::{self, Cache, Project};
     let project = Project::load(dir)?;
+    for warning in build::warnings(&project) {
+        eprintln!("warning: {warning}");
+    }
     for tool in build::tools(&project) {
         announce_download(tool);
     }

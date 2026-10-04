@@ -264,7 +264,7 @@ fn what_a_graphics_build_refuses() {
     // One past the GFX files, and one too large. A file the project lacks
     // builds, and its slot loads nothing, as a slot naming a file the ROM
     // lacks does for Lunar Magic's code: the same as 7F.
-    let vram = |file: u16| {
+    let missing = |file: u16| {
         let mut level = level.clone();
         let mut list = GraphicsList::DEFAULT;
         list.0[slot::AN2] |= exgfx::BYPASS;
@@ -272,7 +272,19 @@ fn what_a_graphics_build_refuses() {
         level.graphics = Some(list);
         let mut p = project(Manifest::default());
         p.levels = vec![(0x105, level)];
-        let built = build::build(&clean, &p).unwrap();
+        p
+    };
+    // It builds with a warning naming the level, slot, and file.
+    assert_eq!(
+        build::warnings(&missing(0x100)),
+        [
+            "level 105: its graphics list's FG1 names ExGFX100, which the project does not \
+          have, so the slot loads nothing"
+        ]
+    );
+    assert!(build::warnings(&missing(0x7F)).is_empty());
+    let vram = |file: u16| {
+        let built = build::build(&clean, &missing(file)).unwrap();
         kobo_core::expand::expand_level(&built, 0x105)
             .unwrap()
             .video

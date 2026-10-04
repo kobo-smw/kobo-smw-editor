@@ -41,6 +41,14 @@
 //! `[entrance]` holds the game's secondary header and Lunar Magic's
 //! per-level settings ([`LevelSettings`]), `[midway]` a midway entrance
 //! with settings of its own.
+//!
+//! `[graphics]` is Lunar Magic's graphics list, written only when it
+//! changes what the level loads: one key per slot by Lunar Magic's names
+//! (`sp1` to `lg4`, `an2`, `lt3`), AN2's bits as `bypass`, `layer3_files`,
+//! and `layer3_tilemap`, and LT3's settings as `tilemap_size` (the bytes
+//! loaded) and `tilemap_vram` (where they go); `[graphics.layer3]` has
+//! Lunar Magic's layer 3 settings. (Reviewed 2026-10-04, when LT3's
+//! nibble, once one `tilemap` number, was split into those two.)
 
 use toml_edit::{Array, DocumentMut, InlineTable, Item, Table, Value};
 
@@ -697,10 +705,18 @@ fn write_graphics(out: &mut Writer<'_>, list: &GraphicsList) {
             out.key_comments("graphics", key);
         }
     }
-    if list.tilemap_settings() != 0 {
-        out.key("graphics", "tilemap", list.tilemap_settings());
+    let tilemap = list.tilemap_settings();
+    if list.0[slot::LT3] != exgfx::EMPTY && tilemap != 0 {
+        let size = match exgfx::TILEMAP_SIZES.get((tilemap & 3) as usize) {
+            Some(&bytes) => hex(bytes as u32, 4),
+            None => "3".into(),
+        };
+        out.key("graphics", "tilemap_size", size);
+        let vram = exgfx::TILEMAP_VRAM[(tilemap >> 2) as usize];
+        out.key("graphics", "tilemap_vram", hex(vram as u32, 4));
     } else {
-        out.key_comments("graphics", "tilemap");
+        out.key_comments("graphics", "tilemap_size");
+        out.key_comments("graphics", "tilemap_vram");
     }
     for (key, s) in GRAPHICS_SLOTS {
         let word = match list.0[s] {
@@ -805,7 +821,8 @@ fn read_graphics(t: &Table) -> Result<GraphicsList, SourceError> {
         "bypass",
         "layer3_files",
         "layer3_tilemap",
-        "tilemap",
+        "tilemap_size",
+        "tilemap_vram",
         "layer3",
     ]);
     check_keys(t, "graphics", &keys)?;
@@ -829,8 +846,39 @@ fn read_graphics(t: &Table) -> Result<GraphicsList, SourceError> {
             list.0[slot::AN2] |= bit;
         }
     }
-    if let Some(item) = t.get("tilemap") {
-        list.0[slot::LT3] |= (int(item, "graphics.tilemap", 0x0F)? as u16) << 12;
+    let mut tilemap = 0;
+    if let Some(item) = t.get("tilemap_size") {
+        let bytes = int(item, "graphics.tilemap_size", 0x2000)? as u16;
+        tilemap |= match exgfx::TILEMAP_SIZES.iter().position(|&b| b == bytes) {
+            Some(size) => size as u16,
+            None if bytes == 3 => 3,
+            None => {
+                return Err(invalid(
+                    "graphics.tilemap_size",
+                    "is 0x2000, 0x1000, or 0x800 bytes (or 3, the size Lunar Magic does not offer)",
+                ));
+            }
+        };
+    }
+    if let Some(item) = t.get("tilemap_vram") {
+        let vram = int(item, "graphics.tilemap_vram", 0xFFFF)? as u16;
+        let at = exgfx::TILEMAP_VRAM.iter().position(|&v| v == vram);
+        tilemap |= (at.ok_or_else(|| {
+            invalid(
+                "graphics.tilemap_vram",
+                "is 0x50A0 (under the status bar), 0x5000, 0x5080, or 0x5800",
+            )
+        })? as u16)
+            << 2;
+    }
+    if tilemap != 0 {
+        if list.0[slot::LT3] == exgfx::EMPTY {
+            return Err(invalid(
+                "graphics.tilemap_size",
+                "needs lt3 to be a file, not 0xFFFF",
+            ));
+        }
+        list.0[slot::LT3] |= tilemap << 12;
     }
     if let Some(item) = t.get("layer3") {
         let settings = read_layer3(
@@ -2013,7 +2061,10 @@ list = [
             text.contains("\n[graphics]\nbypass = true\nlayer3_tilemap = true\n"),
             "{text}"
         );
-        assert!(text.contains("tilemap = 6\nsp1 = 0xFFF\n"), "{text}");
+        assert!(
+            text.contains("tilemap_size = 0x0800\ntilemap_vram = 0x5000\nsp1 = 0xFFF\n"),
+            "{text}"
+        );
         assert!(
             text.contains(
                 "\n[graphics.layer3]\nadvanced = true\nhorizontal = 0x00  # None\n\
@@ -2028,6 +2079,28 @@ list = [
         // A slot a setting shares a word with holds a file, 0xFFF at most.
         let bad = text.replace("sp1 = 0xFFF\n", "sp1 = 0x1FFF\n");
         assert!(Level::from_toml(&bad).is_err());
+        // LT3's nibble as its size and place: every value round-trips, size
+        // 3 as itself; other sizes and places are refused, as is a
+        // setting where LT3 is 0xFFFF.
+        for nibble in 0..16u16 {
+            let mut level = level.clone();
+            level.graphics.as_mut().unwrap().0[slot::LT3] = nibble << 12 | 0x123;
+            let text = level.to_toml(&Comments::default());
+            assert_eq!(
+                text.contains("tilemap_size = 3\n"),
+                nibble & 3 == 3,
+                "{text}"
+            );
+            assert_eq!(Level::from_toml(&text).unwrap().0, level);
+        }
+        for (from, to) in [
+            ("tilemap_size = 0x0800\n", "tilemap_size = 0x0400\n"),
+            ("tilemap_vram = 0x5000\n", "tilemap_vram = 0x5100\n"),
+            ("lt3 = 0x123\n", "lt3 = 0xFFFF\n"),
+        ] {
+            assert!(text.contains(from), "{text}");
+            assert!(Level::from_toml(&text.replace(from, to)).is_err(), "{to}");
+        }
         let (head, table) = text.split_once("[graphics.layer3]\n").unwrap();
         for bad in ["x = 3\n", "y = 1024\n", "horizontal = 0x20  # None\n"] {
             let key = bad.split(' ').next().unwrap();
