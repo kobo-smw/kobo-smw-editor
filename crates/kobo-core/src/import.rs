@@ -1100,7 +1100,9 @@ pub fn read_map16_bg(rom: &Rom, clean: &Rom) -> Result<Map16Import, ImportError>
         let Some(at) = map16_pages::bg_table(rom, table)? else {
             continue;
         };
-        if table == 0 && at == MAP16_BG_TILES {
+        // The game's own table, at its address or a mirror of it
+        // (`$8D9100`, as a FastROM hack may store it).
+        if table == 0 && rom.pc(at).ok() == rom.pc(MAP16_BG_TILES).ok() {
             for page in 0..2u8 {
                 let tiles = read_page(at.add(page as u32 * page_len as u32), page, page_len)?;
                 if !tiles.tiles.is_empty() {
@@ -1274,13 +1276,34 @@ pub fn read_map16(rom: &Rom) -> Result<Map16Import, ImportError> {
         }
     }
     // A group without a table beside groups in the current layout is one
-    // Lunar Magic has not allocated.
+    // Lunar Magic has not allocated, but what its tiles act like is in the
+    // acts-like tables all the same.
     if older.len() == PAGE_GROUPS.len() {
         let (pages, more) = read_map16_older(rom, &older, &blocks, tileset_page2)?;
         out.extend(pages);
-        out.sort_by_key(|(page, _)| *page);
         notes.extend(more);
+    } else {
+        for page in older.into_iter().flatten() {
+            let mut tiles = Map16Page::default();
+            let first = page as u16 * PAGE_TILES;
+            for tile in first..first + PAGE_TILES {
+                let acts = map16_pages::acts_like(rom, tile)?.unwrap_or(DEFAULT_ACTS);
+                if acts != DEFAULT_ACTS {
+                    tiles.tiles.insert(
+                        tile,
+                        Map16Entry {
+                            acts,
+                            ..Map16Entry::default()
+                        },
+                    );
+                }
+            }
+            if !tiles.tiles.is_empty() {
+                out.push((page, tiles));
+            }
+        }
     }
+    out.sort_by_key(|(page, _)| *page);
     Ok((out, notes))
 }
 
@@ -2558,7 +2581,11 @@ pub fn gfx_from_folder(
 
 /// A full Map16 export's tiles as a project holds them, against the clean
 /// ROM: as [`read_map16`], [`read_map16_bg`], [`read_map16_game`], and
-/// [`read_pipes`] read a ROM, Lunar Magic's empty tile being Kobo's.
+/// [`read_pipes`] read a ROM: Lunar Magic's empty tile is a tile of a
+/// page or BG table where Lunar Magic would have allocated it, and Kobo's
+/// empty tile elsewhere ([`AllMap16::allocated_ends`]).
+///
+/// [`AllMap16::allocated_ends`]: crate::map16_file::AllMap16::allocated_ends
 pub fn map16_from_file(
     file: &crate::map16_file::AllMap16,
     clean: &Rom,
@@ -2569,6 +2596,14 @@ pub fn map16_from_file(
         Ok(Map16Tile::from_bytes(
             rom.read(at, 8)?.try_into().expect("8 bytes"),
         ))
+    };
+    let ends = file.allocated_ends();
+    let allocated = |index: usize| {
+        if index < ends[index / 0x1000] {
+            file.tiles[index]
+        } else {
+            file.definition(index)
+        }
     };
     let mut out = Map16Files::default();
     // Pages 0 and 1: what tiles act like, and the graphics of the common
@@ -2636,7 +2671,7 @@ pub fn map16_from_file(
             let gfx = if page == 2 && file.tileset_page2.is_some() {
                 Map16Tile::default()
             } else {
-                file.definition(tile as usize)
+                allocated(tile as usize)
             };
             let entry = Map16Entry {
                 gfx,
@@ -2656,7 +2691,7 @@ pub fn map16_from_file(
         let mut tiles = Map16Page::default();
         for i in 0..PAGE_TILES {
             let n = page * PAGE_TILES + i;
-            let gfx = file.definition(BG_START + n as usize);
+            let gfx = allocated(BG_START + n as usize);
             let base = if page < 2 {
                 definition(clean, MAP16_BG_TILES.add(8 * n as u32))?
             } else {

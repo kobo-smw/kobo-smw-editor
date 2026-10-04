@@ -494,3 +494,84 @@ fn older_layouts_import_as_lunar_magic_exports_them() {
     }
     eprintln!("{checked} hacks with an older layout checked");
 }
+
+/// With `KOBO_LM_ROMS` and `KOBO_LUNAR_MAGIC`: Lunar Magic 3.70's full
+/// export of a hack whose Map16 is in the current layout imports to the
+/// pages, foreground and background, that importing the hack itself gives.
+/// The export writes Lunar Magic's empty tile (`$1004` four times) for
+/// every tile it has nothing for, allocated or not, so the import keeps it
+/// only where Lunar Magic would have allocated the tile, as a ROM import
+/// does. Locked hacks, which Lunar Magic will not export from, are skipped.
+#[test]
+fn map16_files_import_as_the_hacks_do() {
+    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
+        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+        return;
+    };
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let roms: Vec<_> = common::lunar_magic_roms()
+        .filter(|(_, rom)| pages::installed(rom) && !kobo_core::gfx::is_locked(rom))
+        // Its levels are hidden as a lock hides them (docs/lunar-magic.md),
+        // and so is page `40`'s group: the hack has a table for it, which
+        // Lunar Magic's export does not show.
+        .filter(|(path, _)| !path.ends_with("Grand Poo World 2.smc"))
+        .filter(|(_, rom)| {
+            import::read_map16(rom).is_ok_and(|(_, notes)| {
+                !notes
+                    .iter()
+                    .any(|n| n.contains("older Lunar Magic's layout"))
+            })
+        })
+        .collect();
+    let failures: Vec<String> = common::par_map(&roms, |(path, rom)| {
+        let name = path
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .replace(' ', "_");
+        let file = common::export_map16(&lunar_magic, rom, &name);
+        let file = kobo_core::map16_file::AllMap16::parse(&file).unwrap();
+        let ours = import::map16_from_file(&file, &clean).unwrap();
+        let foreground = import::read_map16(rom).unwrap().0;
+        let background = import::read_map16_bg(rom, &clean).unwrap().0;
+        let mut differ = Vec::new();
+        for (what, theirs, from_file) in [
+            ("page", &foreground, &ours.foreground),
+            ("BG page", &background, &ours.background),
+        ] {
+            let tiles =
+                |pages: &Vec<(u8, Map16Page)>| -> std::collections::BTreeMap<u16, Map16Entry> {
+                    pages
+                        .iter()
+                        .flat_map(|(page, tiles)| {
+                            let page = *page as u16;
+                            tiles
+                                .tiles
+                                .iter()
+                                .map(move |(&n, &e)| ((page << 8) | (n & 0xFF), e))
+                        })
+                        .collect()
+                };
+            let (a, b) = (tiles(theirs), tiles(from_file));
+            let keys: std::collections::BTreeSet<_> = a.keys().chain(b.keys()).collect();
+            let wrong: Vec<_> = keys.into_iter().filter(|k| a.get(k) != b.get(k)).collect();
+            if !wrong.is_empty() {
+                differ.push(format!(
+                    "{} {what} tiles, first {:04X} ({:?} from the ROM, {:?} from the file)",
+                    wrong.len(),
+                    wrong[0],
+                    a.get(wrong[0]),
+                    b.get(wrong[0])
+                ));
+            }
+        }
+        (!differ.is_empty()).then(|| format!("{}: {}", path.display(), differ.join("; ")))
+    })
+    .into_iter()
+    .flatten()
+    .collect();
+    eprintln!("{} hacks checked", roms.len());
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

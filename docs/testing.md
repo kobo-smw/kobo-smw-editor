@@ -206,6 +206,10 @@ how each oracle is produced, where its data lives, and what is known not to matc
   `KOBO_LUNAR_MAGIC`) imports the Map16 of every `KOBO_LM_ROMS` hack in an older Lunar
   Magic layout and requires it to be Lunar Magic 3.70's `-ExportAllMap16` of the hack,
   tile for tile; `examples/map16_export_check.rs` shows the same per page.
+  `map16_files_import_as_the_hacks_do` imports that export of every hack in the
+  current layout as a Callisto project's `.map16` file is imported, and requires the
+  pages, foreground and BG, the hack's own import gives (Grand Poo World 2 excepted;
+  lunar-magic.md).
 
   All 512 levels of each `corpus_more` hack render without a fatal error (2026-09-25);
   none has Lunar Magic export hashes in the fixtures yet. Hacks whose

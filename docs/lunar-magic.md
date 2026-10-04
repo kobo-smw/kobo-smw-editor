@@ -32,8 +32,17 @@ from that). Vanilla behaviour is in [smw.md](smw.md).
   (checked 2026-10-01; the help file says only that it holds the tileset-specific
   tiles). `tests/lunar_magic_save.rs` checks a build against it. Kobo also reads one as a
   source (`map16_file`, for Callisto projects, which keep their Map16 so): it writes
-  `$1004` four times for every tile it has nothing for, which the import takes as an
-  empty tile.
+  `$1004` four times for every tile it has nothing for, allocated or not. Lunar Magic
+  allocates each group of 16 pages, and each BG table, up to the last tile it has
+  something for, so the import keeps `$1004` as a tile up to there and takes it as
+  Kobo's empty tile past it, as a ROM import reads the tables
+  (`AllMap16::allocated_ends`). Both imports give the same pages, foreground and BG,
+  for every current-layout corpus hack but Grand Poo World 2, whose group `40` has a
+  table the export does not show (`tests/map16_pages.rs`, 30 hacks, decided with the
+  maintainer 2026-10-05). The check found two ROM-import gaps, since fixed: a BG table
+  0 pointer at a mirror of the game's table (`$8D9100`, LAG), and acts-like settings
+  of tiles in a group Lunar Magic allocated no graphics for (Sakaya Sanctuary's
+  `4072`).
 - Higher pages live in
   RATS-tagged blocks whose layout differs by Lunar Magic version; the routine at `$06F540`
   resolves any layer 1 tile number. Its `JSL` takes the place of the game's

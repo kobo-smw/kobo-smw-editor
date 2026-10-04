@@ -147,6 +147,24 @@ impl AllMap16 {
     pub fn definition(&self, index: usize) -> Map16Tile {
         empty_as_zero(self.tiles[index])
     }
+
+    /// Where each run of `$1000` tiles (a group of 16 pages, or a BG
+    /// table) ends as Lunar Magic allocates it: after the last tile it has
+    /// something for. The file writes Lunar Magic's empty tile for every
+    /// tile it has nothing for, allocated or not, so that tile is one of
+    /// the table's before the end and Kobo's empty tile after it, as a ROM
+    /// import reads the tables.
+    pub fn allocated_ends(&self) -> Vec<usize> {
+        let empty = Map16Tile::from_bytes(EMPTY);
+        (0..TILE_COUNT)
+            .step_by(0x1000)
+            .map(|group| {
+                (group..group + 0x1000)
+                    .rposition(|i| self.tiles[i] != empty)
+                    .map_or(group, |last| group + last + 1)
+            })
+            .collect()
+    }
 }
 
 /// `tile`, or Kobo's empty tile where it is Lunar Magic's.

@@ -13,8 +13,4 @@ settle it.
 
 ## Open
 
-- **Lunar Magic's empty Map16 tile from a `.map16` file (2026-10-04).** A full export
-  writes `$1004` four times for every tile it has nothing for, allocated or not, so the
-  import (`import::map16_from_file`) reads it as Kobo's empty tile. A ROM import keeps it
-  where Lunar Magic allocated the page. A level that places such a tile draws tile `000`
-  where the hack draws tile `004`; the Romhack Races baserom's levels place none.
+None.
