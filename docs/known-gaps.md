@@ -87,7 +87,17 @@ What a rendered level does not reproduce, and what the tooling does not handle.
   install does, each screen's in its colour set (`MAP16AppTable`), where the hack's own
   code, which a 3.70 save keeps, may draw them all in one: Kaizo Mario's level `105` has
   green pipes and its build grey and yellow ones, from the same colour tables (2026-10-04).
-  Kobo writes 3.70's layout, so this is left as it is.
+  Kobo writes 3.70's layout, so this is left as it is. The same goes for a ROM whose
+  install is 3.63's, Callisto's initial patch's: the Romhack Races baserom's own build
+  draws every vertical pipe green, 93 levels among them its levels `112` and `13B`, and
+  the template's build draws them in their colour sets (2026-10-04, in Kobo's renderer;
+  not checked in an emulator).
+- A project cannot hold Lunar Magic's shared palettes: the game's colour tables from
+  `$00B0A0` (`BackAreaColors` to `OWSpecialColors`, 1009 colours, Lunar Magic's
+  `-ExportSharedPalette`), which Lunar Magic edits in place. A ROM import reports a change
+  there among the ranges it did not carry, and a Callisto import says how many colours its
+  `shared_palettes` file changes (the Romhack Races baserom: 3). Every word there is a
+  colour, so the text format can be `#RRGGBB` by table.
 - A rendered level shows every ExAnimation slot's first frame: the level's setup runs the
   animation once for each of its eight phases, so the picture has what the level shows as
   it appears. There is no option to render a later frame or a triggered state. Decided on

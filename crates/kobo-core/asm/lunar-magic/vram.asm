@@ -1187,3 +1187,11 @@ tile_address:
     LDY #$7FF0
     PLB
     JML $00BFB2
+
+; $0FFFE6 = $01, as Lunar Magic's install leaves it. Community patches take
+; anything but $00 and $FF there to mean its VRAM patch is in, and refuse to
+; assemble without it (docs/lunar-magic-install.md, "Bytes Kobo writes
+; because Lunar Magic or other tools check them"). Lunar Magic's save
+; writes the same.
+org $0FFFE6
+    db $01

@@ -1,0 +1,40 @@
+# The Romhack Races Baserom: a general-purpose baserom of bug fixes,
+# quality-of-life patches, sprites, blocks, UberASM (the retry system among
+# them), and Map16, kept as a Callisto project. `kobo new --template rhr`
+# downloads its release and imports it (`import::import_callisto`).
+title = "Romhack Races Baserom"
+version = "5.15"
+homepage = "https://github.com/romhackraces/baserom"
+rights = """
+The baserom has no licence: each resource stays its author's, as its \
+Credits.txt lists them, and the Romhack Races maintainers claim none. \
+Kobo carries none of it; this project was made from the release its \
+maintainers publish."""
+url = "https://github.com/romhackraces/baserom/releases/download/5.15/"
+# Written for PIXI 1.42 (its setup fetches that version).
+pixi = "1.42"
+# Its scripts for setting up and running Callisto.
+exclude = ["setup", "setup.sh", "run-callisto.sh"]
+
+[build]
+file = "rhr-baserom-5.15-nonwindows.zip"
+sha256 = "f8e0e3a9490be039443dda8296fac1080d03415df67af98d745111794c6ab175"
+size = 1322545
+root = "rhr-baserom-5.15"
+
+# Its setup script puts each tool's list in the tool's folder.
+[[setup]]
+copy = "setup/lists/list_pixi.txt"
+to = "tools/PIXI/list.txt"
+
+[[setup]]
+copy = "setup/lists/list_gps.txt"
+to = "tools/GPS/list.txt"
+
+[[setup]]
+copy = "setup/lists/list_uberasm.txt"
+to = "tools/UberASMTool/list.txt"
+
+[[setup]]
+copy = "setup/lists/Addmusic_list.txt"
+to = "tools/AddmusicK/Addmusic_list.txt"

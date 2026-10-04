@@ -229,6 +229,13 @@ how each oracle is produced, where its data lives, and what is known not to matc
   added. `Super Hark Bros 2` level `00A` used to fail with 896 of 2048 words: its
   level-init code leaves layer 2 at `$5D` and the game had uploaded for `$C0`, which the
   camera update `expand` now runs after preparation restores.
+- **Callisto import**: `tests/callisto.rs` imports a synthetic Callisto project (a patch
+  that includes `callisto.asm` and a file through `%incsrc_file`, a full Map16 export of
+  the clean ROM's tables with one tile of page 2 set, a graphics folder with one file
+  changed, and a ROM and a program that must not be copied), checks the project, and
+  with Asar builds it. The Romhack Races template was checked by hand on 2026-10-04
+  (`kobo new`, a build with every tool configured, `render_hashes` against the baserom's
+  own Callisto build, and `save-check`); the release is downloaded, so no test does it.
 - **Project build**: `tests/project_build.rs` imports every vanilla level into a
   project, requires Kobo's formatting to be a fixed point on every file, builds it (twice,
   for byte-identical output), and requires every level to read back as vanilla's, its

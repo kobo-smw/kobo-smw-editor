@@ -24,3 +24,12 @@ level_number:
     ASL A
     TAY                     ; as the instructions it replaces leave it
     RTL
+
+; Not $FF at $0FF0A0, where Lunar Magic's save writes its version string:
+; the retry system and others take a byte there to mean Lunar Magic's
+; install is in, and refuse to assemble otherwise. One byte, not the
+; string, so nothing reads a Kobo build as a version of Lunar Magic
+; (docs/lunar-magic-install.md, "Bytes Kobo writes because Lunar Magic or
+; other tools check them"); a save writes its string over it.
+org $0FF0A0
+    db $00

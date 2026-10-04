@@ -93,7 +93,8 @@ on the built ROM.
 - `kobo build` always overwrites its output. The ROM is a build artefact.
 - A build does not carry the `Lunar Magic Version` string at `$0FF0A0`. The hook spike
   showed Lunar Magic neither reads it to decide what is installed nor needs it, and writes
-  it on its own first save.
+  it on its own first save. Since 2026-10-04 a build in Lunar Magic's layout writes one
+  byte there, `$00`, which the retry system checks for (review.md).
 - A build always has a correct internal checksum; Lunar Magic warns that a ROM "may be
   Corrupt" otherwise.
 - Kobo writes the layout of the current Lunar Magic release and pins that release for the
@@ -729,7 +730,22 @@ on the built ROM.
      stable source for every platform). SA-1 Pack 1.40 is fetched by hash from its
      GitHub release (`tools/upstream.toml`, done 2026-10-03), and CI runs it on all three
      platforms.
-  7. **Baserom template projects** ("No base", above): not started.
+  7. **Baserom template projects** ("No base", above): started 2026-10-04 with the
+     Romhack Races baserom (`kobo new dir --template rhr`). A template is a recipe
+     (`kobo_core::template`, `src/templates/`): the baserom's own release by URL and
+     SHA-256, fetched into the tool cache, and the steps its setup takes; Kobo carries
+     nothing of it. The baserom is a Callisto project, so `kobo import` takes Callisto
+     projects (`import::import_callisto`): its patches, tool folders, MWL levels, full
+     Map16 export (`map16_file`), graphics folders, and global ExAnimation patch, with
+     `[callisto]` giving its resources the `callisto.asm` Callisto's Asar would. Three
+     bytes other tools check went into the install for it (lunar-magic-install.md,
+     register; review.md). The template's build has every patch and tool of the
+     baserom's, survives Lunar Magic's save, and draws every level as the baserom's own
+     build does but where that build's Lunar Magic 3.63 install, from Callisto's initial
+     patch (a ROM Lunar Magic saved, which Kobo does not carry), changes vanilla levels'
+     backgrounds and draws the vertical pipes in one colour (known-gaps.md). Not carried:
+     its shared palettes (3 colours, known-gaps.md), overworld, title screen, and credits
+     (patches of the ROM, left for Lunar Magic), and FastROM.
   8. **Closing step 2:** fold what stays true of this file into the other docs and delete
      it, as its header says.
 - 2b then takes Lunar Magic-layout features one at a time, each through its source format,

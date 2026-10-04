@@ -134,7 +134,7 @@ impl Tool {
                 &pinned.version,
                 &pins().release,
                 &pins().url,
-                self.pinned_build()?,
+                pinned.builds.get(platform()?)?,
             ),
             (None, Some(up)) => (&up.version, &up.release, &up.url, &up.build),
             (None, None) => return None,
@@ -469,6 +469,23 @@ pub(crate) fn fetch(url: &str, build: &PinnedBuild, cache: &Path) -> Result<Path
     })();
     let _ = fs::remove_dir_all(&partial);
     result
+}
+
+/// A release that is not a tool's (a template's, `template`): its folder
+/// in the cache, or downloaded from `url` and checked into it, unless
+/// downloads are off.
+pub(crate) fn fetch_cached(url: &str, build: &PinnedBuild) -> Result<PathBuf, ToolError> {
+    let cache = cache_dir().ok_or(ToolError::NoCache)?;
+    if let Some(root) = cached(&cache, build) {
+        return Ok(root);
+    }
+    if offline() {
+        return Err(ToolError::ReleaseNotCached {
+            file: build.file.clone(),
+            cache,
+        });
+    }
+    fetch(url, build, &cache)
 }
 
 fn download(url: &str, build: &PinnedBuild, dir: &Path) -> Result<PathBuf, ToolError> {

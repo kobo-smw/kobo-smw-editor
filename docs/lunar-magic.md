@@ -30,7 +30,10 @@ from that). Vanilla behaviour is in [smw.md](smw.md).
   colour sets in `MAP16AppTable`'s order (set 1 being page 1's own `$133`-`$13A`) and
   (`$A8`, `$40` bytes) the diagonal pipes, byte for byte as the ROM holds them
   (checked 2026-10-01; the help file says only that it holds the tileset-specific
-  tiles). `tests/lunar_magic_save.rs` checks a build against it.
+  tiles). `tests/lunar_magic_save.rs` checks a build against it. Kobo also reads one as a
+  source (`map16_file`, for Callisto projects, which keep their Map16 so): it writes
+  `$1004` four times for every tile it has nothing for, which the import takes as an
+  empty tile.
 - Higher pages live in
   RATS-tagged blocks whose layout differs by Lunar Magic version; the routine at `$06F540`
   resolves any layer 1 tile number. Its `JSL` takes the place of the game's

@@ -47,6 +47,10 @@ pub struct Manifest {
     pub early_patches: Vec<PathBuf>,
     /// Asar patches applied after the tools, before the levels, in order.
     pub late_patches: Vec<PathBuf>,
+    /// Callisto's `callisto.asm` for the patches and the tools' files
+    /// (`[callisto]`), which a project imported from Callisto keeps as
+    /// they were, many of them including it (`build::callisto_header`).
+    pub callisto: Option<Callisto>,
     /// A folder of UberASM Tool's input files (`list.txt`, `level/`, ...),
     /// laid over the user's UberASM Tool folder.
     pub uberasm: Option<PathBuf>,
@@ -92,6 +96,13 @@ pub struct Manifest {
     /// The uncompressed ExGFX files `0x60` to `0x63` ExAnimation takes
     /// sources from, as their bytes.
     pub animation_files: BTreeMap<u16, PathBuf>,
+}
+
+/// What `[callisto]` says: Callisto's `callisto_header`, the project's
+/// own file the generated `callisto.asm` includes, if it has one.
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
+pub struct Callisto {
+    pub header: Option<PathBuf>,
 }
 
 /// An ExGFX file of the project.
@@ -147,15 +158,23 @@ impl Manifest {
         };
         if !self.early_patches.is_empty() || !self.late_patches.is_empty() {
             out.table("patches");
-            if self.early_patches.is_empty() {
-                out.key_comments("patches", "early");
-            } else {
-                out.key("patches", "early", paths(&self.early_patches));
+            for (key, list) in [("early", &self.early_patches), ("late", &self.late_patches)] {
+                let line = paths(list);
+                if list.is_empty() {
+                    out.key_comments("patches", key);
+                } else if key.len() + 3 + line.len() <= 100 {
+                    out.key("patches", key, line);
+                } else {
+                    // A long list one patch a line.
+                    out.list("patches", key, list, |p| (quoted(p), None));
+                }
             }
-            if self.late_patches.is_empty() {
-                out.key_comments("patches", "late");
-            } else {
-                out.key("patches", "late", paths(&self.late_patches));
+        }
+        if let Some(callisto) = &self.callisto {
+            out.table("callisto");
+            match &callisto.header {
+                Some(header) => out.key("callisto", "header", quoted(header)),
+                None => out.key_comments("callisto", "header"),
             }
         }
         if let Some(music) = &self.music {
@@ -270,6 +289,7 @@ impl Manifest {
                 "format",
                 "rom",
                 "patches",
+                "callisto",
                 "music",
                 "uberasm",
                 "pixi",
@@ -387,6 +407,24 @@ impl Manifest {
                     })?;
                 manifest.animation_files.insert(file, path);
             }
+        }
+        if let Some(callisto) = doc.get("callisto") {
+            let callisto = callisto
+                .as_table()
+                .ok_or_else(|| invalid("callisto", "must be a table"))?;
+            let mut out = Callisto::default();
+            for (key, item) in callisto.iter() {
+                match key {
+                    "header" => {
+                        let file = item
+                            .as_str()
+                            .ok_or_else(|| invalid("callisto.header", "must be a file path"))?;
+                        out.header = Some(PathBuf::from(file));
+                    }
+                    _ => return Err(invalid("callisto", format!("unknown key `{key}`"))),
+                }
+            }
+            manifest.callisto = Some(out);
         }
         if let Some(music) = doc.get("music") {
             let music = music
@@ -671,6 +709,7 @@ mod tests {
             rom_size: Some(0x18_0000),
             sa1: true,
             lz3: true,
+            callisto: None,
             early_patches: vec![PathBuf::from("asm/fastrom.asm")],
             late_patches: vec![PathBuf::from("asm/a.asm"), PathBuf::from("asm/b.asm")],
             music: Some(PathBuf::from("music")),
@@ -865,5 +904,22 @@ size = \"2M\"
             "format = 1\n\n[pixi]\ncompiled = \"pixi/compiled.toml\"\n\n[levels]\n"
         );
         assert_eq!(Manifest::from_toml(&text).unwrap().0, manifest);
+    }
+
+    #[test]
+    fn callisto_compatibility() {
+        let manifest = Manifest {
+            early_patches: vec![PathBuf::from("patches/a.asm")],
+            callisto: Some(Callisto {
+                header: Some(PathBuf::from("shared/headers/callisto.asm")),
+            }),
+            ..Manifest::default()
+        };
+        let text = manifest.to_toml(&Comments::default());
+        assert!(text.contains("[callisto]\nheader = \"shared/headers/callisto.asm\"\n"));
+        assert_eq!(Manifest::from_toml(&text).unwrap().0, manifest);
+        let bare = Manifest::from_toml("format = 1\n[callisto]\n").unwrap().0;
+        assert_eq!(bare.callisto, Some(Callisto::default()));
+        assert!(Manifest::from_toml("format = 1\n[callisto]\nroot = \".\"\n").is_err());
     }
 }

@@ -358,6 +358,35 @@ are placed as well as that old ones are kept.
 - Contains code attributed to Lunar Magic (`asm/boost/lz3.asm`). Do not read it; the
   clean-room rule covers it.
 
+## Callisto projects (`import::import_callisto`)
+
+Callisto (`github.com/Underrout/callisto`, v0.6.2, no licence) builds a hack by running Lunar
+Magic's command line and the tools in an order its configuration gives. Kobo does not run
+it; it imports the project (`kobo import folder dir`), reading the configuration as its
+documentation describes it (`kobo_core::callisto`).
+
+- Its resources include `callisto.asm` by name (`incsrc "callisto.asm"`), which Callisto
+  generates for each build, and use its macros `%incsrc_file` and `%incbin_file` to include
+  a file by its path from the project's root. Callisto's documentation says only patches
+  and modules can include it by name; the Romhack Races baserom's GPS blocks and UberASM
+  files do too, because its setup puts Callisto's own build of Asar beside every tool, which
+  finds the file anywhere. Kobo's pinned Asar does not, and GPS 1.4.4 and UberASM Tool 2.1
+  pass Asar no include paths (PIXI has `--stdincludes`).
+- So a project with `[callisto]` gets, for each stage that assembles (the patches and the
+  four tools), a scratch copy of the files a patch may include, with Kobo's `callisto.asm`
+  at its root (`build::callisto_header`: `CALLISTO_ASSEMBLING`, the version, the project's
+  `callisto_header` included, and the two macros), and every `"callisto.asm"` in the copy's
+  and the tool's scratch copies' `.asm` files pointed at it by its full path. A copy of the
+  header beside each file would do as much, but UberASM Tool assembles every file of its
+  `library/` folder, the header among them. The project's own files are never changed.
+  Modules (`include_module`, `call_module`) are not carried.
+- The configuration's patches run as early patches (Callisto's come after its graphics and
+  Map16 and before the tools); PIXI's folder gives only its inputs, other tools' folders
+  are taken whole; an initial patch is not carried (Callisto's own are ROMs Lunar Magic
+  saved), nor are the overworld, title screen, and credits, which Callisto keeps as patches
+  of the clean ROM. Its global ExAnimation patch, also one of the clean ROM, is applied in
+  memory and its list read as a ROM import reads it.
+
 ## Across the tools
 
 - Run twice on the same input, every tool tried gave the same bytes. Run again over its own

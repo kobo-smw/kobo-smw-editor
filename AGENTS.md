@@ -176,7 +176,17 @@ Early stage: roadmap step 1 is complete; step 2 is next, planned in `docs/step-2
   objects, sprites, tilesets, music) as data in `names.toml`; `LevelMode::name` names level
   modes. Take names from there; do not write lists of them elsewhere.
 - `kobo_core::mwl` reads and writes MWL files: `MwlFile` is the container, byte for byte,
-  and `Mwl` the level decoded through the codecs above.
+  and `Mwl` the level decoded through the codecs above. `kobo_core::map16_file` reads
+  Lunar Magic's full Map16 export (`.map16`), which `import::map16_from_file` turns into
+  page files as a ROM import would.
+- `kobo_core::callisto` reads a Callisto project's configuration, and
+  `import::import_callisto` makes it a project: a copy of its folder, with Kobo's files for
+  its levels, Map16, and graphics, and `[callisto]`, through which a build gives the
+  patches and the tools' files the `callisto.asm` they include (`build::callisto_header`,
+  from Callisto's documentation; never Callisto's own Asar). `kobo_core::template` is the
+  baserom templates (`kobo new --template`): a recipe in `src/templates/` of where the
+  baserom's own release is, its SHA-256, and its setup steps, fetched into the tool cache
+  and imported; Kobo carries nothing of the baserom.
 - `kobo_core::pixi` is the one place that knows what PIXI leaves in a ROM: its sites and
   the blocks its tables lead to, read as PIXI's own cleanup reads them. An import without
   the hack's PIXI folder carries that insert as compiled code (`[pixi] compiled`,
@@ -220,6 +230,8 @@ cargo run -- rom expand 2M out.sfc [-r rom]  # a copy expanded, with the checksu
 cargo run -- rom rats [-r rom]               # RATS blocks from $108000 on, and free space
 cargo run -- import hack.smc dir [--all] [--pixi folder]  # a ROM's changed (or all) levels as a new project
 cargo run -- import level.mwl dir [--level 105] [--sizes-from hack.smc]  # an MWL file's level into a project
+cargo run -- import callisto-project/ dir     # a Callisto project as a new project
+cargo run -- new dir --template rhr           # a project from a baserom template (--list names them)
 cargo run -- build [dir] [-o out.sfc] [--bps out.bps]  # a project onto the clean ROM (and as a patch)
 cargo run -- fmt [dir] [--check]             # rewrite a project's files in Kobo's format
 cargo run -- diff a.sfc b.sfc [--project dir] # levels that differ, however each ROM stores them

@@ -716,6 +716,7 @@ impl Stage {
                 Tool::AddmusicK.locate()?.hash_into(&mut hash)?;
                 Tool::Asar.locate()?.hash_into(&mut hash)?;
                 tools::hash_tree(&mut hash, &project.root.join(music))?;
+                hash_callisto(&mut hash, project)?;
                 hash.finalize().to_vec()
             }
             Stage::SpriteBlocks => {
@@ -751,6 +752,7 @@ impl Stage {
                 Tool::Pixi.locate()?.hash_into(&mut hash)?;
                 Tool::Asar.locate()?.hash_into(&mut hash)?;
                 tools::hash_tree(&mut hash, &project.root.join(files))?;
+                hash_callisto(&mut hash, project)?;
                 hash.finalize().to_vec()
             }
             Stage::Blocks => {
@@ -761,6 +763,7 @@ impl Stage {
                 Tool::Gps.locate()?.hash_into(&mut hash)?;
                 Tool::Asar.locate()?.hash_into(&mut hash)?;
                 tools::hash_tree(&mut hash, &project.root.join(files))?;
+                hash_callisto(&mut hash, project)?;
                 hash.finalize().to_vec()
             }
             Stage::UberAsm => {
@@ -771,6 +774,7 @@ impl Stage {
                 Tool::UberAsm.locate()?.hash_into(&mut hash)?;
                 Tool::Asar.locate()?.hash_into(&mut hash)?;
                 tools::hash_tree(&mut hash, &project.root.join(files))?;
+                hash_callisto(&mut hash, project)?;
                 hash.finalize().to_vec()
             }
             Stage::Levels => {
@@ -820,6 +824,16 @@ impl Stage {
     }
 
     fn run(self, rom: &mut Rom, clean: &Rom, project: &Project) -> Result<(), BuildError> {
+        let callisto_root = match self {
+            Stage::EarlyPatches
+            | Stage::LatePatches
+            | Stage::Music
+            | Stage::Sprites
+            | Stage::Blocks
+            | Stage::UberAsm => CallistoRoot::make(project)?,
+            _ => None,
+        };
+        let callisto = callisto_root.as_ref().map(|c| c.header());
         match self {
             Stage::Base => {
                 if project.manifest.sa1 {
@@ -895,7 +909,11 @@ impl Stage {
                 let asar = Asar::configured().map_err(|e| BuildError::Asar(Box::new(e)))?;
                 for patch in patches {
                     let path = project.root.join(patch);
-                    let spec = Patch::new(&path).include_path(&project.root);
+                    let mut spec = Patch::new(&path).include_path(&project.root);
+                    // Callisto's header, where the patches find it by name.
+                    if let Some(root) = &callisto_root {
+                        spec = spec.include_path(root.path());
+                    }
                     let patched = asar.patch(rom, &spec).map_err(|source| BuildError::Patch {
                         path: path.clone(),
                         source: Box::new(source),
@@ -907,7 +925,13 @@ impl Stage {
                 if let Some(music) = &project.manifest.music {
                     let tool = Tool::AddmusicK.locate()?.path;
                     let asar = Tool::Asar.locate()?.path;
-                    *rom = tools::addmusick(rom, &tool, &project.root.join(music), &asar)?;
+                    *rom = tools::addmusick(
+                        rom,
+                        &tool,
+                        &project.root.join(music),
+                        &asar,
+                        callisto.as_deref(),
+                    )?;
                 }
             }
             Stage::Sprites => {
@@ -921,21 +945,39 @@ impl Stage {
                 if let Some(files) = &project.manifest.pixi {
                     let tool = Tool::Pixi.locate()?.path;
                     let asar = Tool::Asar.locate()?.path;
-                    *rom = tools::run_pixi(rom, &tool, &project.root.join(files), &asar)?;
+                    *rom = tools::run_pixi(
+                        rom,
+                        &tool,
+                        &project.root.join(files),
+                        &asar,
+                        callisto.as_deref(),
+                    )?;
                 }
             }
             Stage::Blocks => {
                 if let Some(files) = &project.manifest.gps {
                     let tool = Tool::Gps.locate()?.path;
                     let asar = Tool::Asar.locate()?.path;
-                    *rom = tools::gps(rom, &tool, &project.root.join(files), &asar)?;
+                    *rom = tools::gps(
+                        rom,
+                        &tool,
+                        &project.root.join(files),
+                        &asar,
+                        callisto.as_deref(),
+                    )?;
                 }
             }
             Stage::UberAsm => {
                 if let Some(files) = &project.manifest.uberasm {
                     let tool = Tool::UberAsm.locate()?.path;
                     let asar = Tool::Asar.locate()?.path;
-                    *rom = tools::uberasm(rom, &tool, &project.root.join(files), &asar)?;
+                    *rom = tools::uberasm(
+                        rom,
+                        &tool,
+                        &project.root.join(files),
+                        &asar,
+                        callisto.as_deref(),
+                    )?;
                 }
             }
             Stage::Levels => {
@@ -964,6 +1006,102 @@ impl Stage {
         }
         Ok(())
     }
+}
+
+/// A scratch copy of what a project with `[callisto]` can include, the
+/// root Callisto's header names: every file a patch may include
+/// ([`patch_can_include`]), with `callisto.asm` at its root and every
+/// include of it by name pointed there ([`tools::point_callisto_includes`]),
+/// as Callisto's own Asar would find it from anywhere. The patches find it
+/// as an include path.
+struct CallistoRoot {
+    scratch: tools::Scratch,
+}
+
+impl CallistoRoot {
+    fn make(project: &Project) -> Result<Option<Self>, BuildError> {
+        if project.manifest.callisto.is_none() {
+            return Ok(None);
+        }
+        let scratch = tools::Scratch::new("callisto")?;
+        let root = std::path::absolute(&scratch.0).unwrap_or_else(|_| scratch.0.clone());
+        tools::copy_tree_where(&project.root, &root, &|path| {
+            patch_can_include(project, path)
+        })?;
+        let header = root.join(tools::CALLISTO_HEADER);
+        tools::point_callisto_includes(&root, &header)?;
+        let text = callisto_header(project, &root).expect("[callisto] is set");
+        fs::write(&header, text).map_err(|source| BuildError::Io {
+            path: header.clone(),
+            source,
+        })?;
+        Ok(Some(Self { scratch }))
+    }
+
+    fn path(&self) -> &Path {
+        &self.scratch.0
+    }
+
+    /// The header's file.
+    fn header(&self) -> PathBuf {
+        std::path::absolute(&self.scratch.0)
+            .unwrap_or_else(|_| self.scratch.0.clone())
+            .join(tools::CALLISTO_HEADER)
+    }
+}
+
+/// Callisto's `callisto.asm` for a project with `[callisto]`, which the
+/// patches and the tools' files of a project imported from Callisto
+/// include by name: what Callisto's documentation (v0.6.2) says the one it
+/// generates gives them. `CALLISTO_ASSEMBLING` and the version, the
+/// project's own header (`header`, Callisto's `callisto_header`), and
+/// `incsrc_file` and `incbin_file`, which include a file by its path from
+/// `root`, a copy of the project's root ([`CallistoRoot`]). It names the
+/// root by its full path, which is only ever in the build's scratch
+/// copies, never in the ROM.
+pub fn callisto_header(project: &Project, root: &Path) -> Option<String> {
+    let callisto = project.manifest.callisto.as_ref()?;
+    let path = |p: &Path| p.to_string_lossy().replace('\\', "/");
+    let mut out = String::from(
+        "; Callisto's callisto.asm, as Kobo gives it to a project with [callisto]\n\
+         ; (kobo.toml). Written for each build; do not edit.\n\
+         if not(defined(\"CALLISTO_INCLUDED\"))\n\
+         !CALLISTO_INCLUDED = 1\n\
+         !CALLISTO_ASSEMBLING = 1\n\
+         !CALLISTO_VERSION = \"0.6.2\"\n\
+         !CALLISTO_VERSION_MAJOR = 0\n\
+         !CALLISTO_VERSION_MINOR = 6\n\
+         !CALLISTO_VERSION_PATCH = 2\n",
+    );
+    out.push_str(&format!("!CALLISTO_ROOT = \"{}\"\n", path(root)));
+    if let Some(header) = &callisto.header {
+        out.push_str(&format!(
+            "!CALLISTO_HEADER = \"{}\"\nincsrc \"!CALLISTO_HEADER\"\n",
+            path(&root.join(header))
+        ));
+    }
+    out.push_str(
+        "macro incsrc_file(file_path)\n\
+         \tincsrc \"!CALLISTO_ROOT/<file_path>\"\n\
+         endmacro\n\
+         macro incbin_file(file_path)\n\
+         \tincbin \"!CALLISTO_ROOT/<file_path>\"\n\
+         endmacro\n\
+         endif\n",
+    );
+    Some(out)
+}
+
+/// What a tool's files of a project with `[callisto]` can also read:
+/// through `incsrc_file`, any file a patch can include.
+fn hash_callisto(hash: &mut Sha1, project: &Project) -> Result<(), BuildError> {
+    if project.manifest.callisto.is_some() {
+        hash.update(b"callisto");
+        tools::hash_tree_except(hash, &project.root, &|path| {
+            !patch_can_include(project, path)
+        })?;
+    }
+    Ok(())
 }
 
 /// Whether a file of the project's folder, by its path relative to it, is

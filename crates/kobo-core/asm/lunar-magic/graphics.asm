@@ -50,6 +50,11 @@ incsrc "memory.asm"
 org $00AA47 : db $EA
 org $00AAD8 : db $EA
 org $0FF15C : db "LM"
+; A 4bpp upload's LDX #$10 where the game's 3bpp one has LDX #$07, which
+; community patches check before they replace the upload (freeplay's level
+; graphics loading optimization). Kobo's upload is elsewhere, so such a
+; patch's hook in the dead code here never runs.
+org $00AACD : db $A2, $10
 
 ; Tables Lunar Magic's editor and code read, none until a build writes them.
 org !List : dl $FFFFFF

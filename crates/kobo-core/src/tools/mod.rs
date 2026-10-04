@@ -67,6 +67,11 @@ pub enum ToolError {
         version: String,
         cache: PathBuf,
     },
+    #[error(
+        "{file} is not in the tool cache ({}) and downloads are off (KOBO_OFFLINE)",
+        cache.display()
+    )]
+    ReleaseNotCached { file: String, cache: PathBuf },
     #[error("downloading {url}: {message}")]
     Download { url: String, message: String },
     #[error("{url} is not the build Kobo pins: expected {expected}, got {found}")]
@@ -180,6 +185,37 @@ fn copy_tree(from: &Path, to: &Path) -> Result<(), ToolError> {
     Ok(())
 }
 
+/// Copies the files under `from` that `keep` takes, by their path from
+/// `from`, into `to`.
+pub(crate) fn copy_tree_where(
+    from: &Path,
+    to: &Path,
+    keep: &dyn Fn(&Path) -> bool,
+) -> Result<(), ToolError> {
+    fn walk(
+        root: &Path,
+        at: &Path,
+        to: &Path,
+        keep: &dyn Fn(&Path) -> bool,
+    ) -> Result<(), ToolError> {
+        for entry in fs::read_dir(at).map_err(io_error(at))? {
+            let path = entry.map_err(io_error(at))?.path();
+            let relative = path.strip_prefix(root).expect("under the root");
+            if path.is_dir() {
+                walk(root, &path, to, keep)?;
+            } else if keep(relative) {
+                let target = to.join(relative);
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent).map_err(io_error(parent))?;
+                }
+                fs::copy(&path, &target).map_err(io_error(&path))?;
+            }
+        }
+        Ok(())
+    }
+    walk(from, from, to, keep)
+}
+
 /// Lays a project's folder over a tool's copy, leaving out hidden files
 /// such as `.gitkeep`, which UberASM Tool would take for a library file.
 fn copy_overlay(from: &Path, to: &Path) -> Result<(), ToolError> {
@@ -200,11 +236,59 @@ fn copy_overlay(from: &Path, to: &Path) -> Result<(), ToolError> {
     Ok(())
 }
 
+/// The name Callisto's resources include its header by.
+pub const CALLISTO_HEADER: &str = "callisto.asm";
+
+/// In every `.asm` file under `dir`, points an include of `callisto.asm`
+/// by that name (`"callisto.asm"`, in any case) at `header`, by its full
+/// path. The tools pass Asar no include paths, so it would look for the
+/// file in the including file's folder, where Callisto's own Asar finds it
+/// anywhere (`build::callisto_header`); a copy of it there would be taken
+/// for a resource by a tool that assembles every file of a folder
+/// (UberASM Tool's `library/`). Only build copies are changed.
+pub(crate) fn point_callisto_includes(dir: &Path, header: &Path) -> Result<(), ToolError> {
+    let name = format!("\"{CALLISTO_HEADER}\"");
+    let target = format!("\"{}\"", header.to_string_lossy().replace('\\', "/"));
+    for entry in fs::read_dir(dir).map_err(io_error(dir))? {
+        let path = entry.map_err(io_error(dir))?.path();
+        if path.is_dir() {
+            point_callisto_includes(&path, header)?;
+            continue;
+        }
+        if !path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("asm"))
+        {
+            continue;
+        }
+        let bytes = fs::read(&path).map_err(io_error(&path))?;
+        let mut out = Vec::with_capacity(bytes.len());
+        let mut i = 0;
+        let mut changed = false;
+        while i < bytes.len() {
+            if bytes[i..].len() >= name.len()
+                && bytes[i..i + name.len()].eq_ignore_ascii_case(name.as_bytes())
+            {
+                out.extend_from_slice(target.as_bytes());
+                i += name.len();
+                changed = true;
+            } else {
+                out.push(bytes[i]);
+                i += 1;
+            }
+        }
+        if changed {
+            fs::write(&path, out).map_err(io_error(&path))?;
+        }
+    }
+    Ok(())
+}
+
 /// A scratch folder, removed when dropped.
-struct Scratch(PathBuf);
+pub(crate) struct Scratch(pub(crate) PathBuf);
 
 impl Scratch {
-    fn new(name: &str) -> Result<Self, ToolError> {
+    pub(crate) fn new(name: &str) -> Result<Self, ToolError> {
         static COUNT: AtomicU32 = AtomicU32::new(0);
         let n = COUNT.fetch_add(1, Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!("kobo-{name}-{}-{n}", std::process::id()));
@@ -255,11 +339,21 @@ struct FolderTool<'a> {
 }
 
 impl FolderTool<'_> {
-    fn run(&self, rom: &Rom, tool: &Path, overlay: &Path, asar: &Path) -> Result<Rom, ToolError> {
+    fn run(
+        &self,
+        rom: &Rom,
+        tool: &Path,
+        overlay: &Path,
+        asar: &Path,
+        callisto: Option<&Path>,
+    ) -> Result<Rom, ToolError> {
         let scratch = Scratch::new(self.program)?;
         let work = &scratch.0;
         copy_tree(tool, work)?;
         copy_overlay(overlay, work)?;
+        if let Some(header) = callisto {
+            point_callisto_includes(work, header)?;
+        }
         for file in self.remove {
             let _ = fs::remove_file(work.join(file));
         }
@@ -322,7 +416,13 @@ impl FolderTool<'_> {
 /// project's GPS folder (`list.txt`, `blocks/`, `routines/`) laid over it.
 /// GPS patches the acts-like chain in bank `$06`, which Kobo's install has
 /// in the shape GPS expects (docs/toolchain.md).
-pub fn gps(rom: &Rom, tool: &Path, files: &Path, asar: &Path) -> Result<Rom, ToolError> {
+pub fn gps(
+    rom: &Rom,
+    tool: &Path,
+    files: &Path,
+    asar: &Path,
+    callisto: Option<&Path>,
+) -> Result<Rom, ToolError> {
     FolderTool {
         name: "GPS",
         program: "gps",
@@ -342,7 +442,7 @@ pub fn gps(rom: &Rom, tool: &Path, files: &Path, asar: &Path) -> Result<Rom, Too
             owned
         },
     }
-    .run(rom, tool, files, asar)
+    .run(rom, tool, files, asar, callisto)
 }
 
 /// What a PIXI folder holds as input: its list, the sprites of each type,
@@ -398,7 +498,13 @@ pub fn copy_pixi_inputs(from: &Path, to: &Path) -> Result<Vec<&'static str>, Too
 /// entries by PIXI's table itself (docs/toolchain.md). The files for
 /// Lunar Magic's sprite display (`.ssc`, `.mwt`, `.mw2`, `.s16`) are not
 /// kept.
-pub fn run_pixi(rom: &Rom, tool: &Path, files: &Path, asar: &Path) -> Result<Rom, ToolError> {
+pub fn run_pixi(
+    rom: &Rom,
+    tool: &Path,
+    files: &Path,
+    asar: &Path,
+    callisto: Option<&Path>,
+) -> Result<Rom, ToolError> {
     // Without one, PIXI would run its own folder's list.
     let list = files.join("list.txt");
     if !list.is_file() {
@@ -411,13 +517,19 @@ pub fn run_pixi(rom: &Rom, tool: &Path, files: &Path, asar: &Path) -> Result<Rom
         remove: &[],
         owns: |_| Vec::new(),
     }
-    .run(rom, tool, files, asar)
+    .run(rom, tool, files, asar, callisto)
 }
 
 /// Runs AddmusicK on a copy of `rom`: in a copy of the AddmusicK folder
 /// `tool`, with the project's music folder `music` laid over it and
 /// Asar's library `asar` beside it, as AddmusicK wants.
-pub fn addmusick(rom: &Rom, tool: &Path, music: &Path, asar: &Path) -> Result<Rom, ToolError> {
+pub fn addmusick(
+    rom: &Rom,
+    tool: &Path,
+    music: &Path,
+    asar: &Path,
+    callisto: Option<&Path>,
+) -> Result<Rom, ToolError> {
     FolderTool {
         name: "AddmusicK",
         program: "AddmusicK",
@@ -426,7 +538,7 @@ pub fn addmusick(rom: &Rom, tool: &Path, music: &Path, asar: &Path) -> Result<Ro
         remove: &["Addmusic_options.txt"],
         owns: |_| Vec::new(),
     }
-    .run(rom, tool, music, asar)
+    .run(rom, tool, music, asar, callisto)
 }
 
 /// Runs UberASM Tool on a copy of `rom`, in a copy of its folder `tool`
@@ -434,7 +546,13 @@ pub fn addmusick(rom: &Rom, tool: &Path, music: &Path, asar: &Path) -> Result<Ro
 /// ...) laid over it. Upstream's release is built for 32-bit Windows;
 /// Kobo's pinned builds are 64-bit, with Asar's native library laid beside
 /// them (docs/toolchain.md).
-pub fn uberasm(rom: &Rom, tool: &Path, files: &Path, asar: &Path) -> Result<Rom, ToolError> {
+pub fn uberasm(
+    rom: &Rom,
+    tool: &Path,
+    files: &Path,
+    asar: &Path,
+    callisto: Option<&Path>,
+) -> Result<Rom, ToolError> {
     // Without one, the tool would run its own folder's list.
     let list = files.join("list.txt");
     if !list.is_file() {
@@ -447,5 +565,31 @@ pub fn uberasm(rom: &Rom, tool: &Path, files: &Path, asar: &Path) -> Result<Rom,
         remove: &[],
         owns: |_| Vec::new(),
     }
-    .run(rom, tool, files, asar)
+    .run(rom, tool, files, asar, callisto)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn includes_of_callistos_header_point_at_one_file() {
+        let dir = Scratch::new("test-callisto").unwrap();
+        let library = dir.0.join("library");
+        fs::create_dir_all(&library).unwrap();
+        fs::write(library.join("a.asm"), "incsrc \"Callisto.asm\"\ndb 0\n").unwrap();
+        fs::write(library.join("b.asm"), "incsrc \"other.asm\"\n").unwrap();
+        fs::write(library.join("c.txt"), "incsrc \"callisto.asm\"\n").unwrap();
+        let header = Path::new("/scratch/root/callisto.asm");
+        point_callisto_includes(&dir.0, header).unwrap();
+        let read = |name: &str| fs::read_to_string(library.join(name)).unwrap();
+        assert_eq!(
+            read("a.asm"),
+            "incsrc \"/scratch/root/callisto.asm\"\ndb 0\n"
+        );
+        assert_eq!(read("b.asm"), "incsrc \"other.asm\"\n");
+        assert_eq!(read("c.txt"), "incsrc \"callisto.asm\"\n");
+        // Nothing is added beside the files.
+        assert_eq!(fs::read_dir(&library).unwrap().count(), 3);
+    }
 }

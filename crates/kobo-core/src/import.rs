@@ -74,6 +74,22 @@ pub enum ImportError {
     },
     #[error("the PIXI folder: {0}")]
     Pixi(#[from] crate::tools::ToolError),
+    #[error("the Callisto project: {0}")]
+    Callisto(#[from] crate::callisto::CallistoError),
+    #[error("{path}: {source}")]
+    Map16File {
+        path: PathBuf,
+        #[source]
+        source: crate::map16_file::Map16FileError,
+    },
+    #[error("{path}: {source}")]
+    Bps {
+        path: PathBuf,
+        #[source]
+        source: crate::bps::BpsError,
+    },
+    #[error("{path}: {message}")]
+    File { path: PathBuf, message: String },
 }
 
 /// A level read from a ROM, with notes on what it holds that a build
@@ -543,50 +559,17 @@ pub fn import_rom_with(
         fs::write(&path, bytes).map_err(|source| ImportError::Io { path, source })?;
         manifest.animation_files.insert(number, file);
     }
-    let (pages, notes) = read_map16_bg(rom, base)?;
+    let (background, notes) = read_map16_bg(rom, base)?;
     report.notes.extend(notes);
-    for (page, tiles) in pages {
-        let file = PathBuf::from("map16").join(format!("bg-{page:02X}.toml"));
-        write(
-            &dir.join(&file),
-            tiles.to_toml(PageKind::Background, &PageComments::default()),
-        )?;
-        manifest.map16_bg.insert(page, file);
-    }
-    let (pages, notes) = read_map16(rom)?;
+    let (foreground, notes) = read_map16(rom)?;
     report.notes.extend(notes);
-    for (page, tiles) in pages {
-        let file = PathBuf::from("map16").join(format!("{page:02X}.toml"));
-        write(
-            &dir.join(&file),
-            tiles.to_toml(PageKind::Foreground, &PageComments::default()),
-        )?;
-        manifest.map16.insert(page, file);
-        report.map16.push(page);
-    }
-    let game = read_map16_game(rom, base)?;
-    report.notes.extend(game.notes);
-    for (page, tiles) in game.pages {
-        let file = PathBuf::from("map16").join(format!("{page:02X}.toml"));
-        write(&dir.join(&file), tiles.to_toml(&PageComments::default()))?;
-        manifest.map16.insert(page, file);
-        report.map16.push(page);
-    }
-    for (tileset, tiles) in game.tilesets {
-        let file = PathBuf::from("map16").join(format!("tileset-{tileset:X}.toml"));
-        write(
-            &dir.join(&file),
-            tiles.to_toml(PageKind::Tileset, &PageComments::default()),
-        )?;
-        manifest.map16_tileset.insert(tileset, file);
-    }
-    let pipes = read_pipes(rom, base)?;
-    if !pipes.is_empty() {
-        let file = PathBuf::from("map16").join("pipes.toml");
-        write(&dir.join(&file), pipes.to_toml(&[]))?;
-        manifest.map16_pipes = Some(file);
-    }
-    report.map16.sort_unstable();
+    let map16 = Map16Files {
+        background,
+        foreground,
+        game: read_map16_game(rom, base)?,
+        pipes: read_pipes(rom, base)?,
+    };
+    write_map16_files(dir, &mut manifest, &mut report, map16)?;
     let insert = crate::pixi::read(rom, base)?;
     let mut manifest_comments = Comments::default();
     if let Some(folder) = options.pixi {
@@ -1151,6 +1134,78 @@ pub fn read_map16_bg(rom: &Rom, clean: &Rom) -> Result<Map16Import, ImportError>
 
 /// Map16 pages by number, and notes on what was left out.
 pub type Map16Import = (Vec<(u8, Map16Page)>, Vec<String>);
+
+/// Everything of a hack's Map16 a project holds, as an import read it.
+#[derive(Clone, Default, Debug)]
+pub struct Map16Files {
+    pub background: Vec<(u8, Map16Page)>,
+    pub foreground: Vec<(u8, Map16Page)>,
+    pub game: GameMap16,
+    pub pipes: Pipes,
+}
+
+/// Writes `map16`'s page, tileset, and pipes files into the project in
+/// `dir` and lists them in `manifest`.
+fn write_map16_files(
+    dir: &Path,
+    manifest: &mut Manifest,
+    report: &mut Report,
+    map16: Map16Files,
+) -> Result<(), ImportError> {
+    for (page, tiles) in map16.background {
+        let file = PathBuf::from("map16").join(format!("bg-{page:02X}.toml"));
+        write_text(
+            &dir.join(&file),
+            tiles.to_toml(PageKind::Background, &PageComments::default()),
+        )?;
+        manifest.map16_bg.insert(page, file);
+    }
+    for (page, tiles) in map16.foreground {
+        let file = PathBuf::from("map16").join(format!("{page:02X}.toml"));
+        write_text(
+            &dir.join(&file),
+            tiles.to_toml(PageKind::Foreground, &PageComments::default()),
+        )?;
+        manifest.map16.insert(page, file);
+        report.map16.push(page);
+    }
+    report.notes.extend(map16.game.notes);
+    for (page, tiles) in map16.game.pages {
+        let file = PathBuf::from("map16").join(format!("{page:02X}.toml"));
+        write_text(&dir.join(&file), tiles.to_toml(&PageComments::default()))?;
+        manifest.map16.insert(page, file);
+        report.map16.push(page);
+    }
+    for (tileset, tiles) in map16.game.tilesets {
+        let file = PathBuf::from("map16").join(format!("tileset-{tileset:X}.toml"));
+        write_text(
+            &dir.join(&file),
+            tiles.to_toml(PageKind::Tileset, &PageComments::default()),
+        )?;
+        manifest.map16_tileset.insert(tileset, file);
+    }
+    if !map16.pipes.is_empty() {
+        let file = PathBuf::from("map16").join("pipes.toml");
+        write_text(&dir.join(&file), map16.pipes.to_toml(&[]))?;
+        manifest.map16_pipes = Some(file);
+    }
+    report.map16.sort_unstable();
+    Ok(())
+}
+
+/// Writes `text` to `path`, making its folder.
+fn write_text(path: &Path, text: impl AsRef<[u8]>) -> Result<(), ImportError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|source| ImportError::Io {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+    fs::write(path, text).map_err(|source| ImportError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
+}
 
 /// Map16 pages 2 to `$7F` from Lunar Magic's tables: the pages of each
 /// group of 16 that lie in the RATS block its table starts in (Lunar Magic
@@ -2010,6 +2065,633 @@ pub fn import_mwl_sized(
             .collect(),
         ..Report::default()
     })
+}
+
+/// How [`import_callisto`] imports.
+#[derive(Clone, Default, Debug)]
+pub struct CallistoOptions {
+    /// The PIXI version the project's sprites are written for, if not the
+    /// one Kobo pins by default.
+    pub pixi_version: Option<String>,
+    /// Where the project came from, noted at the top of its manifest.
+    pub origin: Option<String>,
+    /// Whose its resources are, noted there too.
+    pub rights: Option<String>,
+    /// Files and folders of the source, by their path from its root, the
+    /// project leaves out (a baserom's scripts for Callisto, say).
+    pub exclude: Vec<PathBuf>,
+}
+
+/// File extensions a project never holds: ROM images and patches of them
+/// (docs/step-2.md, "No base"), and programs, which are the user's own.
+const NOT_SOURCE: &[&str] = &["smc", "sfc", "bps", "ips", "exe", "dll", "so", "dylib"];
+
+/// Imports the Callisto project in `source` (`crate::callisto`) into a new
+/// project in `dir`, against the clean ROM. The project is the Callisto
+/// project's folder as it was, so that every file its patches and tools
+/// include is where they look, but for what Kobo builds from its own
+/// files instead: the levels' MWL files become level files, the full Map16
+/// export page files, the `Graphics` and `ExGraphics` folders graphics, and
+/// the global ExAnimation patch its list; the configuration, ROM images and
+/// patches of them, and programs are left out. The patches run before the
+/// tools, as Callisto's do, and `[callisto]` gives them and the tools'
+/// files the `callisto.asm` they include (`build::callisto_header`). What
+/// a project cannot hold yet is reported.
+pub fn import_callisto(
+    source: &Path,
+    clean: &Rom,
+    dir: &Path,
+    options: &CallistoOptions,
+) -> Result<Report, ImportError> {
+    use crate::callisto::{Project, ToolKind};
+    let project = Project::find(source)?;
+    if dir.join(MANIFEST).exists() {
+        return Err(ImportError::Exists(dir.to_path_buf()));
+    }
+    let root = &project.root;
+    let read = |path: &Path| {
+        let path = root.join(path);
+        fs::read(&path).map_err(|source| ImportError::Io { path, source })
+    };
+    let mut report = Report::default();
+    let mut manifest = Manifest::default();
+    let mut skip: Vec<PathBuf> = options.exclude.clone();
+    if let Ok(config) = project.config.strip_prefix(root) {
+        skip.push(config.to_path_buf());
+    }
+    let step = |name: &str| project.builds(name);
+    if let Some(patch) = project
+        .initial_patch
+        .as_ref()
+        .filter(|_| step("InitialPatch"))
+    {
+        let patched =
+            crate::bps::apply_to_rom(&read(patch)?, clean).map_err(|source| ImportError::Bps {
+                path: patch.clone(),
+                source,
+            })?;
+        let initial = Rom::from_headerless(patched.data)?;
+        manifest.sa1 = initial.mapping().is_sa1();
+        manifest.four_bpp = exgfx::is_4bpp(&initial);
+        if initial.len() > crate::build::DEFAULT_ROM_SIZE {
+            manifest.rom_size = Some(initial.len());
+        }
+        report.notes.push(format!(
+            "its initial patch ({}) is not carried: a build starts from the clean ROM{} and \
+             installs Kobo's own code for Lunar Magic's layout",
+            patch.display(),
+            if manifest.sa1 { " with SA-1 Pack" } else { "" }
+        ));
+        let map_mode = initial.read_u8(SnesAddr::new(0x00FFD5))?;
+        if !manifest.sa1 && map_mode & 0x10 != 0 {
+            report.notes.push(
+                "the initial patch makes the ROM FastROM; Kobo's builds are not, so code the \
+                 patches put in banks $80 and up runs at SlowROM speed"
+                    .into(),
+            );
+        }
+    }
+    if step("Patches") {
+        for patch in &project.patches {
+            if !root.join(patch).is_file() {
+                return Err(ImportError::File {
+                    path: patch.clone(),
+                    message: "a patch the configuration lists, not in the project".into(),
+                });
+            }
+        }
+        manifest.early_patches = project.patches.clone();
+    }
+    if step("Modules") && !project.modules.is_empty() {
+        report.notes.push(format!(
+            "{} Callisto modules are not carried: Kobo does not build modules",
+            project.modules.len()
+        ));
+    }
+    manifest.callisto = Some(crate::source::project::Callisto {
+        header: project.callisto_header.clone(),
+    });
+    for tool in &project.tools {
+        if !step(&tool.name) {
+            continue;
+        }
+        let folder = tool.directory.clone();
+        match tool.kind() {
+            Some(ToolKind::Pixi) => {
+                // PIXI's own files would be laid over Kobo's PIXI: only
+                // the project's inputs are taken.
+                crate::tools::copy_pixi_inputs(&root.join(&folder), &dir.join(&folder))?;
+                skip.push(folder.clone());
+                manifest.pixi = Some(folder);
+            }
+            Some(ToolKind::Gps) => manifest.gps = Some(folder),
+            Some(ToolKind::UberAsm) => manifest.uberasm = Some(folder),
+            Some(ToolKind::AddmusicK) => manifest.music = Some(folder),
+            None => report.notes.push(format!(
+                "the build order runs {} ({}), which Kobo does not run; not carried",
+                tool.name, tool.executable
+            )),
+        }
+    }
+    if let Some(version) = &options.pixi_version {
+        report.notes.push(format!(
+            "its sprites are written for PIXI {version}; this build of Kobo runs PIXI {}",
+            crate::tools::Tool::Pixi
+                .version()
+                .unwrap_or("as configured")
+        ));
+    }
+    // Lunar Magic keeps the graphics in folders beside the ROM, and
+    // Callisto's output folder, when it is not the root, holds the build
+    // and Lunar Magic's own files for it.
+    let beside = project
+        .output_rom
+        .as_ref()
+        .and_then(|rom| rom.parent())
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+    if !beside.as_os_str().is_empty() {
+        skip.push(beside.clone());
+    }
+    copy_project(root, dir, &skip)?;
+    // Kobo's own files, after the copy, so that one of the project's of
+    // the same name gives way.
+    if let Some(levels) = project.resources.get("levels").filter(|_| step("Levels")) {
+        skip.push(levels.clone());
+        let mut files: Vec<PathBuf> = fs::read_dir(root.join(levels))
+            .map_err(|source| ImportError::Io {
+                path: root.join(levels),
+                source,
+            })?
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("mwl")))
+            .collect();
+        files.sort();
+        for path in files {
+            let bytes = fs::read(&path).map_err(|source| ImportError::Io {
+                path: path.clone(),
+                source,
+            })?;
+            let mwl = MwlFile::parse(&bytes)?.decode(None)?;
+            let number = mwl.info.level;
+            let (level, notes) = level_from_mwl(&mwl, number, clean)?;
+            let file = PathBuf::from("levels").join(format!("{number:03X}.toml"));
+            write_text(&dir.join(&file), level.to_toml(&Comments::default()))?;
+            manifest.levels.insert(number, file);
+            report.levels.push(number);
+            report.notes.extend(
+                notes
+                    .into_iter()
+                    .map(|n| format!("level {number:03X}: {n}")),
+            );
+            if level.sprites.list.iter().any(|s| !s.extension.is_empty()) {
+                report.notes.push(format!(
+                    "level {number:03X}: its sprites were read without PIXI's size table, \
+                     which an MWL file does not hold; check their extra bytes"
+                ));
+            }
+        }
+        remove_copied(dir, levels)?;
+    }
+    if let Some(path) = project.resources.get("map16").filter(|_| step("Map16")) {
+        if project.text_map16 {
+            report.notes.push(format!(
+                "its Map16 ({}) is in the text format, which Kobo does not read; not carried",
+                path.display()
+            ));
+        } else {
+            let file = crate::map16_file::AllMap16::parse(&read(path)?).map_err(|source| {
+                ImportError::Map16File {
+                    path: path.clone(),
+                    source,
+                }
+            })?;
+            write_map16_files(
+                dir,
+                &mut manifest,
+                &mut report,
+                map16_from_file(&file, clean)?,
+            )?;
+            remove_copied(dir, path)?;
+        }
+    }
+    if let Some(path) = project
+        .resources
+        .get("shared_palettes")
+        .filter(|_| step("SharedPalettes"))
+    {
+        let theirs = read(path)?;
+        let ours = clean.read(palette::tables::BACK_AREA_COLORS, theirs.len())?;
+        let changed = theirs
+            .chunks(2)
+            .zip(ours.chunks(2))
+            .filter(|(a, b)| a != b)
+            .count();
+        if changed > 0 {
+            report.notes.push(format!(
+                "its shared palettes ({}) change {changed} of the game's colours, which a \
+                 project cannot hold yet (docs/known-gaps.md); not carried",
+                path.display()
+            ));
+        }
+    }
+    if step("Graphics") && root.join(&beside).join("Graphics").is_dir() {
+        let folder = beside.join("Graphics");
+        let (files, notes) = gfx_from_folder(&root.join(&folder), clean, manifest.four_bpp)?;
+        report.notes.extend(notes);
+        for (index, image) in files {
+            let file = PathBuf::from("graphics").join(format!("GFX{index:02X}.png"));
+            let png = image
+                .to_png()
+                .map_err(|e| ImportError::Gfx(e.to_string()))?;
+            write_text(&dir.join(&file), png)?;
+            manifest.gfx.insert(index, file);
+        }
+        remove_copied(dir, &folder)?;
+    }
+    if step("ExGraphics") && root.join(&beside).join("ExGraphics").is_dir() {
+        let folder = beside.join("ExGraphics");
+        for (number, path) in exgfx_files(&root.join(&folder))? {
+            let bytes = fs::read(&path).map_err(|source| ImportError::Io {
+                path: path.clone(),
+                source,
+            })?;
+            match number {
+                0x60..=0x63 => {
+                    let file = PathBuf::from("animation").join(format!("ExGFX{number:X}.bin"));
+                    write_text(&dir.join(&file), bytes)?;
+                    manifest.animation_files.insert(number, file);
+                }
+                exgfx::EXGFX_FIRST..=exgfx::EXGFX_LAST => {
+                    // 4bpp tiles if it is whole rows of them, as the ROM
+                    // import takes a file no graphics list says the depth
+                    // of; its bytes as they are otherwise.
+                    let row = gfx::Bpp::Four.bytes_per_tile() * 16;
+                    let file = if !bytes.is_empty() && bytes.len() % row == 0 {
+                        let tiles = gfx::decode_tiles(gfx::Bpp::Four, &bytes);
+                        let png = gfx::tiles_to_image(&tiles, 16)
+                            .to_png()
+                            .map_err(|e| ImportError::Gfx(e.to_string()))?;
+                        let file = PathBuf::from("graphics").join(format!("ExGFX{number:X}.png"));
+                        write_text(&dir.join(&file), png)?;
+                        file
+                    } else {
+                        let file = PathBuf::from("graphics").join(format!("ExGFX{number:X}.bin"));
+                        write_text(&dir.join(&file), bytes)?;
+                        file
+                    };
+                    manifest
+                        .exgfx
+                        .insert(number, ExGfxFile { path: file, bpp: 4 });
+                }
+                _ => report.notes.push(format!(
+                    "{}: not an ExGFX file a project holds; not carried",
+                    path.display()
+                )),
+            }
+        }
+        if !manifest.exgfx.is_empty() {
+            manifest.four_bpp = true;
+        }
+        remove_copied(dir, &folder)?;
+    }
+    if let Some(path) = project
+        .resources
+        .get("global_exanimation")
+        .filter(|_| step("GlobalExAnimation"))
+    {
+        // Callisto keeps it as a patch of the clean ROM.
+        let patched =
+            crate::bps::apply_to_rom(&read(path)?, clean).map_err(|source| ImportError::Bps {
+                path: path.clone(),
+                source,
+            })?;
+        let rom = Rom::from_headerless(patched.data)?;
+        match exanimation::read_global(&rom) {
+            Ok(Some(found)) => {
+                let file = PathBuf::from("animation").join("global.toml");
+                write_text(
+                    &dir.join(&file),
+                    crate::source::animation::global_to_toml(&found.list, &Comments::default()),
+                )?;
+                manifest.animation_global = Some(file);
+                report.notes.extend(
+                    animation_notes(Some(&found.list))
+                        .into_iter()
+                        .map(|n| format!("global ExAnimation: {n}")),
+                );
+            }
+            Ok(None) => {}
+            Err(e) => report.notes.push(format!(
+                "global ExAnimation ({}): does not read ({e}); not carried",
+                path.display()
+            )),
+        }
+    }
+    for (key, step_name, what) in [
+        ("overworld", "Overworld", "the overworld"),
+        ("titlescreen", "TitleScreen", "the title screen"),
+        ("credits", "Credits", "the credits"),
+    ] {
+        if let Some(path) = project.resources.get(key).filter(|_| step(step_name)) {
+            report.notes.push(format!(
+                "{what} ({}): not carried, as Kobo does not build it yet and a project holds \
+                 no patches of the ROM; finish it in Lunar Magic on the built ROM",
+                path.display()
+            ));
+        }
+    }
+    let mut comments = Comments::default();
+    let mut top = Vec::new();
+    if let Some(origin) = &options.origin {
+        top.extend(wrap_comment(&format!("Made from {origin}."), 88));
+    }
+    if let Some(rights) = &options.rights {
+        top.extend(wrap_comment(rights, 88));
+    }
+    comments.add(Comments::TOP, top);
+    write_text(&dir.join(MANIFEST), manifest.to_toml(&comments))?;
+    report.levels.sort_unstable();
+    Ok(report)
+}
+
+/// Copies the project in `from` to `to`, but for the paths in `skip`
+/// (from `from`), hidden files and folders, and [`NOT_SOURCE`] files.
+/// Folders left with nothing are not made.
+fn copy_project(from: &Path, to: &Path, skip: &[PathBuf]) -> Result<(), ImportError> {
+    fn walk(root: &Path, at: &Path, to: &Path, skip: &[PathBuf]) -> Result<(), ImportError> {
+        let io = |path: &Path| {
+            let path = path.to_path_buf();
+            move |source| ImportError::Io { path, source }
+        };
+        let mut entries: Vec<_> = fs::read_dir(at)
+            .map_err(io(at))?
+            .collect::<Result<_, _>>()
+            .map_err(io(at))?;
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let path = entry.path();
+            let relative = path.strip_prefix(root).expect("under the root");
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') || skip.iter().any(|s| relative == s) {
+                continue;
+            }
+            if path.is_dir() {
+                walk(root, &path, to, skip)?;
+            } else if !path
+                .extension()
+                .is_some_and(|e| NOT_SOURCE.iter().any(|x| e.eq_ignore_ascii_case(x)))
+            {
+                let target = to.join(relative);
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent).map_err(io(parent))?;
+                }
+                fs::copy(&path, &target).map_err(io(&path))?;
+            }
+        }
+        Ok(())
+    }
+    walk(from, from, to, skip)
+}
+
+/// Removes from the project in `dir` what it copied of `path`, a source
+/// Kobo's own files replace.
+fn remove_copied(dir: &Path, path: &Path) -> Result<(), ImportError> {
+    let target = dir.join(path);
+    let result = if target.is_dir() {
+        fs::remove_dir_all(&target)
+    } else if target.is_file() {
+        fs::remove_file(&target)
+    } else {
+        return Ok(());
+    };
+    result.map_err(|source| ImportError::Io {
+        path: target,
+        source,
+    })
+}
+
+/// The `ExGFX<hex>.bin` files of a folder, by number.
+fn exgfx_files(folder: &Path) -> Result<Vec<(u16, PathBuf)>, ImportError> {
+    let mut out = Vec::new();
+    for entry in fs::read_dir(folder).map_err(|source| ImportError::Io {
+        path: folder.to_path_buf(),
+        source,
+    })? {
+        let path = entry
+            .map_err(|source| ImportError::Io {
+                path: folder.to_path_buf(),
+                source,
+            })?
+            .path();
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        let number = name
+            .strip_prefix("ExGFX")
+            .and_then(|n| n.strip_suffix(".bin"))
+            .and_then(|n| u16::from_str_radix(n, 16).ok());
+        if let Some(number) = number {
+            out.push((number, path));
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// GFX files `00` to `33` from Lunar Magic's export of them (`GFXnn.bin`,
+/// `-ExportGFX`) in `folder` that differ from the clean ROM's, as images.
+/// In a 4bpp project a file the game keeps as 3bpp is compared with Lunar
+/// Magic's 4bpp version of the clean ROM's and kept as 4bpp; otherwise the
+/// export's 4bpp form of such a file is taken back to 3bpp.
+pub fn gfx_from_folder(
+    folder: &Path,
+    clean: &Rom,
+    four_bpp: bool,
+) -> Result<GfxImport, ImportError> {
+    let (mut out, mut notes) = (Vec::new(), Vec::new());
+    let reader = gfx::GfxReader::new(clean).map_err(|e| ImportError::Gfx(e.to_string()))?;
+    for index in 0..gfx::GFX_FILE_COUNT {
+        let path = folder.join(format!("GFX{index:02X}.bin"));
+        let Ok(theirs) = fs::read(&path) else {
+            continue;
+        };
+        let ours = reader
+            .read(index)
+            .map_err(|e| ImportError::Gfx(e.to_string()))?;
+        let (expected, image) = if four_bpp && exgfx::converts(ours.format) {
+            let tiles = gfx::decode_tiles(gfx::Bpp::Four, &theirs);
+            (exgfx::stored_4bpp(&ours), gfx::tiles_to_image(&tiles, 16))
+        } else {
+            let tiles = match ours.format {
+                gfx::GfxFormat::Planar(gfx::Bpp::Three) => {
+                    gfx::decode_tiles(gfx::Bpp::Three, &gfx::convert_4bpp_to_3bpp(&theirs))
+                }
+                gfx::GfxFormat::Planar(bpp) => gfx::decode_tiles(bpp, &theirs),
+                gfx::GfxFormat::Packed3 => gfx::decode_packed3_tiles(&theirs),
+            };
+            (
+                ours.to_lm_export(),
+                gfx::tiles_to_image(&tiles, ours.colors()),
+            )
+        };
+        if theirs.len() != expected.len() {
+            notes.push(format!(
+                "GFX{index:02X} ({}) is {} bytes, where the game's is {}; not carried",
+                path.display(),
+                theirs.len(),
+                expected.len()
+            ));
+        } else if theirs != expected {
+            out.push((index, image));
+        }
+    }
+    Ok((out, notes))
+}
+
+/// A full Map16 export's tiles as a project holds them, against the clean
+/// ROM: as [`read_map16`], [`read_map16_bg`], [`read_map16_game`], and
+/// [`read_pipes`] read a ROM, Lunar Magic's empty tile being Kobo's.
+pub fn map16_from_file(
+    file: &crate::map16_file::AllMap16,
+    clean: &Rom,
+) -> Result<Map16Files, ImportError> {
+    use crate::map16::tables::MAP16_BG_TILES;
+    use crate::map16_file::{BG_START, empty_as_zero};
+    let definition = |rom: &Rom, at: SnesAddr| -> Result<Map16Tile, ImportError> {
+        Ok(Map16Tile::from_bytes(
+            rom.read(at, 8)?.try_into().expect("8 bytes"),
+        ))
+    };
+    let mut out = Map16Files::default();
+    // Pages 0 and 1: what tiles act like, and the graphics of the common
+    // tiles here and of each tileset's own in its file.
+    let game = GameTables::read(clean)?;
+    let mut pages = [GamePage::default(), GamePage::default()];
+    let mut tilesets: BTreeMap<u8, Map16Page> = BTreeMap::new();
+    for tile in 0..0x200u16 {
+        let acts = file.acts[tile as usize];
+        if acts != tile {
+            pages[tile as usize >> 8].tiles.insert(
+                tile,
+                GameTile {
+                    acts: Some(acts),
+                    gfx: None,
+                },
+            );
+        }
+        if !game.is_specific(tile) {
+            let gfx = file.tileset_pages[0][tile as usize];
+            if gfx != definition(clean, game.address(0, tile))? {
+                pages[tile as usize >> 8].tiles.entry(tile).or_default().gfx = Some(gfx);
+            }
+            continue;
+        }
+        for group in game.sharing() {
+            let gfx = file.tileset_pages[group[0] as usize][tile as usize];
+            if gfx != definition(clean, game.address(group[0], tile))? {
+                tilesets.entry(group[0]).or_default().tiles.insert(
+                    tile,
+                    Map16Entry {
+                        gfx,
+                        ..Map16Entry::default()
+                    },
+                );
+            }
+        }
+    }
+    if let Some(page2) = &file.tileset_page2 {
+        for (tileset, tiles) in page2.iter().enumerate() {
+            for (i, &gfx) in tiles.iter().enumerate() {
+                let gfx = empty_as_zero(gfx);
+                if gfx != Map16Tile::default() {
+                    tilesets.entry(tileset as u8).or_default().tiles.insert(
+                        0x200 + i as u16,
+                        Map16Entry {
+                            gfx,
+                            ..Map16Entry::default()
+                        },
+                    );
+                }
+            }
+        }
+    }
+    for (page, tiles) in pages.into_iter().enumerate() {
+        if !tiles.tiles.is_empty() {
+            out.game.pages.push((page as u8, tiles));
+        }
+    }
+    out.game.tilesets = tilesets.into_iter().collect();
+    // Pages 2 to 7F, but page 2's graphics when it is per tileset.
+    for page in 2..0x80u16 {
+        let mut tiles = Map16Page::default();
+        for tile in page * PAGE_TILES..(page + 1) * PAGE_TILES {
+            let gfx = if page == 2 && file.tileset_page2.is_some() {
+                Map16Tile::default()
+            } else {
+                file.definition(tile as usize)
+            };
+            let entry = Map16Entry {
+                gfx,
+                acts: file.acts[tile as usize],
+            };
+            if entry != Map16Entry::default() {
+                tiles.tiles.insert(tile, entry);
+            }
+        }
+        if !tiles.tiles.is_empty() {
+            out.foreground.push((page as u8, tiles));
+        }
+    }
+    // BG Map16: table 0's pages 0 and 1 against the game's, the rest
+    // against empty tiles.
+    for page in 0..0x80u16 {
+        let mut tiles = Map16Page::default();
+        for i in 0..PAGE_TILES {
+            let n = page * PAGE_TILES + i;
+            let gfx = file.definition(BG_START + n as usize);
+            let base = if page < 2 {
+                definition(clean, MAP16_BG_TILES.add(8 * n as u32))?
+            } else {
+                Map16Tile::default()
+            };
+            if gfx != base {
+                // Keyed as the background pages are: the tile's number
+                // in its table plus $1000 times the table.
+                tiles.tiles.insert(
+                    n,
+                    Map16Entry {
+                        gfx,
+                        ..Map16Entry::default()
+                    },
+                );
+            }
+        }
+        if !tiles.tiles.is_empty() {
+            out.background.push((page as u8, tiles));
+        }
+    }
+    // The pipes: colour sets 0, 2, and 3 (set 1 is page 1's own tiles),
+    // and the diagonal pipes.
+    for (set_index, set) in file.pipes.iter().enumerate() {
+        let set_index = set_index as u8;
+        if !crate::source::map16::PIPE_SETS.contains(&set_index) {
+            continue;
+        }
+        for (i, &gfx) in set.iter().enumerate() {
+            let tile = *crate::map16::PIPE_COLOUR_TILES.start() + i as u16;
+            let at = crate::map16::pipe_address(Some(set_index), tile).expect("a pipe tile");
+            if gfx != definition(clean, at)? {
+                out.pipes.colours.insert((set_index, tile), gfx);
+            }
+        }
+    }
+    for (i, tile) in crate::map16::diagonal_pipe_tiles().enumerate() {
+        let gfx = file.diagonal[i];
+        let at = crate::map16::pipe_address(None, tile).expect("a pipe tile");
+        if gfx != definition(clean, at)? {
+            out.pipes.diagonal.insert(tile, gfx);
+        }
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

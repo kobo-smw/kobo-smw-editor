@@ -350,7 +350,7 @@ fn uberasm_runs_without_a_rom() {
         "level/kobo_test.asm",
         "main:\n    LDA #$42\n    STA $0DBF\n    RTL\n",
     );
-    let out = kobo_core::tools::uberasm(&rom, &tool, &dir, &asar).unwrap();
+    let out = kobo_core::tools::uberasm(&rom, &tool, &dir, &asar, None).unwrap();
     let code = [0xA9, 0x42, 0x8D, 0xBF, 0x0D, 0x6B];
     assert!(out.data().windows(code.len()).any(|w| w == code));
     let _ = fs::remove_dir_all(&dir);
@@ -597,7 +597,7 @@ fn pixi_runs_without_a_rom() {
     rom.write(SnesAddr::new(0x029B39), &[0xFF, 0xFF]).unwrap();
     let dir = temp_dir("pixi-synthetic");
     pixi_files(&dir);
-    let out = kobo_core::tools::run_pixi(&rom, &tool, &dir.join("pixi"), &asar).unwrap();
+    let out = kobo_core::tools::run_pixi(&rom, &tool, &dir.join("pixi"), &asar, None).unwrap();
     let code = [0xA9, 0x42, 0x8D, 0xBF, 0x0D, 0x6B];
     assert!(out.data().windows(code.len()).any(|w| w == code));
     assert!(kobo_core::sprites::pixi_size_table(&out).unwrap().is_some());
@@ -733,7 +733,7 @@ fn pixi_insert_is_read_whole() {
     rom.write_u8(SnesAddr::new(0x0FFFE0), 0xFF).unwrap();
     let dir = temp_dir("pixi-insert");
     pixi_files_of_every_kind(&dir);
-    let out = kobo_core::tools::run_pixi(&rom, &tool, &dir.join("pixi"), &asar).unwrap();
+    let out = kobo_core::tools::run_pixi(&rom, &tool, &dir.join("pixi"), &asar, None).unwrap();
     let (insert, notes) = kobo_core::pixi::read(&out, &rom).unwrap().unwrap();
     assert!(notes.is_empty(), "{notes:?}");
     assert_eq!(insert.version, 143);

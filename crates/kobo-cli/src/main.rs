@@ -60,10 +60,25 @@ enum Command {
         #[command(subcommand)]
         command: Map16Command,
     },
-    /// Import a ROM's levels into a new project, or a Lunar Magic MWL file
-    /// into a project.
+    /// Make a new project from a template: a widely used baserom, fetched
+    /// from its own release and checked by hash.
+    New {
+        /// The project directory, which must not have a project yet.
+        dir: Option<PathBuf>,
+        /// The template (`--list` names them).
+        #[arg(long)]
+        template: Option<String>,
+        /// List the templates.
+        #[arg(long)]
+        list: bool,
+        /// The clean ROM. Defaults to the configured vanilla ROM.
+        #[command(flatten)]
+        rom: RomArg,
+    },
+    /// Import a ROM's levels into a new project, a Lunar Magic MWL file
+    /// into a project, or a Callisto project's folder into a new project.
     Import {
-        /// The ROM or `.mwl` file to import from.
+        /// The ROM, `.mwl` file, or Callisto project folder to import from.
         from: PathBuf,
         /// The project directory: a new one for a ROM; for an MWL file, an
         /// existing one or a new one.
@@ -586,6 +601,12 @@ fn main() -> Result<()> {
             ToolsCommand::Fetch { tools } => tools_fetch(&tools),
             ToolsCommand::Path { tool } => tools_path(&tool),
         },
+        Command::New {
+            dir,
+            template,
+            list,
+            rom,
+        } => new_project(dir.as_deref(), template.as_deref(), list, &rom),
         Command::Import {
             from,
             dir,
@@ -1278,6 +1299,24 @@ fn import(
     pixi: Option<&Path>,
     clean: &Rom,
 ) -> Result<()> {
+    if from.is_dir() {
+        if all || level.is_some() || sizes_from.is_some() || pixi.is_some() {
+            bail!(
+                "--all, --level, --sizes-from, and --pixi are for a ROM or an MWL file; a \
+                 Callisto project's configuration says what to import"
+            );
+        }
+        let options = kobo_core::import::CallistoOptions {
+            origin: Some(format!("the Callisto project in {}", from.display())),
+            ..Default::default()
+        };
+        for tool in [Tool::Asar, Tool::Pixi] {
+            announce_download(tool);
+        }
+        let report = kobo_core::import::import_callisto(from, clean, dir, &options)?;
+        print_report(dir, &report);
+        return Ok(());
+    }
     let is_mwl = from
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("mwl"));
@@ -1314,6 +1353,44 @@ fn import(
         let options = kobo_core::import::Options { all, pixi };
         kobo_core::import::import_rom_with(&rom, clean, dir, &options)?
     };
+    print_report(dir, &report);
+    Ok(())
+}
+
+fn new_project(dir: Option<&Path>, template: Option<&str>, list: bool, rom: &RomArg) -> Result<()> {
+    use kobo_core::template;
+    if list {
+        for (name, recipe) in template::templates() {
+            println!(
+                "{name}: {} {} ({})",
+                recipe.title, recipe.version, recipe.homepage
+            );
+        }
+        return Ok(());
+    }
+    let (Some(dir), Some(name)) = (dir, template) else {
+        bail!("give the project's directory and --template; --list names the templates");
+    };
+    let recipe = template::template(name)?;
+    let clean = rom.load()?;
+    eprintln!(
+        "{} {}: {}{}, checked by SHA-256 (downloaded once, then cached)",
+        recipe.title, recipe.version, recipe.url, recipe.build.file
+    );
+    let report = recipe.create(&clean, dir)?;
+    print_report(dir, &report);
+    println!(
+        "{}",
+        recipe
+            .rights
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    Ok(())
+}
+
+fn print_report(dir: &Path, report: &kobo_core::import::Report) {
     for note in &report.notes {
         println!("note: {note}");
     }
@@ -1343,7 +1420,6 @@ fn import(
         report.levels.len(),
         report.map16.len()
     );
-    Ok(())
 }
 
 fn build(dir: &Path, out: &Path, patch: Option<&Path>, no_cache: bool, clean: &Rom) -> Result<()> {
