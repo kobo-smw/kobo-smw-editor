@@ -264,7 +264,8 @@ leaves in RAM (observed); none is from Lunar Magic's code.
     runs every one for each of them (2026-10-02). Block tools for 3.70 use GPS's 16-byte
     entries from `$06F690` instead (below). Kobo's `actslike.asm` fills
     every slot with `NOP`s and a `JMP $F602`, `$06F8B0`-`$06F8DF` among them, so a `JSL`
-    a tool writes there runs, which 3.70's would not (review.md); its berry hooks do not
+    a tool writes there runs, which 3.70's would not (kept so on review, 2026-10-04: the help
+  file's interface, and the same play with the slots empty); its berry hooks do not
     send the berry's call to `$06F8B0` as 3.70 does (that is Kobo's side slot): all four
     call Kobo's code directly. What a closed-source block tool checks before writing a
     slot remains unknown.
@@ -590,7 +591,8 @@ a ROM with `tools/lunar-magic/transfer`), 2026-09-28:
   same after a taller level as after a level of the game's height, under either code.
   Choc Island 2's rooms take their banks from the level the screen exit led to, which
   the game keeps in bank `$06`: a build that writes `0CD`-`0CF` elsewhere crashed the
-  game in the rooms (found here; `choc-island.asm` since, as the hook table has it).
+  game in the rooms (found here; `choc-island.asm` since, as the hook table has it,
+  installed by any build that writes them, kept so on review, 2026-10-04).
 - `$02950B`'s rewrite: the cape's block checks with every `$5B`, size, and position tried
   leave the same memory as the game's code; Kobo leaves the game's.
 - `$0BE7` (`$40` or `$00`) comes from another piece: bit 6 is set by the entrance code
@@ -826,7 +828,13 @@ and the rows follow what is on screen.
   Magic's patch puts the ones in those rows at their place at `$3000` and leaves the
   rest out, not before another frame of the game loop has run (so, it seems, at its
   game loop hook, `$008072`). Kobo's decides when the tile is made, from the camera
-  then, and queues Kobo's address (review.md). Found 2026-10-03 by
+  then, and queues Kobo's address, which leaves `$008072` and the stripe upload as the
+  game has them. The two agree for tiles made after the frame's camera update (sprites,
+  every case probed) and can differ for a tile the player makes at the top or bottom row
+  on a frame where the camera then crosses a row; the stripe buffer also holds Kobo's
+  address where Lunar Magic's holds the game's. Kept so on review (2026-10-04) until a
+  hack's code reads the stripe buffer or a difference is seen in play; the fix would be
+  Kobo's own code at the game loop hook. Found 2026-10-03 by
   calling the game's `GenerateTile` around the camera after frames of play in a
   horizontal, a vertical, and a layer 2 objects level, with the camera held at
   positions either side of a row, and reading the tile's place in VRAM after the next
@@ -945,7 +953,8 @@ comparing VRAM and RAM after every load.
   Kobo's loader reloaded `28` and `29` there before 2026-09-30, and parked only size 0
   (an index bug); it now does as Lunar Magic's. Size 3 (`FF` = 3), which the dialog does
   not offer, leaves `$4000`-`$4FFF` otherwise than size 0, not found how; builds refuse
-  it.
+  it (kept so on review, 2026-10-04, until a hack needs it; so too a file too large for
+  its slot, a file `32`-`7E` in a list, and objects `24` and `25` on layer 2).
 - The layer 3 settings in the high nibbles of BG3, SP1-SP3, and LG1-LG4 are Lunar
   Magic's layer 3 code's ("Layer 3 settings", below).
 - A list word of `$FFFF` is an empty slot in lists older versions of Lunar Magic wrote
@@ -1092,7 +1101,11 @@ What the settings do, observed:
   state; a Kobo build, with Kobo's code at both, gives the hack's values there (QLDC 2021
   `06_Friday`'s level `106`, where the swap alone did not).
 - Not settled: AN2's bit 12, which no corpus ROM sets and which changed nothing seen.
-  Builds refuse it (`build::check_layer3`, [review.md](review.md)).
+  Builds refuse it (`build::check_layer3`). Reviewed 2026-10-04: the refusal stays until
+  a ROM sets it; scroll settings `12`-`17` and `1B`-`1F` build as `01`; a slot of
+  `$FFFF` keeps its word, and settings needing another nibble there are refused; import
+  leaves the settings out of a ROM without Lunar Magic's layer 3 code but for a tide
+  level's AAAA; and the level files' `[graphics.layer3]` keys stay as they are.
 
 Kobo's (`asm/lunar-magic/layer3.asm`, installed by a build whose lists have any setting,
 `build::Project::lunar_magic_layer3`, after `graphics.asm`, whose `$7FC006` it reads)
@@ -1117,7 +1130,9 @@ GFX33's decompression (`$00B895`, `$00B89F`), the header load (`$0583B8`, which 
 leaves `$7FC006`), and the documented decompression entry `$0FF900`; objects `24` and
 `25`'s dispatch entries point at an `RTS`. It leaves Lunar Magic's other 4bpp and ExGFX
 sites (the overworld, cutscenes, credits, switch palace blocks) as the game has them:
-builds keep the overworld's own files.
+builds keep the overworld's own files, and write lists `200`-`206` as Lunar Magic 3.70
+writes them (the overworld's own files) so its editor and save find them. Overworld
+graphics are left to the overworld work (roadmap step 4; review, 2026-10-04).
 
 Against Lunar Magic's (tools/lunar-magic/with-kobo-graphics, gfx_probe `loads`, 2026-09-28):
 - vanilla+LM with 4bpp files: the same VRAM after every level's load, and the same
@@ -1138,7 +1153,10 @@ Against Lunar Magic's (tools/lunar-magic/with-kobo-graphics, gfx_probe `loads`, 
 A build stores every GFX file the game keeps as 3bpp as 4bpp, as Lunar Magic 3.70
 converts it (`exgfx::stored_4bpp`: `to_lm_export`'s conversion and `GFX17`'s berry, which
 the 3.21 export in `tests/fixtures/` leaves out); a project's own GFX files take 16
-colours. A vanilla 4bpp build draws all 512 levels as vanilla (render_hashes). It writes
+colours. Kobo's loader has no 3bpp case, so ExGFX or lists in a build mean 4bpp (kept so
+on review, 2026-10-04: of 57 corpus ROMs, 2 have ExGFX with 3bpp files, `LAG` and one
+`Super Mario World.smc`, and draw the same built as 4bpp). A vanilla 4bpp build draws all
+512 levels as vanilla (render_hashes). It writes
 the ExGFX files where free space allows, `$0FF600` for `80`-`FF`, the `$6E00`-byte block
 (pointers for `100`-`FFF`, then 520 lists: 3.70's list with nothing set for every level
 and the one after the submaps, the overworld's files for the submaps `200`-`206`) with
@@ -1168,7 +1186,8 @@ ExGFX pointers.
 - AN2's bit 12, what tides act like in a taller level, and how Lunar Magic times a tide's
   interaction with `B` ("Layer 3 settings"); LT3's size 3; what a slot does
   with a file larger than the buffer (Kobo's builds refuse more than `$1000` bytes, `$1A00`
-  for AN2 and `$2000` for LT3).
+  for AN2 and `$2000` for LT3). The last two stay refused until a hack needs them (review,
+  2026-10-04).
 - Objects `24` and `25` in the locked corpus ROMs (Invictus, Baby Kaizo World 3, both
   Super Dram Worlds), whose object data does not parse (lunar-magic.md).
 - For the sprite loader and ExAnimation agents: ExAnimation reads its source from the
@@ -1215,7 +1234,7 @@ ExGFX pointers.
   bonus game by the translevel too (`tests/lunar_magic_save.rs`): before, it kept the
   game's submap rule there, which a Lunar Magic save then replaced, since a save puts
   its own code at `$05D7CE`. For vanilla's overworld the two rules agree, so a build of
-  vanilla levels still plays as vanilla. It reads a secondary entrance's four bytes through
+  vanilla levels still plays as vanilla (kept so on review, 2026-10-04). It reads a secondary entrance's four bytes through
   the pointers at `$0DE191`, `$0DE198`, `$0DE19F`, and `$05DC81`, never from bank `$05`
   itself, so the tables can be anywhere. Lunar Magic's save writes its own code from
   `$05D7E2` on, keeping the `LDY $0E` before it: in every corpus ROM the `LDY` is the
@@ -1619,7 +1638,7 @@ help ("Edit Level ExAnimated Frames") names it.
   staying there; `09`-`0E` behave as always on (reserved); `0F` shares the counter of the
   first slot of its group of eight (the help's "precision timer"; types `01`-`15` then
   upload bytes of Lunar Magic's own work RAM, not the frames, the same whatever the
-  frames are, so builds refuse it there); `10`-`1F` manual (`$7FC070+n`); `20`-`2F` custom (bit `n` of
+  frames are, so builds refuse it there, kept so on review, 2026-10-04); `10`-`1F` manual (`$7FC070+n`); `20`-`2F` custom (bit `n` of
   `$7FC0FC`, 16 bits); `30`-`4F` one-shot (bit `n` of `$7FC0F8`, 32 bits).
 - Each frame, where the game runs its own animation, but not twice for one value of `$14`
   (which stands still while the game is stopped: the game's own animation is then
@@ -1774,8 +1793,14 @@ levels of each.
   Pack on the first open and locks the setting on the first save.
 
 Kobo's code on SA-1 (2026-10-01): every patch takes the game's variables through
-`memory.asm`, so its LoROM output is the same but for work RAM's bank byte (`$7E` for
-`$00`, the same memory through bank `$00`'s mirror) and code that moved. What differs
+`memory.asm`, in the convention PIXI, GPS, and UberASM Tool code is written in
+(`$010B|!addr`, `$000E|!dp`, `!9E`), not through defines generated from `ram::RamMap`, so
+that Kobo's patches read like the tools' (kept so on review, 2026-10-04);
+`tests/install.rs` checks each against `RamMap::resolve`. A define puts the address last
+(`!addr|$0BF6`) so that `!name+2` means the same in either order Asar evaluates, and an
+immediate built from a define is sized (`LDA.b`). So a patch's LoROM output is the same
+but for work RAM's bank byte (`$7E` for `$00`, the same memory through bank `$00`'s
+mirror) and code that moved. What differs
 beyond the addresses:
 
 - What runs on the SA-1 and needs work RAM goes through the S-CPU: only the conditional

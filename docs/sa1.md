@@ -139,6 +139,12 @@ asking the S-CPU for work RAM. How Lunar Magic's own install looks on SA-1, and 
 does differently there, is in
 [lunar-magic-install.md](lunar-magic-install.md#on-an-sa-1-rom).
 
+Only SA-1 Pack 1.40 is supported (maintainer, 2026-10-01): builds apply the configured SA-1
+Pack, which the tests take to be 1.40, and Kobo's sprite loader follows 1.40's changes to
+the game's loop. Super Diagonal Mario 2 has an older SA-1 Pack (no marker at `$0084C0`)
+with Lunar Magic 2.52; it imports, but Kobo's code in its place is not expected to match.
+Older versions wait for someone who wants to build a hack made on one.
+
 ## Not modelled
 
 Timers, the second type of character conversion (the SA-1 feeding bitmap lines through

@@ -1662,8 +1662,9 @@ fn slot_limit(slot: usize) -> usize {
 
 /// What a build refuses of a level's graphics list: layer 3's tilemap of
 /// size 3, which Lunar Magic does not offer and whose load was not
-/// matched; a file that is neither a GFX file nor one of the project's
-/// ExGFX files; and an ExGFX file too large for its slot (docs/review.md).
+/// matched; a file `32`-`7E`, which is not a GFX file; and an ExGFX file
+/// too large for its slot (kept refused on
+/// review: docs/lunar-magic-install.md, "Layer 3 in the lists").
 fn check_graphics_list(
     project: &Project,
     number: u16,
@@ -1712,10 +1713,10 @@ fn check_graphics_list(
 }
 
 /// What a build refuses of the layer 3 settings a level's load reads
-/// (docs/review.md): AN2's bit 12, whose effect was not found, and
-/// `advanced` in a vertical level with a tide, which Lunar Magic's code
-/// supports in ways not observed. (A tide at a size of the level's own is
-/// refused with the level.)
+/// (docs/lunar-magic-install.md, "Layer 3 settings"): AN2's bit 12, whose
+/// effect was not found, and `advanced` in a vertical level with a tide,
+/// which Lunar Magic's code supports in ways not observed. (A tide at a
+/// size of the level's own is refused with the level.)
 fn check_layer3(
     number: u16,
     level: &Level,

@@ -561,8 +561,8 @@ on the built ROM.
     with a taller size, observed in Mesen (2026-10-01): the same tables as Lunar
     Magic's but for the offsets it leaves at the level's size (review.md). That found
     Choc Island 2's rooms crashing in any build that writes `0CD`-`0CF`, now fixed
-    (`choc-island.asm`). Left in [review.md](review.md) for data that shows it: the one
-    entrance corner. Kaizo Kindergarten has
+    (`choc-island.asm`). The one entrance corner left then no longer reproduces
+    (2026-10-04). Kaizo Kindergarten has
     no taller level; Luminescent and ValuableAndBeautiful were the build checks, the other
     five corpus hacks with taller levels the swap checks only.
   - The VRAM patch and the graphics loader, for PIXI, ExGFX, 4bpp GFX, per-level graphics
@@ -584,14 +584,15 @@ on the built ROM.
     lists come with Kobo's layer 3 code (`layer3.asm`, `[graphics.layer3]`), which plays
     as Lunar Magic 3.70's frame by frame; builds refuse only what observation did not
     settle (what tides act like, AN2's bit 12, `advanced` in a tide level, a layer 3
-    tilemap of size 3; review.md). Kaizo Kindergarten imports and builds whole
+    tilemap of size 3; reviewed 2026-10-04, lunar-magic-install.md). Kaizo Kindergarten imports and builds whole
     (2026-10-01): every level reads back as the hack's (`kobo diff`) and survives a Lunar
     Magic save (`save-check`), and its content moved into a Lunar Magic 3.70 ROM plays
     every level's layer 3 the same under Kobo's code as under Lunar Magic's. Against that
     ROM the build draws 421 of 512 levels the same; none of the other 91 has layer 3
     settings (taller levels among them; not the pipes, which Kaizo Kindergarten leaves
     as the game has them, and which builds carry since 2026-10-01).
-    Left of the layer 3 settings (lunar-magic-install.md, "Layer 3 settings"; review.md):
+    Left of the layer 3 settings (lunar-magic-install.md, "Layer 3 settings", reviewed
+    2026-10-04):
     AN2's bit 12 (no effect seen, no corpus ROM sets it), `advanced` with a tide in a
     vertical level, and a layer 3 tilemap of size 3. A tide in a level with a size of
     its own builds since 2026-10-02, the rule for its rows found. The overworld's hook (`$00A153`) is
@@ -601,7 +602,7 @@ on the built ROM.
     whole build leaves them as the vanilla ROM does on every frame, where a Lunar
     Magic-saved ROM does not (review.md).
   - ExAnimation: done but for trigger `0F` on the types that upload frames, which
-    Lunar Magic's code makes upload its own scratch ([review.md](review.md)). Kobo's
+    Lunar Magic's code makes upload its own scratch (refused, reviewed 2026-10-04). Kobo's
     code (`exanimation.asm`) runs every other type and trigger as Lunar Magic's does,
     frame by frame (rotations under every trigger since 2026-10-01); level files hold a level's list and
     settings (`[animation]`), the manifest the global list and the files `60`-`63`
@@ -625,7 +626,7 @@ on the built ROM.
   1. **SA-1.** Done (2026-10-01): Lunar Magic's SA-1 install observed, every patch on
      SA-1 Pack's memory map through `memory.asm`, SA-1 projects build with Lunar Magic's
      layout, and the build, install, and Lunar Magic checks run on both
-     (lunar-magic-install.md, "On an SA-1 ROM"; decisions in review.md).
+     (lunar-magic-install.md, "On an SA-1 ROM", and sa1.md; reviewed 2026-10-04).
   2. **A corpus build sweep.** Done (2026-10-01, `tools/corpus-sweep`; how to run it in
      [testing.md](testing.md)): the 47 `KOBO_LM_ROMS` hacks and the 128 QLDC patches (135
      LoROM, 40 SA-1; Lunar Magic 1.62 to 3.51), each imported, built with every level a

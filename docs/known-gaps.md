@@ -88,6 +88,11 @@ What a rendered level does not reproduce, and what the tooling does not handle.
   code, which a 3.70 save keeps, may draw them all in one: Kaizo Mario's level `105` has
   green pipes and its build grey and yellow ones, from the same colour tables (2026-10-04).
   Kobo writes 3.70's layout, so this is left as it is.
+- A rendered level shows every ExAnimation slot's first frame: the level's setup runs the
+  animation once for each of its eight phases, so the picture has what the level shows as
+  it appears. There is no option to render a later frame or a triggered state. Decided on
+  review (2026-10-04) to wait for a GUI need: a frame count in `RenderOptions` would run
+  the game loop (`expand::play_game_loop`) that many frames before drawing.
 - Lunar Magic 2.41's older ExAnimation lists (Kaizo Mario World 3, the corpus's only ROM
   with them) are not read from a ROM: where their table is had been found in a way that
   was not recorded, so the reading, and the conversion of the older format with it, were
