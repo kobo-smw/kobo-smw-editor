@@ -449,6 +449,30 @@ how each oracle is produced, where its data lives, and what is known not to matc
   without `F`: Kaizo Mario 1, 2, and World 3) builds as 32 rows of its own format:
   Kaizo Mario 2's six such levels load the same BG2 VRAM, but `tiles_diff` reports their
   "background tilemap", whose stride goes from `$1B0` to `$200`.
+- **A hack built by Kobo, played**: `examples/built_play.rs hack.smc|patch.bps
+  [against=rom] [levels=...] [paths=...]` imports the hack's changed levels, builds them
+  (leaving out what a build refuses, as the corpus sweep does), and plays each level of
+  interest (by default those with Lunar Magic's added layer 2 scroll settings and the
+  tide levels with layer 3's `advanced` or `tides_act_as`) in both ROMs along seven
+  paths of 600 frames, the player standing, running and jumping either way, carried
+  right at 3 and at 8 pixels a frame, and up or down, comparing the camera, the scroll
+  and layer 3 RAM, the player, what he touches, and the tile planes frame by frame,
+  until the level is left. Against the hack, what differs is often the hack's: its own
+  code, which the import does not carry (`docs/step-2.md`), and an older Lunar Magic's
+  code. `against=` takes the hack's levels moved into a 3.70 ROM
+  (`tools/lunar-magic/transfer`, with MWL exports from `tools/lunar-magic/export-mwl` for
+  hacks without them) instead, which compares Kobo's code with 3.70's on the same levels:
+  what differs there is Kobo's, or the transfer's (the screen counts Lunar Magic's MWL
+  import re-counts, and the hack's own sprites, which the build carries and the
+  transfer does not). It is an example, not a test: a pass over the 24 hacks takes about
+  an hour against each, and the comparison against 3.70 needs Lunar Magic and an MWL
+  export of each hack. The 2026-10-04 run (the approved review of the layer 2 scroll
+  settings and the tides) is in lunar-magic-install.md ("Layer 2 scroll settings",
+  "Layer 3 settings"); what it found is checked by `tests/lunar_magic_save.rs`
+  (`kobos_layer2_offset_at_the_entrance_is_lunar_magics`,
+  `kobos_first_camera_and_scrolling_off_are_lunar_magics`), `tests/install.rs`
+  (`a_point_out_of_the_level_touches_air`), and `tests/layer3_settings.rs`
+  (`a_tide_with_an_autoscroll_moves_layer_2_by_its_steps`).
 - **A hack's content through Kobo's code**: transfer a hack into a Lunar Magic-saved
   vanilla ROM with Lunar Magic's command line (`tools/lunar-magic/transfer hack.smc
   mwl-dir out.smc`: `-ImportAllGraphics` of its `-ExportGFX`/`-ExportExGFX` first, then

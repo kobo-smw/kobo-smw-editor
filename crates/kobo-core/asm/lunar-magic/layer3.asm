@@ -451,11 +451,15 @@ scroll:
     PHY
     LDA $00
     PHA
+    LDA $22
+    PHA                         ; layer 3's X before this frame's move
     LDX #$0000
     JSR axis
     LDX #$0002
     JSR axis
     JSR tide_bounds
+    PLA
+    STA $00
     JSR tide_offsets
     PLA
     STA $00
@@ -472,8 +476,9 @@ scroll:
 
 ; In a tide level whose layer 3 moves vertically as a tide does (with
 ; layer 1, setting 1 or another of no shift, or by an autoscroll), its
-; vertical position kept as Lunar Magic's code keeps it: not below 0, and
-; from $108 on within $108-$117, a step of the tide's 16 lines. Seen with
+; vertical position kept as Lunar Magic's code keeps it, and with I the one
+; a frame ahead too: not below 0, and from $108 on within $108-$117, a step
+; of the tide's 16 lines. Seen with
 ; offsets from -12 to 30 rows, layer 1 along its height, and autoscrolls
 ; both ways; none, a fraction of layer 1, and 1.2 times leave it as it is
 ; (docs/lunar-magic-install.md "Layer 3 settings"). A, X, Y 16-bit.
@@ -491,24 +496,37 @@ tide_bounds:
     AND #$00FF
     BNE .done
 +   LDA $24
+    JSR .bound
+    STA $24
+    LDA !Flags
+    AND #$0002
+    BEQ .done
+    LDA !YAhead                 ; with I, the position a frame ahead too
+    JSR .bound
+    STA !YAhead
+.done:
+    RTS
+.bound:
     BPL +
-    STZ $24
+    LDA #$0000
     RTS
 +   CMP #$0108
-    BCC .done
+    BCC +
     SEC
     SBC #$0108
     AND #$000F
     ADC #$0107                  ; carry set: $108 on
-    STA $24
-.done:
-    RTS
++   RTS
 
 ; In a tide level, the tide's interaction offsets from layer 1 as Lunar
-; Magic's code leaves them with B, from layer 3's position as it now is
-; (the game's own, CODE_05BC4A, would take it frames late): layer 3's
-; position less layer 1's next, but horizontally $80 for an autoscroll.
-; A, X, Y 16-bit.
+; Magic's code leaves them with B (the game's own, CODE_05BC4A, would take
+; layer 3's position frames late): layer 3's position less layer 1's next,
+; horizontally from layer 3's X before this frame's move ($00); vertically
+; from its position now, or with I the one a frame ahead. With a horizontal
+; autoscroll, the X taken is $80 (0 in a level of one screen) and layer 2's
+; horizontal movement this frame ($17BF, which the layers' interaction
+; moves what stands on them by) is the autoscroll's next step, a step ahead
+; as the vertical offset is (none while $9D is set). A, X, Y 16-bit.
 tide_offsets:
     LDA.l $001403|!addr
     AND #$00FF
@@ -517,13 +535,40 @@ tide_offsets:
     JSR mode
     LDX #$0000
     CMP #$0002
-    LDA $22
-    BCC +
+    LDA $00
+    BCC .x
+    LDA $9D
+    AND #$00FF
+    BEQ .step
+    LDA #$0000                  ; frozen: no step
+    BRA .moved
+.step:
+    LDA !XFraction
+    AND #$00FF
+    CLC
+    ADC !XSpeed
+    XBA
+.moved:
+    SEP #$20
+    STA.l $0017BF|!addr
+    REP #$20
+    LDA $5D
+    AND #$00FF
+    DEC A
+    BEQ .x                      ; one screen: 0
     LDA #$0080
-+   SEC
+.x:
+    SEC
     SBC.l $001462|!addr
     STA $26
+    LDA !Flags
+    AND #$0002
+    BEQ .y
+    LDA !YAhead                 ; with I, the position a frame ahead
+    BRA .ahead
+.y:
     LDA $24
+.ahead:
     SEC
     SBC.l $001464|!addr
     STA $28

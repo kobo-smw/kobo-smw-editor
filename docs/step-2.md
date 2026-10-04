@@ -548,7 +548,10 @@ on the built ROM.
     (2026-10-02): Kobo's code at the five whose Lunar Magic code changes play (face left
     and the slanted pipe, the end fade's colours, layer 2's interaction a frame behind,
     a vertical level's camera), the game's at three where nothing was seen to differ
-    (lunar-magic-install.md, "The sites a save keeps with the marker"). Finding the first
+    (lunar-magic-install.md, "The sites a save keeps with the marker"); since the corpus
+    play comparison (2026-10-04, approved on review with it), Kobo's at six: the first
+    camera's screen count at `$009708` and vertical scrolling off at `$00F871` too, and
+    the entrance's `$1417` with the relative camera or a moving setting. Finding the first
     meant running game mode `$11`'s `$009708` in Kobo's loader, which Lunar Magic hooks:
     that also fixed the pictures of Lunar Magic hacks whose entrances place layer 2
     relative to the player (Kaizo Kindergarten 153 levels, Akogare2 26, Luminescent 30;
@@ -714,7 +717,9 @@ on the built ROM.
      Tides' `tides_act_as` and `advanced`: built since 2026-10-01, and a tide in a level
      with a size of its own since 2026-10-02 (QLDC 2021 `56_TheKazooBloccGosh` and
      `30_Galaer` build whole, their tide levels loading as the hacks'), but `advanced`
-     with a tide in a vertical level; AN2's bit 12 stays refused. Out-of-order sprite lists stay refused: the one hack with them
+     with a tide in a vertical level; the corpus's 17 tide levels built and played as
+     3.70 plays them since 2026-10-04 (lunar-magic-install.md, "Layer 3 settings"; two
+     corners no corpus level has are in review.md); AN2's bit 12 stays refused. Out-of-order sprite lists stay refused: the one hack with them
      crashes in those levels under its own code (review.md).
      The vertical pipes' colours and the diagonal pipes: carried since 2026-10-01 (the
      pipes file).

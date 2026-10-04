@@ -73,6 +73,16 @@ vertical_camera_moves:          ; STA $02
 org $00F77B
     JML vertical_camera
 
+; Layer 1's vertical camera with vertical scrolling off (CODE_00F7F4, the
+; player above the screen's middle, not flying or climbing: LDY #$04 : BRA
+; CODE_00F881, A 16-bit): the game's moves layer 1 up 6 pixels a frame at
+; most and keeps it at $C0 or lower, its lowest position at the game's
+; height. A Lunar Magic-saved ROM keeps it at the lowest position the
+; routine was given ($04: a taller level's bottom, a vertical level's last
+; screen) wherever it was (RAM, lunar-magic-install.md).
+org $00F871
+    JML vertical_scroll_off
+
 ; The game's layer 2 scroll settings by $05F000's high nibble (DATA_05D710
 ; vertical, DATA_05D720 horizontal): Lunar Magic's 8 to 11 are vertical
 ; 1/4, 1/8, 1/16, and 1/64, with horizontal 1/2.
@@ -201,16 +211,54 @@ assert midway_screen_table == midway_screen+9
 ; player faces left, and the slanted pipe shoots him left ($00D2B2), as in a
 ; Lunar Magic-saved ROM (docs/lunar-magic-install.md, "The sites a save
 ; keeps with the marker"). $13CD is cleared after, as there.
+; The game's CODE_00A796, the JSR after the hook, sets layer 2's vertical
+; offset from layer 1 ($1417) by the game's rates: 1/8 of layer 1 for every
+; vertical setting from 3 on. A Lunar Magic-saved ROM leaves it so only
+; without R and for settings below $10 (RAM, docs/lunar-magic-install.md,
+; "Layer 2 scroll settings"): with R it keeps the relative camera's
+; (relative_camera), and a setting that moves layer 2 by itself ($10 on)
+; starts from layer 2 less layer 1. The JSR is skipped then, and the one
+; other thing it does done here.
 entry_facing:
-    LDA #$20
-    STA $5E                     ; what the hook replaces
+    ; The hook replaces LDA #$20 : STA $5E, the most screens the camera's
+    ; first placement goes to; a Lunar Magic-saved ROM gives it the level's
+    ; own count there (RAM, every level tried), the header's, which the load
+    ; puts in $5D later (CODE_0584E3), so an entrance on the last screen
+    ; starts with the camera at the level's end.
+    LDA [$65]
+    AND #$1F
+    INC A
+    STA $5E
     LDA #$40
     BIT $13CD|!addr
     BVC +
     STZ $76
     LDA #$C0
 +   STA $F9
+    LDA $13CD|!addr
     STZ $13CD|!addr
+    ASL A
+    BCS .relative
+    LDA $1414|!addr
+    CMP #$10
+    BCC .done
+    REP #$20
+    LDA $20
+    SEC
+    SBC $1C
+    STA $1417|!addr
+    BRA .skip
+.relative:
+    REP #$20
+.skip:
+    LDA #$0080
+    STA $142A|!addr             ; CODE_00A796's camera move trigger
+    LDA $01,s
+    CLC
+    ADC #$0003                  ; past JSR CODE_00A796 at $00970C
+    STA $01,s
+    SEP #$20
+.done:
     RTL
 
 ; Returns with layer 1's position compared with the level's bottom, where
@@ -875,7 +923,9 @@ layer2_speeds:
 ; this frame ($17BE, $17BF) swapped with the previous frame's, kept at
 ; $0BE8-$0BED, so that what comes after (and the next frame's collision)
 ; goes by the previous frame's. The first time in a level, with $0BE7's bit
-; 6 (set at the entrance), this frame's are kept and stay. Learned from
+; 6 (set at the entrance), this frame's offsets are kept and stay, and the
+; movement is swapped as ever (with none before: found in tide levels whose
+; first collision comes after an entrance pipe, 2026-10-04). Learned from
 ; what a Lunar Magic-saved ROM leaves in those words frame by frame
 ; (docs/lunar-magic-install.md, "The sites a save keeps with the marker").
 layer2_collision:
@@ -897,9 +947,7 @@ layer2_collision:
     STA $0BE8|!addr
     LDA $28
     STA $0BEA|!addr
-    LDA $17BE|!addr
-    STA $0BEC|!addr
-    BRA .done
+    BRA .movement
 .swap:
     LDA $26
     PHA
@@ -913,6 +961,7 @@ layer2_collision:
     STA $28
     PLA
     STA $0BEA|!addr
+.movement:
     LDA $17BE|!addr
     PHA
     LDA $0BEC|!addr
@@ -932,6 +981,13 @@ vertical_camera:
     BEQ +
     JML vertical_camera_moves
 +   JML $00F79D
+
+; Vertical scrolling off: layer 1 at the lowest position, then the
+; routine's RTS ($00F8AA).
+vertical_scroll_off:
+    LDA $04
+    STA $1C
+    JML $00F8AA
 
 ; In place of the camera's own layer 2 (CODE_00F79D): A 16-bit, X and Y
 ; 8-bit.

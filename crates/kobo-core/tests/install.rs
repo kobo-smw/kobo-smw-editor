@@ -847,3 +847,60 @@ fn entrance_tables_take_the_count_they_are_given() {
         }
     }
 }
+
+/// The player's block lookup (`CODE_00F465`) at a point out of the level,
+/// below its height, past its screens, or outside a vertical level's two
+/// columns, leaves tile `$25` in `$1693` as well as returning it, as a
+/// Lunar Magic-saved ROM's does (docs/lunar-magic-install.md, "Taller
+/// levels"; compared with Lunar Magic's by calls at the same points, by
+/// hand); a point in the level leaves the tile there.
+#[test]
+fn a_point_out_of_the_level_touches_air() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    use kobo_core::ram::{self, RamAddr};
+    let at = |a: u32| RamAddr::new(0x7E_0000 | a);
+    for (_, rom) in installs(&clean) {
+        // (level, $8E's layer 1 bits, x, y, out of the level)
+        for (number, mode, x, y, out) in [
+            (0x105u16, 0x00u8, 0x0040u16, 0x0170u16, false),
+            (0x105, 0x00, 0x0040, 0x01B0, true),
+            (0x105, 0x00, 0x0040, 0xFFF0, true),
+            (0x105, 0x00, 0x1FF0, 0x0100, true),
+            (0x0F7, 0x01, 0x0040, 0x0100, false),
+            (0x0F7, 0x01, 0x0200, 0x0100, true),
+            (0x0F7, 0x01, 0x0040, 0x1F00, true),
+        ] {
+            let (after, _) = expand::call_in_level(
+                &rom,
+                &clean,
+                number,
+                |ram| {
+                    ram.set_u8(at(0x8E), mode);
+                    ram.set_u16(at(0x98), y);
+                    ram.set_u16(at(0x9A), x);
+                    ram.set_u8(at(0x1693), 0x42);
+                },
+                0x00_F465,
+                false,
+                expand::Registers {
+                    p: 0x30,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let touched = after.u8(at(0x1693));
+            let what = format!("level {number:03X} at {x:04X},{y:04X}");
+            if out {
+                assert_eq!(touched, 0x25, "{what}");
+            } else if mode == 0 {
+                // The tile there: screen x / 256 of the planes.
+                let cell = (x as u32 >> 8) * 0x1B0 + (y as u32 & 0x1F0) + (x as u32 & 0xF0) / 16;
+                assert_eq!(touched, after.u8_at(ram::TILES_LOW, cell), "{what}");
+            } else {
+                assert_ne!(touched, 0x42, "{what}: no tile looked up");
+            }
+        }
+    }
+}

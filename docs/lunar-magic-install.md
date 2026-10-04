@@ -165,7 +165,7 @@ what Lunar Magic does differently is recorded here.
 | `$0EF550`-`$0EF56B` not all `$FF`: Kobo's level number hook's code is placed there | Lunar Magic's save keeps the level number hook (`$05D8E2`) only with it | `install-gate.py` (2026-09-26) | written (`level.asm`). Without it a save puts its own code there, which the level number hook then reaches; the level reads the same (`tests/lunar_magic_save.rs`) |
 | A `JSL` (`$22`) at `$00A390` (ExAnimation) | Lunar Magic's save treats ExAnimation as installed with it, whatever follows the opcode: it keeps every site and reads and writes the level table through `read3(read3($0583AE) + $EA)` and the global list through `+$5B`/`+$65`, as does its level export | ablation of each site from a Kobo ExAnimation install on `vanilla+LM`, then of the byte (a `JML`, `JSR`, `NOP`, or the game's bytes all fail), printing addresses only (2026-09-28) | written (`exanimation.asm`, whose NMI hook it is). Without it a save of a level with ExAnimation installs Lunar Magic's code over every site with new, empty tables (tests/lunar_magic_save.rs) |
 | `$03FDFF` = `$00` (ExAnimation settings) | Lunar Magic's save keeps the per-level settings at `$03FE00` only with `$00` there; `$01`, `$80`, `$FE`, `$FF` all make it set every level's again (`$00`, level `104` `$30`), keeping the lists | `install-gate.py` over a Kobo build of Kaizo Kindergarten, then trying values, printing addresses only (2026-09-30) | written (`exanimation.asm`). With it a save also writes other values in the area it keeps for itself (`$0FEFA3`-`$0FF070`, `$0FFFFF`); tests/lunar_magic_save.rs checks both ways |
-| `$05DD7C`-`$05DD7D` = `"LM"` (layer 2 scroll settings) | Lunar Magic's save keeps the separate layer 2 scroll settings (`$06FA00`'s `S` and `H`, from 3.40) only with it; without it the save sets every level's `$06FA00` to `$20` (keeping the auto-screens bit) and installs its own code at `$009708`, `$00AF72`, `$00D2B2`, `$00E966`, the camera's `$00F77B`, `$00F79D`, and `$00F871`, `$05BCA5`, `$05D7BA`, `$05D97D`, `$05DA17`, and `$05DD30`-`$05DD75` | `install-gate.py` with `$06FA00`-`$06FBFF` watched found `$05DD30`-`$05DD7F`, then removing Lunar Magic's bytes from a Kobo build one group at a time left these two (2026-10-01) | written (`entrance.asm`). With it a save leaves every one of those sites as it found them: Kobo's entrance code and camera stay, with its own code for the five of the others that change anything, and the game's at three ("The sites a save keeps with the marker" below). `tests/lunar_magic_save.rs` checks both ways |
+| `$05DD7C`-`$05DD7D` = `"LM"` (layer 2 scroll settings) | Lunar Magic's save keeps the separate layer 2 scroll settings (`$06FA00`'s `S` and `H`, from 3.40) only with it; without it the save sets every level's `$06FA00` to `$20` (keeping the auto-screens bit) and installs its own code at `$009708`, `$00AF72`, `$00D2B2`, `$00E966`, the camera's `$00F77B`, `$00F79D`, and `$00F871`, `$05BCA5`, `$05D7BA`, `$05D97D`, `$05DA17`, and `$05DD30`-`$05DD75` | `install-gate.py` with `$06FA00`-`$06FBFF` watched found `$05DD30`-`$05DD7F`, then removing Lunar Magic's bytes from a Kobo build one group at a time left these two (2026-10-01) | written (`entrance.asm`). With it a save leaves every one of those sites as it found them: Kobo's entrance code and camera stay, with its own code for the six of the others that change anything, and the game's at two ("The sites a save keeps with the marker" below). `tests/lunar_magic_save.rs` checks both ways |
 | A `JSL` (`$22`) at `$00A01F` (layer 3 settings) | Lunar Magic's save treats its layer 3 code as installed with it, whatever the operand: it leaves `$00A01F`, `$00A153`, `$0194B6`, and `$05C40C` alone; with a `JML` or the game's bytes it installs its own over all four | bisecting a save of a level with settings over a ROM with Lunar Magic's code, site by site and then byte by byte, printing addresses only (2026-09-30) | written (`layer3.asm`, whose setup hook it is). Without it a save installs Lunar Magic's code and keeps the lists (tests/lunar_magic_save.rs) |
 
 An earlier bisection, which kept each opcode and its operand together, also found the
@@ -569,6 +569,21 @@ a ROM with `tools/lunar-magic/transfer`), 2026-09-28:
   `Y < $200` for the last four), and for a tile generated in play in a horizontal layer;
   the memory effects of every case match. (`call` also printed the registers a routine
   returned until 2026-10-02; what they showed is not used: clean-room-audit.md.)
+- A point of the player's out of the level (below its height, past its screens, outside
+  a vertical level's two columns; `CODE_00F4A0` and `CODE_00F4E7`, where every
+  out-of-bounds branch of the player's block lookups goes) also leaves tile `$25` in
+  `$1693`, where the game leaves the last tile in the level there. Lunar Magic's
+  `$00F47E`, `$00F488`, `$00F4A0`-`$00F4A2`, and `$00F4EB` (in every 3.x corpus ROM, in
+  none of the 2.x) are its piece for it; the cases above missed it, since a swap of
+  Kobo's code into a Lunar Magic-saved ROM kept them. Found 2026-10-04 in the corpus play
+  comparison (the player falling below a level: `$1693` `$25` in the 3.70 transfer, `$00`
+  in Kobo's build), then by calls of `CODE_00F465` at points in and out of horizontal,
+  vertical, and layer 2 levels at the game's height and at 896 rows, 168 and 164 cases:
+  the same memory with Kobo's `exlevel.asm` (a `JML` at `CODE_00F4E7` and a `BRA` to it
+  at `CODE_00F4A0`) as with Lunar Magic's, but for four points of layer 2 interaction
+  forced on in a 896-row level without layer 2 objects, where the two read different
+  tiles (not followed: no level of the corpus has it). `tests/install.rs`
+  (`a_point_out_of_the_level_touches_air`).
 - The camera's lowest position: the height less `$F0`, or with `B` less `$E1`, low enough
   to show the last row whole (the screen's first line shows the line below the
   camera's). The entrance places layer 1 a pixel higher with `B` when it sets it
@@ -1067,8 +1082,13 @@ What the settings do, observed:
   taller levels code even without Lunar Magic's layer 3 code. Without a tide nothing
   changes.
 - `B` in a tide level: the tide's interaction offsets (`$26`, `$28`) follow layer 3 in
-  Kobo's code, from this frame's positions: layer 3's less layer 1's (`$1462`, `$1464`),
-  horizontally `$80` for an autoscroll, as Lunar Magic's does; a vertical autoscroll in a
+  Kobo's code: layer 3's position less layer 1's (`$1462`, `$1464`), horizontally from
+  layer 3's X before the frame's move, vertically from its position now, or with `I`
+  the one a frame ahead (`$1B7A`, kept within the tide's bounds as the position is);
+  for a horizontal autoscroll the X taken is `$80`, or 0 in a level of one screen, and
+  layer 2's horizontal movement (`$17BF`, which layer 2 interaction carries the player
+  and sprites by) is the autoscroll's next step, 0 while `$9D` is set (2026-10-04, the
+  corpus play comparison below); a vertical autoscroll in a
   tide level starts at layer 1's position plus the offset (Lunar Magic's help: the offset
   is not a position there). Lunar Magic keeps the offsets in `$0BE8` and `$0BEA` and a
   frame ends with the previous frame's in `$26` and `$28`: horizontally from layer 3's
@@ -1094,6 +1114,32 @@ What the settings do, observed:
   Magic's code and since 2026-10-04 by Kobo's with `I` too (it had put back the position
   it kept a frame ahead, which undid a hack's own code moving layer 3: QLDC 2022
   `27_unipat` level `105`).
+- Reviewed 2026-10-04 and kept, on condition of the play comparison that follows:
+  `tides_act_as` filling the tide's rows from Kobo's layer 3 code, `advanced` with a tide
+  building with Kobo's code for the offsets (at `$00E966` too), and the refusal of
+  `advanced` with a tide in a vertical level. Played against the corpus (2026-10-04,
+  `examples/built_play.rs`, as "Layer 2 scroll settings" has it): the 17 tide levels of 12 hacks with `tides_act_as` or `advanced`,
+  each hack built by Kobo, along the seven paths, against the hack and against its
+  levels moved into a 3.70 ROM. Against 3.70 they had differed in the tide's horizontal
+  offset (layer 3's X after the move where 3.70 takes it before: QLDC 2021 `06_Friday`'s
+  `106`; `$80` for an autoscroll in one-screen levels, where 3.70 takes 0: FrozenQuills'
+  `025` of both years and MegaMarioMan9's `11F`, which put the player out of the water at
+  the tide's left end), the vertical one with `I` (the shown position where 3.70 takes
+  the one a frame ahead, bounded: FrozenQuills), layer 2's horizontal movement with a
+  horizontal autoscroll (never set: eight levels, which the player and sprites on the
+  tide are carried by), and that movement on the first collision (kept where 3.70 swaps
+  it). Kobo's code does each as 3.70 since, and every frame of every level and path is
+  the same, but where the transfer is not the hack (`$145E` in Kazoo Blocc Gosh's
+  `030`, whose transfer has Lunar Magic's layer 3 code and its build none, `tides_act_as`
+  alone needing none) and `$1456`. Against the hacks themselves, the ones from Lunar
+  Magic before 3.40 (16 of the 17 levels) differ in the offsets or layer 2's movement
+  from the first frames, where 3.70 does as Kobo; Super Dram World 2 v1.3's `0D3`
+  (3.51) plays as the hack on every frame standing and carried. Not in the corpus, and still otherwise than 3.70 (by writing settings into
+  akogare v1.2's `115` in its transfer and Kobo's build): a vertical autoscroll's offset
+  a step behind 3.70's (`$0BEA`), and with layer 3 following layer 1 or autoscrolling
+  vertically, the offset the load leaves (`$28` on the first frame, which the player's
+  first collision keeps when it comes on that frame) from layer 3's position before
+  Kobo's code has placed it (review.md).
 - With every QLDC entry added, `kobos_layer3_code_plays_as_lunar_magics` takes 85 hacks
   and agrees on every level it compares (one, QLDC 2021 `51_singlepat`, left out: Asar
   would place Kobo's code in a block of the hack's). In tide levels it leaves out what a
@@ -1405,6 +1451,51 @@ that ROM against the same with Kobo's `exits.asm` and `entrance.asm` applied ove
   horizontal and vertical value with `S`, with `$9D` held, in the vertical level `F7`,
   and with the relative camera. A save keeps the settings and Kobo's camera with the
   marker at `$05DD7C` (register above).
+- Reviewed 2026-10-04 and kept, with the corpus play comparison below: the marker at
+  `$05DD7C` that a save checks before it keeps `S`, `H`, and Kobo's camera (register
+  above); a moving setting stepping from game mode `$13` on (what decides it is not
+  known); and in the level files, `layer2_scroll` is the horizontal setting when
+  `layer2_vertical_scroll` is there, up to `$1F` (`H`), and past 15 without it refused.
+- After the entrance, game mode `$11` runs `CODE_00A796` (the `JSR` at `$00970C`), which
+  sets `$1417` by the game's rates (1/8 of layer 1 for every vertical setting from 3
+  on). A Lunar Magic-saved ROM leaves it so only without the relative camera and for
+  settings below `$10`: with the relative camera `$1417` stays the entrance's (layer 2
+  less layer 1 at the rate, as above), and a moving setting starts from layer 2 less
+  layer 1 (found 2026-10-04 in the corpus play comparison below, Akogare2's level `009`,
+  then every nibble and every separate setting with and without `H` and the relative
+  camera, written into that level in its 3.70 transfer and Kobo's build, carried right
+  and up). Kobo's `$009708` code skips the `JSR` then and sets `$142A` (its one other
+  effect) itself; before, every level with the relative camera and a vertical rate from
+  3 on, the game's nibble 0 among them, and every moving setting, had layer 2 off by
+  layer 1 at 1/8 against the rate.
+- Played against the corpus (2026-10-04, `examples/built_play.rs`, docs/testing.md "A
+  hack built by Kobo, played"): the 42 levels of 14 hacks with nibbles 8 to 11 or
+  separate settings, each hack imported and built by Kobo (Baby Kaizo World 3's four,
+  locked, left out; QLDC 2021 `34_idol`, 14 of them, builds but for nine other levels),
+  along seven paths of 600 frames (standing; running and jumping right and left; carried
+  right at 3 and at 8 pixels a frame and back; carried up and down), against the hack and
+  against the hack's levels moved into a 3.70 ROM (`tools/lunar-magic/transfer`). It
+  found the entrance's `$1417` above, the first camera's screen count and vertical
+  scrolling off ("The sites a save keeps with the marker"), and a player's point out of
+  the level ("Taller levels"), each Kobo's code since. Against 3.70, layer 1 and 2,
+  `$1411`-`$1418`, the moving settings' RAM, `$1462`-`$1469`, and the layers' movement are
+  then the same on every frame of every level and path until something else has
+  differed, which is the transfer's, not Kobo's: the screen count Lunar Magic's MWL import
+  re-counts (`$5D`, 11 levels; with it the camera's range), what the hack's own sprites
+  and blocks touch (`$1693`, `$98`-`$9B`, the player's path after; the build carries the
+  hack's PIXI insert, the transfer none of its code: where 3.70 differs first, the build
+  agrees with the hack in 122 of 149 level-paths, and the rest differ from both later
+  on), and `$1456` (below). Extended Interactions' `006` stops on a `BRK` in the
+  transfer and `012` in the build, both in code of the hack's that neither has, and its
+  `017` loads a layer 1 grid unlike the hack's and the transfer's in Kobo's build, which
+  is the import's or Kobo's objects', not these settings' (not followed). Against the
+  hacks themselves the camera differs where their own code or an older Lunar Magic's
+  does otherwise and 3.70 agrees with Kobo: `$55`/`$56` held at 2 and `$0BE7` 0 (3.30
+  and 3.31 hacks), `$1411` 0 (Extended Interactions' code), `$1413` 0 for nibble 9
+  (QLDC 2021 `34_idol`), the relative camera's layer 2 a pixel apart (Extended
+  Interactions `007`, 3.31), and the player's path once a hack's own code or blocks
+  take part; Sakaya Sanctuary's `00E` (3.40, `S`) plays as the hack on every frame
+  standing.
 
 ### The sites a save keeps with the marker
 
@@ -1419,7 +1510,14 @@ patterns or carried along paths, 600 frames each, and every level's load.
 - `$009708`, game mode `$11`'s `LDA #$20 : STA $5E` (a `JSL` in every corpus ROM from
   2.30 on): the entrance code leaves the entrance's `RL-ooooo` in `$13CD` ("Entrances"
   above); with `L` the player faces left (`$76` = 0) and `$F9` = `$C0`, else `$F9` =
-  `$40`; then `$13CD` is cleared. In ROMs of older versions (Kaizo Kindergarten, Akogare2,
+  `$40`; then `$13CD` is cleared. `$5E`, the most screens the camera's first placement
+  goes to, is the level's screen count (the header's, which the load later puts in
+  `$5D`), not `$20`: an entrance on a level's last screen starts with the camera at the
+  level's end (RAM watched in every level tried, horizontal, vertical, and taller;
+  found 2026-10-04 in QLDC 2021 `34_idol`'s level `0C2`, whose camera started `$14`
+  pixels past it). And with the relative camera, or a moving vertical setting, the
+  game's `CODE_00A796` after the hook does not set `$1417` ("Layer 2 scroll
+  settings"). In ROMs of older versions (Kaizo Kindergarten, Akogare2,
   Luminescent, Advanced Shells) a level's layer 2 comes out right only with the ROM's own
   bytes from `$009708` to `$00970F` run in place, which Kobo's loader does (smw.md).
   Before it did, a level's layer 2 came out wrong in the pictures of those hacks wherever `$13CD` had `R` (Kaizo Kindergarten
@@ -1451,20 +1549,32 @@ patterns or carried along paths, 600 frames each, and every level's load.
   it (their `BEQ`); the game's vertical code moves a pixel there, so `$1A` and `$142A`
   came out one apart along carried paths in every vertical level tried. The scroll
   direction (`$55`, `$56`), which the horizontal code also stores, stays as it was.
-- `$00F871` (vertical scrolling's `LDY #$04`), `$05BCA5` (the layer 2 scroll commands'
-  `LDA #$04 : STA $1456`, which leaves `$1456` 0 in a level without one; only those
-  commands read it, after setting it), and `$05D7B9` (the screen a screen exit is looked
-  up by: every `$5B` from `00` to `03` and `80`, `81`, screens to `$21`, and both exit
-  formats): nothing else observed.
+- `$00F871`, vertical scrolling's `LDY #$04 : BRA` in `CODE_00F7F4` (vertical scrolling
+  off: setting 2 without `$13F1`, the player above the screen's middle and not flying or
+  climbing): the game's moves layer 1 up at most 6 pixels a frame and keeps it at `$C0`
+  or lower, the lowest position at the game's height, so there it stays put; a Lunar
+  Magic-saved ROM puts layer 1 at the lowest position the routine was given (`$04`: a
+  taller level's bottom, a vertical level's last screen) wherever it was, by calls of
+  `CODE_00F7F4` at every camera and player position against Kobo's (2026-10-04, found in
+  SMW_2022-4-9's level `104`, 896 rows, whose camera rose from its bottom as the player
+  jumped). Nothing different was seen in the levels of the game's height above, where
+  both stay at `$C0`.
+- `$05BCA5` (the layer 2 scroll commands' `LDA #$04 : STA $1456`, which leaves `$1456`
+  0 in a level without one; only those commands read it, after setting it), and
+  `$05D7B9` (the screen a screen exit is looked up by: every `$5B` from `00` to `03` and
+  `80`, `81`, screens to `$21`, and both exit formats): nothing else observed, here or
+  in the corpus play comparison ("Layer 2 scroll settings").
 
-Kobo's: `entrance.asm` at `$009708`, `$00D2B2`, `$00E966`, and `$00F77B`, its entrance
-code setting `$0BE7` bit 6; `palette.asm` the fade's operands (`$00AF4B`, `$00AF4E`,
+Kobo's: `entrance.asm` at `$009708`, `$00D2B2`, `$00E966`, `$00F77B`, and `$00F871`, its
+entrance code setting `$0BE7` bit 6; `palette.asm` the fade's operands (`$00AF4B`, `$00AF4E`,
 `$00AF6B`: the game's loop over 15 colours a row) and a `JSL` at `$00AF71` for layer 3's
 colours. With them swapped into vanilla saved by Lunar Magic, every frame of the runs
 above leaves the same RAM (but `$0BDA`-`$0BDC` after a level ends, `exits.asm`'s), and the
-fade the same palette at every step, on LoROM and SA-1 (`tests/lunar_magic_save.rs`); a
+fade the same palette at every step, on LoROM and SA-1 (`tests/lunar_magic_save.rs`,
+with `kobos_layer2_offset_at_the_entrance_is_lunar_magics` and
+`kobos_first_camera_and_scrolling_off_are_lunar_magics` for what 2026-10-04 added); a
 build's face left turns the player and the slanted pipe (`tests/project_build.rs`). The
-other three keep the game's code.
+other two keep the game's code.
 
 ### Sprites
 

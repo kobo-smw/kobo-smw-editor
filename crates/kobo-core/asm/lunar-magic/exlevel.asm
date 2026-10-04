@@ -127,6 +127,20 @@ org $00F4F3 : CMP !height
 org $0194D6 : CMP !height
 org $03D793 : ADC !height
 
+; A point of the player's out of the level, beyond its height, its screens,
+; or a vertical level's two columns (CODE_00F4A0 and CODE_00F4E7, every
+; out-of-bounds branch of the player's block lookups): the game returns
+; tile $25 and leaves $1693 as the last block in the level left it; a Lunar
+; Magic-saved ROM also leaves $25 there (RAM, by calls of CODE_00F465 at
+; points in and out of the level, docs/lunar-magic-install.md, "Taller
+; levels"). X and Y 8-bit.
+org $00F4A0
+    BRA out_of_bounds_stub
+    NOP
+org $00F4E7
+out_of_bounds_stub:
+    JML out_of_bounds
+
 ; The high bytes of the lookups' Y below the level: SBC #$00 : CMP #$02,
 ; and so on, in each lookup that checks it.
 org $0292D7 : JSL below_sbc     ; bounce blocks
@@ -710,6 +724,14 @@ step_left:
     STA $05
     DEC $1BA1|!addr
     RTL
+
+; The player's point out of the level: the game's CODE_00F4A0 with $1693
+; set too, then its LDA #$00 : RTS.
+out_of_bounds:
+    PLX
+    LDY.b #$25
+    STY $1693|!addr
+    JML $00F4A3
 
 ; A 16-bit: the lowest the camera goes in a horizontal level, the level's
 ; height less the screen's, or with B, low enough to show the last row

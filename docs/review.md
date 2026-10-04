@@ -13,42 +13,15 @@ settle it.
 
 ## Open
 
-- **Layer 2 scroll settings 8 to 11, `S`, and `H` build, and a save keeps Kobo's camera**
-  (2026-10-01, `entrance.asm`, lunar-magic-install.md "Layer 2 scroll settings"; replaces
-  the 2026-09-28 entry that refused them). Kobo's camera and entrance give the same RAM
-  as Lunar Magic's in every case tried. Decided without review:
-  - `"LM"` at `$05DD7C`, the bytes Lunar Magic's save checks before it keeps `S` and `H`.
-    Without them a save drops every level's separate settings; with them it also leaves
-    Kobo's entrance code and camera in place, and whatever is at eight more sites where
-    it would install its own. Since 2026-10-02 builds have Kobo's code at the five whose
-    Lunar Magic code changes anything (face left at `$009708` and `$00D2B2`, the end
-    fade's colours at `$00AF72`, layer 2's interaction a frame behind at `$00E966`, a
-    vertical level's camera at `$00F77B`), each playing as Lunar Magic's on every frame
-    tried, and the game's at three where nothing different was seen (`$00F871`,
-    `$05BCA5`, `$05D7BA`; lunar-magic-install.md, "The sites a save keeps with the
-    marker"). Settles it: a difference at one of those three along a path not tried.
-  - A moving setting steps from game mode `$13` on, which matches Lunar Magic's step count
-    before a level's first frame; what decides it is not known.
-  - In the level file, `layer2_scroll` is the horizontal setting when
-    `layer2_vertical_scroll` is there, up to `$1F` (`H`); past 15 without it is refused.
-  Settles it: a hack with these settings built and played against itself (the corpus
-  sweep), or a difference along a path not tried (layer 2 objects, a scrolling sprite
-  command, a level with both a moving setting and a relative camera far from its start).
-- **Tides: what they act like, and `advanced` with one** (2026-10-01, `layer3.asm`
-  `tide_tiles` and `tide_offsets`, `build::check_layer3`, docs/lunar-magic-install.md
-  "Layer 3 settings"). `tides_act_as` fills the tide's rows with its tiles as Lunar
-  Magic 3.30-3.33 hacks were seen to (every value, Kobo's code in their place plays the
-  same); Lunar Magic does it in its taller levels code, Kobo in its layer 3 code, in the
-  rows Kobo's taller levels code fills with water at every size, by the rule found
-  (2026-10-02, lunar-magic-install.md "Layer 3 settings"). `advanced` with a tide builds
-  with Kobo's code computing the tide's interaction offsets from the frame's positions,
-  and since 2026-10-02 with Kobo's code after the player's collision with layer 2
-  (`$00E966`), which makes them trail a frame as Lunar Magic's do: Super Dram World 2
-  v1.3's level `0D3` plays as the hack on every frame tried. Refused: `advanced` with a
-  tide in a vertical level, which only Lunar Magic's code supports. Since 2026-10-04
-  Kobo's code also bounds a tide's vertical position as Lunar Magic 3.70's does
-  (lunar-magic-install.md, "Layer 3 settings"), and the corpus comparison, with every QLDC
-  entry, agrees on every tide level in hacks from 3.10 on but for what a sprite in a tide
-  touches, which comes from `$00E966` too and so takes a build (QLDC 2021 `06_Friday`'s
-  level `106` built by Kobo touches what the hack does). Settles it: more tide levels
-  built and played against their hacks.
+- **Two tide corners that play otherwise than Lunar Magic 3.70's** (2026-10-04,
+  `layer3.asm` `tide_offsets` and the load's `start`; docs/lunar-magic-install.md "Layer 3
+  settings"). Found while playing the corpus tide levels against 3.70 (the approved tides
+  review, now recorded there), in settings no corpus level has, by writing them into
+  akogare v1.2's level `115` in its 3.70 transfer and in Kobo's build: with `advanced`
+  and a vertical autoscroll, the tide's vertical offset (`$0BEA`, the next frame's `$28`)
+  is a step behind 3.70's; and with layer 3 following layer 1 or autoscrolling
+  vertically, the offset the load leaves (`$28` on the first frame) comes from layer 3's
+  position before Kobo's code places it, which matters where the player's first
+  collision is on that frame (a few frames of what he touches). Builds take both as
+  they are rather than refuse them. Settles it: the two rules found the same way, or
+  refusing those settings in a tide level.

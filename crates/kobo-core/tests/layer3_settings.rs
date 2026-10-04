@@ -333,6 +333,60 @@ fn a_tide_keeps_layer3_within_lunar_magics_bounds() {
     }
 }
 
+/// Tide level 127 with a horizontal autoscroll (+1/2 a pixel a frame) and
+/// `B`, as Lunar Magic 3.70's code plays it (docs/lunar-magic-install.md,
+/// "Layer 3 settings", checked against it by hand on the corpus): the
+/// tide's horizontal offset is `$80` less layer 1's X, or 0 less it in a
+/// level of one screen (a frame late, as all of them), and layer 2's
+/// horizontal movement (`$17BF`) the
+/// autoscroll's step, a pixel every other frame.
+#[test]
+fn a_tide_with_an_autoscroll_moves_layer_2_by_its_steps() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    if common::asar().is_none() {
+        return;
+    }
+    for screens in [1, 6] {
+        let (mut level, _) = import::read_level(&clean, 0x127).unwrap();
+        level.header.screens = screens;
+        let mut list = GraphicsList::DEFAULT;
+        list.set_layer3(&Layer3Settings {
+            advanced: true,
+            horizontal: 0x07,
+            ..Layer3Settings::default()
+        })
+        .unwrap();
+        level.graphics = Some(list);
+        for (_, built) in common::builds(&clean, &project(vec![(0x127, level.clone())])) {
+            let mut steps = Vec::new();
+            expand::play_game_loop(
+                &built,
+                0x127,
+                60,
+                |_, _| {},
+                |frame, played| {
+                    let r = played.ram;
+                    let k = if screens == 1 { 0 } else { 0x80 };
+                    let x1 = r.u16(RamAddr::new(0x7E_1462));
+                    // From the second frame: the first ends with the load's,
+                    // the offsets trailing a frame.
+                    assert!(
+                        frame == 0 || r.u16(RamAddr::new(0x7E_0026)) == (k as u16).wrapping_sub(x1),
+                        "{screens} screens, frame {frame}"
+                    );
+                    steps.push(r.u8(RamAddr::new(0x7E_17BF)));
+                },
+            )
+            .unwrap();
+            let moved: u32 = steps.iter().map(|&s| s as u32).sum();
+            assert!(steps.iter().all(|&s| s <= 1), "{steps:?}");
+            assert!((28..=31).contains(&moved), "{screens} screens: {steps:?}");
+        }
+    }
+}
+
 /// Tide level 127 at sizes of its own fills the rows Lunar Magic's load
 /// does (docs/lunar-magic-install.md, "Layer 3 settings"): rows 16 down of
 /// the screens from layer 2's first (the split's with `T`, else 16), the

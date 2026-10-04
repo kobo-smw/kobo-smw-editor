@@ -1115,6 +1115,191 @@ fn kobos_layer2_interaction_and_camera_are_lunar_magics() {
     }
 }
 
+/// Layer 2's vertical offset from layer 1 (`$1417`) as the entrance leaves
+/// it, which the game's `CODE_00A796` sets by its own rates after the
+/// entrance code: Kobo's entrance and camera against Lunar Magic's, in
+/// level 105 of the clean ROM saved by Lunar Magic, with every layer 2
+/// scroll nibble and every separate vertical setting (with and without
+/// `H`), the layers placed relative to the player or not, played 60 frames
+/// with the player carried up and right (docs/lunar-magic-install.md,
+/// "Layer 2 scroll settings").
+#[test]
+fn kobos_layer2_offset_at_the_entrance_is_lunar_magics() {
+    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
+        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+        return;
+    };
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let Some(asar) = common::asar() else { return };
+    let copy = Rom::from_headerless(clean.data().to_vec()).unwrap();
+    let lm = save(&lunar_magic, &clean, &copy, "offset");
+    let kobo = with_kobos_entrances(&asar, &lm);
+    use kobo_core::ram::RamAddr;
+    let at = |a: u32| RamAddr::new(0x7E_0000 | a);
+    // The level's byte in each table: the nibble's (and the Y position's),
+    // the separate settings, and RL-ooooo (R: relative, bb $1A).
+    let table = |t: u32| SnesAddr::new(t + LEVEL as u32);
+    let low = clean.read_u8(table(0x05F000)).unwrap() & 0x0F;
+    let mut cases = Vec::new();
+    for relative in [0x9A, 0x1A] {
+        for nibble in 0..16u8 {
+            cases.push((nibble << 4 | low, 0x00, relative));
+        }
+        for setting in 0..0x20u8 {
+            cases.push((low, 0x80 | setting, relative));
+            cases.push((low, 0xC0 | setting, relative));
+        }
+    }
+    const WORDS: [u32; 12] = [
+        0x1A, 0x1C, 0x1E, 0x20, 0x28, 0x142A, 0x1413, 0x1417, 0x1443, 0x1445, 0x144A, 0x144C,
+    ];
+    let frames = |rom: &Rom, (nibble, separate, relative): (u8, u8, u8)| {
+        let mut rom = Rom::from_headerless(rom.data().to_vec()).unwrap();
+        rom.write_u8(table(0x05F000), nibble).unwrap();
+        rom.write_u8(table(0x06FA00), separate).unwrap();
+        rom.write_u8(table(0x06FC00), 0x00).unwrap();
+        rom.write_u8(table(0x06FE00), relative).unwrap();
+        let mut out = Vec::new();
+        let mut start = None;
+        kobo_core::expand::play_game_loop(
+            &rom,
+            LEVEL,
+            60,
+            |frame, ram| {
+                let (x, y) = *start.get_or_insert((ram.u16(at(0x94)), ram.u16(at(0x96))));
+                ram.set_u16(at(0x94), x + 2 * frame as u16);
+                ram.set_u16(at(0x96), y.saturating_sub(2 * frame as u16));
+                ram.set_u8(at(0x7D), 0);
+                ram.set_u8(at(0x1497), 0x7F);
+                ram.set_u8(at(0x1404), 1);
+            },
+            |_, played| out.push(WORDS.map(|a| played.ram.u16(at(a)))),
+        )
+        .unwrap();
+        out
+    };
+    let mut failures = Vec::new();
+    for case in cases {
+        let (a, b) = (frames(&lm, case), frames(&kobo, case));
+        if let Some(f) = (0..a.len()).find(|&f| a[f] != b[f]) {
+            failures.push(format!(
+                "{case:02X?}: frame {f}: {:04X?} / {:04X?}",
+                a[f], b[f]
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// The camera's first place and its vertical scrolling turned off, which
+/// the corpus play comparison found (docs/lunar-magic-install.md, "The
+/// sites a save keeps with the marker"): Kobo's entrance code against Lunar
+/// Magic's, in the clean ROM saved by Lunar Magic. Level 105 entered on
+/// each of its last screens at each X, standing; and with vertical
+/// scrolling off (setting 2, the player not flying) in level 105 at a
+/// taller size and vertical level `0F7`, the player carried up and down;
+/// layer 1's and 2's positions every frame.
+#[test]
+fn kobos_first_camera_and_scrolling_off_are_lunar_magics() {
+    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
+        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+        return;
+    };
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let Some(asar) = common::asar() else { return };
+    let copy = Rom::from_headerless(clean.data().to_vec()).unwrap();
+    let lm = save(&lunar_magic, &clean, &copy, "first-camera");
+    let kobo = with_kobos_entrances(&asar, &lm);
+    use kobo_core::ram::RamAddr;
+    let at = |a: u32| RamAddr::new(0x7E_0000 | a);
+    type Edit = Vec<(u32, u8)>;
+    // A level, ROM bytes to set, whether vertical scrolling is held off,
+    // and the player's carry (pixels a frame up, then down).
+    let frames = |rom: &Rom, level: u16, edits: &Edit, off: bool| {
+        let mut rom = Rom::from_headerless(rom.data().to_vec()).unwrap();
+        for &(addr, value) in edits {
+            rom.write_u8(SnesAddr::new(addr), value).unwrap();
+        }
+        let mut out = Vec::new();
+        let mut start = None;
+        kobo_core::expand::play_game_loop(
+            &rom,
+            level,
+            if off { 120 } else { 20 },
+            |frame, ram| {
+                ram.set_u8(at(0x1497), 0x7F);
+                if off {
+                    let (x, y) = *start.get_or_insert((ram.u16(at(0x94)), ram.u16(at(0x96))));
+                    let k = if frame < 60 { frame } else { 120 - frame } as u16;
+                    ram.set_u16(at(0x94), x);
+                    ram.set_u16(at(0x96), y.saturating_sub(3 * k));
+                    ram.set_u8(at(0x7D), 0);
+                    ram.set_u8(at(0x1412), 2);
+                    ram.set_u8(at(0x13F1), 0);
+                }
+            },
+            |_, played| out.push([0x1A, 0x1C, 0x1E, 0x20, 0x5E].map(|a| played.ram.u16(at(a)))),
+        )
+        .unwrap();
+        out
+    };
+    let mut cases: Vec<(u16, Edit, bool)> = Vec::new();
+    // Level 105's main entrance: screen (the fourth table's low five bits)
+    // and X (the second's low three).
+    let table = |t: u32, level: u16| t + level as u32;
+    let fourth = clean
+        .read_u8(SnesAddr::new(table(0x05F600, LEVEL)))
+        .unwrap();
+    let second = clean
+        .read_u8(SnesAddr::new(table(0x05F200, LEVEL)))
+        .unwrap();
+    for screen in [0x10, 0x12, 0x13] {
+        for x in 0..8 {
+            cases.push((
+                LEVEL,
+                vec![
+                    (table(0x05F600, LEVEL), fourth & 0xE0 | screen),
+                    (table(0x05F200, LEVEL), second & 0xF8 | x),
+                ],
+                false,
+            ));
+        }
+    }
+    // Level 105 at sizes of its own (the size table, $240 bytes before the
+    // code the JSL at $05DA8A calls), and vertical level 0F7.
+    let sizes = lm.read_u24(SnesAddr::new(0x05DA8B)).unwrap() - 0x240;
+    for size in [0x00, 0x05, 0x0F, 0x1B] {
+        cases.push((LEVEL, vec![(sizes + LEVEL as u32, size)], true));
+    }
+    cases.push((0x0F7, vec![], true));
+    // With the game's bytes at $00F871 (LDY #$04 : BRA) the camera moves
+    // otherwise in some of the cases with scrolling off.
+    let mut game = Rom::from_headerless(kobo.data().to_vec()).unwrap();
+    let site = SnesAddr::new(0x00F871);
+    game.write(site, clean.read(site, 4).unwrap()).unwrap();
+    let mut failures = Vec::new();
+    let mut game_differs = false;
+    for (level, edits, off) in cases {
+        let (a, b) = (
+            frames(&lm, level, &edits, off),
+            frames(&kobo, level, &edits, off),
+        );
+        if let Some(f) = (0..a.len()).find(|&f| a[f] != b[f]) {
+            failures.push(format!(
+                "{level:03X} {edits:X?}: frame {f}: {:04X?} / {:04X?}",
+                a[f], b[f]
+            ));
+        }
+        game_differs |= off && frames(&game, level, &edits, off) != a;
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    assert!(game_differs, "the game's $00F871 plays as Lunar Magic's");
+}
+
 /// `lm`, saved by Lunar Magic, with Kobo's exit and entrance patches over
 /// it. The operands the patches autoclean are cleared first, so that they
 /// free nothing of Lunar Magic's.
