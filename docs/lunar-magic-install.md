@@ -1623,6 +1623,8 @@ help ("Edit Level ExAnimated Frames") names it.
   2bpp tile (16 bytes); `10` two tiles stacked, `11` 16x16 (two, and two `$100` words
   below), `12` 32x16 (four and four): a VRAM word address (bit 15: the source is in the
   alternative file), each frame a RAM address in bank `$7E` or an offset into the file.
+  The AN2 file is at `$7EAD00` (up to `$1A00` bytes) when the frames run, so a level
+  file writes frames there as offsets into it (`an2 = true`, `source::animation`).
   `13` colours to CGRAM, `14` also into the palette (`$0703`) and its fade copy (`$0905`),
   `15` the same but not while `$1493` (the level's end) is set, `16` the back area
   colour (`$0701` and `$0903`, which the game uploads itself), `17` the same, stopping at

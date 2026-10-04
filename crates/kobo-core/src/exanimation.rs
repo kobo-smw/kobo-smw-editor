@@ -30,6 +30,11 @@ pub const GLOBAL_LOW_OFFSET: u32 = 0x65;
 pub const FIRST_ALT_FILE: u16 = 0x60;
 /// The most an alternative file may hold (Lunar Magic's help).
 pub const ALT_FILE_MAX: usize = 0x8000;
+/// Where a level's load leaves its AN2 file (`ram::GFX_BUFFER`), as a
+/// frame's word: the animated tile frames read it there.
+pub const AN2_FRAMES: u16 = 0xAD00;
+/// The most of the AN2 file the buffer at [`AN2_FRAMES`] holds.
+pub const AN2_LEN: u16 = 0x1A00;
 /// A level table entry for no list.
 pub const NONE: u32 = 0x00_00FF;
 /// Slots a list may have.
@@ -161,6 +166,31 @@ impl Slot {
     /// Whether the sources are in the alternative file.
     pub fn alternative(&self) -> bool {
         self.dest & 0x8000 != 0
+    }
+
+    /// Whether its frames are addresses (in bank `$7E`, or offsets into
+    /// the alternative file) rather than colours: tiles, and types
+    /// `13`-`15` with more than one colour. A single colour is the frame's
+    /// word itself, and so is any colour of `16` and `17`.
+    pub fn frames_are_addresses(&self) -> bool {
+        match Kind::of(self.kind) {
+            Some(Kind::Tiles) => true,
+            Some(Kind::Colours) => matches!(self.kind, 0x13..=0x15) && self.colours() > 1,
+            _ => false,
+        }
+    }
+
+    /// Whether every frame is an address in the AN2 file's buffer, from
+    /// [`AN2_FRAMES`] for [`AN2_LEN`] bytes (none, for a slot without
+    /// frames or whose frames are colours or in the alternative file).
+    pub fn frames_in_an2(&self) -> bool {
+        self.frames_are_addresses()
+            && !self.alternative()
+            && !self.frames.is_empty()
+            && self
+                .frames
+                .iter()
+                .all(|&f| f.wrapping_sub(AN2_FRAMES) < AN2_LEN)
     }
 }
 

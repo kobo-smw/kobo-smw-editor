@@ -15,22 +15,40 @@
 //!     { trigger = 0x0, frame = 0x01 },
 //! ]
 //! slots = [
-//!     { slot = 0x00, type = 0x04, trigger = 0x03, vram = 0x2000, frames = [0xAD00, 0xAD80], triggered = [0xAE00, 0xAE80] },  # 4 8x8s, line; ON/OFF
+//!     { slot = 0x00, type = 0x04, trigger = 0x03, vram = 0x2000, an2 = true, frames = [0x0000, 0x0080], triggered = [0x0100, 0x0180] },  # 4 8x8s, line; ON/OFF
+//!     { slot = 0x01, type = 0x01, vram = 0x6000, frames = [0x0700, 0x0720] },  # 1 8x8
+//!     { slot = 0x02, type = 0x02, vram = 0x2100, alt = true, frames = [0x0000, 0x0040] },  # 2 8x8s, line
 //!     { slot = 0x03, type = 0x14, colour = 0x21, frames = [0x001F, 0x03E0] },  # Palette and working copies
 //!     { slot = 0x09, type = 0x18, colour = 0x31, colours = 4, delay = 2 },  # Palette rotate right
 //! ]
 //! ```
 //!
-//! A slot's frames are words: a RAM address in bank `$7E` (or an offset
-//! into the alternative file, with `alt = true`), or for a single colour
-//! the colour itself. `triggered` is the second set of a trigger that has
-//! one; `delay` is how often a rotation turns.
+//! A slot's frames are words. Where they are addresses (tiles, and more
+//! than one colour of types `13`-`15`), they are offsets into the AN2 file
+//! with `an2 = true` (which the level's load decompresses to `$7EAD00`, so
+//! `0x0040` is `$7EAD40`; up to `0x19FF`), offsets into the alternative
+//! file with `alt = true`, and RAM addresses in bank `$7E` with neither,
+//! which may point anywhere (custom code's RAM, say). A single colour's
+//! frames, and those of types `16` and `17`, are the colours themselves.
+//! Import and `kobo fmt` write `an2` for a slot whose frames all lie in
+//! the AN2 file's buffer, and RAM addresses otherwise; both forms give the
+//! ROM the same words. `triggered` is the second set of a trigger that has
+//! one, in the same form as `frames`; `delay` is how often a rotation
+//! turns.
+//!
+//! Reviewed 2026-10-04: the names, the settings as four booleans written
+//! only when not what a build gives the level, and the uncompressed ExGFX
+//! `60`-`63` kept under the manifest's `[animation]` (`.bin` files beside
+//! the global list's) rather than in `[exgfx]`, since they are neither
+//! compressed nor loaded into slots; `an2` was added then.
 
 use toml_edit::{Array, InlineTable, Table, Value};
 
 use super::level::{check_keys, inline_flag, int, keys_of, opt, read_list, req};
 use super::{Comments, SourceError, Writer, hex, invalid};
-use crate::exanimation::{FIRST_ALT_FILE, Kind, List, Settings, Slot, second_set};
+use crate::exanimation::{
+    AN2_FRAMES, AN2_LEN, FIRST_ALT_FILE, Kind, List, Settings, Slot, second_set,
+};
 use crate::names;
 
 const SETTINGS: [(&str, u8); 4] = [
@@ -104,8 +122,9 @@ pub(crate) fn write(out: &mut Writer, table: &str, settings: Option<u8>, list: O
     out.list(table, "slots", &slots, |(n, s)| slot_line(*n, s));
 }
 
-fn words(list: &[u16]) -> String {
-    let parts: Vec<String> = list.iter().map(|&w| hex(w as u32, 4)).collect();
+/// A list of frames, as offsets from `base`.
+fn words(list: &[u16], base: u16) -> String {
+    let parts: Vec<String> = list.iter().map(|&w| hex((w - base) as u32, 4)).collect();
     format!("[{}]", parts.join(", "))
 }
 
@@ -129,20 +148,24 @@ fn slot_line(n: u8, s: &Slot) -> (String, Option<String>) {
             }
         }
     }
+    let an2 = s.frames_in_an2();
     if s.alternative() {
         text += ", alt = true";
+    } else if an2 {
+        text += ", an2 = true";
     }
+    let base = if an2 { AN2_FRAMES } else { 0 };
     if Kind::of(s.kind) == Some(Kind::Rotation) {
         text += &format!(", delay = {}", s.frames_less_one as u32 + 1);
     } else if second_set(s.trigger) {
         let half = s.frames.len() / 2;
         text += &format!(
             ", frames = {}, triggered = {}",
-            words(&s.frames[..half]),
-            words(&s.frames[half..])
+            words(&s.frames[..half], base),
+            words(&s.frames[half..], base)
         );
     } else {
-        text += &format!(", frames = {}", words(&s.frames));
+        text += &format!(", frames = {}", words(&s.frames, base));
     }
     let name = match (
         names::exanimation_type(s.kind),
@@ -283,6 +306,7 @@ fn read_slot(t: &InlineTable, at: &str) -> Result<(u8, Slot), SourceError> {
                     "trigger",
                     "vram",
                     "alt",
+                    "an2",
                     "frames",
                     "triggered",
                 ],
@@ -305,6 +329,7 @@ fn read_slot(t: &InlineTable, at: &str) -> Result<(u8, Slot), SourceError> {
                     "colour",
                     "colours",
                     "alt",
+                    "an2",
                     "frames",
                     "triggered",
                 ]
@@ -328,16 +353,40 @@ fn read_slot(t: &InlineTable, at: &str) -> Result<(u8, Slot), SourceError> {
             }
         }
     };
-    Ok((
-        n,
-        Slot {
-            kind,
-            trigger,
-            frames_less_one,
-            dest,
-            frames,
-        },
-    ))
+    let mut slot = Slot {
+        kind,
+        trigger,
+        frames_less_one,
+        dest,
+        frames,
+    };
+    if inline_flag(t, at, "an2")? {
+        if alt {
+            return Err(invalid(
+                format!("{at}.an2"),
+                "goes without `alt`: the frames are in one file or the other",
+            ));
+        }
+        if !slot.frames_are_addresses() {
+            return Err(invalid(
+                format!("{at}.an2"),
+                "goes with frames that are addresses: tiles, or more than one colour of types 13-15",
+            ));
+        }
+        if slot.frames.iter().any(|&f| f >= AN2_LEN) {
+            return Err(invalid(
+                format!("{at}.frames"),
+                format!(
+                    "with `an2`, frames are offsets into the AN2 file, 0 to {}",
+                    hex(AN2_LEN as u32 - 1, 4)
+                ),
+            ));
+        }
+        for f in &mut slot.frames {
+            *f += AN2_FRAMES;
+        }
+    }
+    Ok((n, slot))
 }
 
 /// A slot's frames, and its frames less one.
@@ -414,9 +463,15 @@ manual = [
 ]
 count = 12
 slots = [
-    { slot = 0x00, type = 0x04, trigger = 0x03, vram = 0x2000, frames = [0xAD00, 0xAD80], triggered = [0xAE00, 0xAE80] },  # 4 8x8s, line; ON/OFF
+    { slot = 0x00, type = 0x04, trigger = 0x03, vram = 0x2000, an2 = true, frames = [0x0000, 0x0080], triggered = [0x0100, 0x19FF] },  # 4 8x8s, line; ON/OFF
+    { slot = 0x01, type = 0x01, vram = 0x6000, frames = [0xACFF, 0xAD00] },  # 1 8x8
+    { slot = 0x02, type = 0x04, trigger = 0x03, vram = 0x2000, frames = [0xAD00, 0xAD80], triggered = [0xAE00, 0xC700] },  # 4 8x8s, line; ON/OFF
     # A colour.
     { slot = 0x03, type = 0x14, colour = 0x21, alt = true, frames = [0x001F, 0x03E0] },  # Palette and working copies
+    { slot = 0x04, type = 0x02, vram = 0x2100, alt = true, frames = [0xAD00, 0x0040] },  # 2 8x8s, line
+    { slot = 0x05, type = 0x13, colour = 0x21, colours = 2, an2 = true, frames = [0x0400] },  # Palette
+    { slot = 0x06, type = 0x13, colour = 0x21, frames = [0xAD00] },  # Palette
+    { slot = 0x07, type = 0x16, colour = 0x00, colours = 2, frames = [0xAD00] },  # Back area colour
     { slot = 0x09, type = 0x18, colour = 0x31, colours = 4, delay = 2 },  # Palette rotate right
 ]
 ";
@@ -426,13 +481,37 @@ slots = [
         let (list, comments) = global_from_toml(TEXT).unwrap();
         assert_eq!(global_to_toml(&list, &comments), TEXT);
         assert_eq!(list.count, 12);
-        assert_eq!(list.slots[&0].frames.len(), 4);
+        let frames = |n: u8| list.slots[&n].frames.clone();
+        // Offsets into the AN2 file, to its last byte.
+        assert_eq!(frames(0), [0xAD00, 0xAD80, 0xAE00, 0xC6FF]);
+        assert_eq!(frames(5), [0xB100]);
+        // RAM addresses: one past either end of the buffer, in either set.
+        assert_eq!(frames(1), [0xACFF, 0xAD00]);
+        assert_eq!(frames(2), [0xAD00, 0xAD80, 0xAE00, 0xC700]);
+        // Not addresses in the buffer: the alternative file, and colours.
+        assert_eq!(frames(4), [0xAD00, 0x0040]);
+        assert_eq!(frames(6), [0xAD00]);
+        assert_eq!(frames(7), [0xAD00]);
         assert_eq!(list.slots[&3].dest, 0x8021);
         assert_eq!(list.slots[&9].dest, 0x0331);
         assert_eq!(list.slots[&9].frames_less_one, 1);
         // Through the ROM's bytes and back.
-        let (back, _) = List::parse(&list.to_bytes()).unwrap();
+        let bytes = list.to_bytes();
+        let (back, _) = List::parse(&bytes).unwrap();
         assert_eq!(back, list);
+        assert_eq!(global_to_toml(&back, &comments), TEXT);
+    }
+
+    #[test]
+    fn both_forms_give_the_same_words() {
+        let raw = "[animation]\nslots = [\n    { slot = 0x00, type = 0x11, vram = 0x0400, frames = [0xAD00, 0xAD80, 0xC6FF] },\n]\n";
+        let an2 = "[animation]\nslots = [\n    { slot = 0x00, type = 0x11, vram = 0x0400, an2 = true, frames = [0x0000, 0x0080, 0x19FF] },  # 4 8x8s, 16x16\n]\n";
+        let (from_raw, _) = global_from_toml(raw).unwrap();
+        let (from_an2, _) = global_from_toml(an2).unwrap();
+        assert_eq!(from_raw, from_an2);
+        assert_eq!(from_raw.to_bytes(), from_an2.to_bytes());
+        // `kobo fmt` writes the AN2 form.
+        assert_eq!(global_to_toml(&from_raw, &Comments::default()), an2);
     }
 
     #[test]
@@ -457,6 +536,34 @@ slots = [
             (
                 "{ slot = 0x00, type = 0x04, vram = 0x2000, frames = [] }",
                 "frames",
+            ),
+            (
+                "{ slot = 0x00, type = 0x04, vram = 0x2000, alt = true, an2 = true, frames = [0] }",
+                "without `alt`",
+            ),
+            (
+                "{ slot = 0x00, type = 0x04, vram = 0x2000, an2 = true, frames = [0x1A00] }",
+                "offsets into the AN2 file",
+            ),
+            (
+                "{ slot = 0x00, type = 0x04, trigger = 0x03, vram = 0x2000, an2 = true, frames = [0], triggered = [0x1A00] }",
+                "offsets into the AN2 file",
+            ),
+            (
+                "{ slot = 0x00, type = 0x13, colour = 0x21, an2 = true, frames = [0] }",
+                "addresses",
+            ),
+            (
+                "{ slot = 0x00, type = 0x17, colour = 0x00, colours = 2, an2 = true, frames = [0] }",
+                "addresses",
+            ),
+            (
+                "{ slot = 0x00, type = 0x18, colour = 0x21, an2 = true, delay = 2 }",
+                "an2",
+            ),
+            (
+                "{ slot = 0x00, type = 0x04, vram = 0x2000, an2 = 1, frames = [0] }",
+                "true or false",
             ),
         ] {
             let text = format!("[animation]\nslots = [\n    {bad},\n]\n");

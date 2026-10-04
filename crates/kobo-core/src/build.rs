@@ -1677,7 +1677,7 @@ fn write_graphics_lists(rom: &mut Rom, project: &Project) -> Result<(), BuildErr
 /// use) and for layer 3's tilemap (which Kobo's code makes room for).
 fn slot_limit(slot: usize) -> usize {
     match slot {
-        exgfx::slot::AN2 => 0x1A00,
+        exgfx::slot::AN2 => exanimation::AN2_LEN as usize,
         exgfx::slot::LT3 => 0x2000,
         _ => 0x1000,
     }

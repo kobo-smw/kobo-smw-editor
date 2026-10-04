@@ -2174,9 +2174,23 @@ list = [
                 frames: vec![0x7FFF, 0x001F],
             },
         );
+        list.slots.insert(
+            0,
+            Slot {
+                kind: 0x01,
+                trigger: 0x00,
+                frames_less_one: 1,
+                dest: 0x6000,
+                frames: vec![0xAD40, 0xAD60],
+            },
+        );
         list.count = 2;
         level.animation = Some(list);
         let text = level.to_toml(&Comments::default());
+        assert!(
+            text.contains("{ slot = 0x00, type = 0x01, vram = 0x6000, an2 = true, frames = [0x0040, 0x0060] },  # 1 8x8\n"),
+            "{text}"
+        );
         assert!(
             text.contains("{ slot = 0x01, type = 0x13, trigger = 0x21, colour = 0x64, colours = 2, frames = [0x7FFF], triggered = [0x001F] },  # Palette; Custom 1"),
             "{text}"

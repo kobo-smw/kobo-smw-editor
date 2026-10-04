@@ -13,15 +13,6 @@ settle it.
 
 ## Open
 
-- **ExAnimation project format** (2026-09-30, `source::animation`). A level's
-  `[animation]` has the settings as four booleans (written only when not what a build
-  gives the level: all on, level `104`'s lists off), the list's header as optional keys,
-  and one slot per line: `vram` for tiles, `colour`/`colours` for colours, `delay` for a
-  rotation, `frames` and, for a trigger with a second set, `triggered`, as hex words. The
-  global list is its own file (`[animation] global` in the manifest), and the
-  uncompressed ExGFX `60`-`63` are `.bin` files beside it (`[animation] 0x60`), not in
-  `[exgfx]`, since they are not compressed or loaded into slots. Settles it: review of the
-  names and of keeping `60`-`63` apart from `[exgfx]`.
 - **Layer 2 scroll settings 8 to 11, `S`, and `H` build, and a save keeps Kobo's camera**
   (2026-10-01, `entrance.asm`, lunar-magic-install.md "Layer 2 scroll settings"; replaces
   the 2026-09-28 entry that refused them). Kobo's camera and entrance give the same RAM
