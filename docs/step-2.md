@@ -434,8 +434,9 @@ on the built ROM.
   from the overworld and through an exit, and Kaizo Kindergarten's level `14A` builds with
   the hack's grid and timer. The graphics bypasses (`24`, `25`) build with Kobo's
   graphics loader (below), and long screen exits (extended `02`) since 2026-10-02, with
-  secondary entrances past `1FF` in tables a build moves to hold `$2000`
-  (`entrances.asm`; lunar-magic-install.md, "Entrances, exits, and midway points"):
+  secondary entrances past `1FF` in tables a build moves and sizes to the last entrance
+  in use, as Lunar Magic does (`entrances.asm`, since 2026-10-04; lunar-magic-install.md,
+  "Entrances, exits, and midway points"):
   riff2 imports and builds every level but the 13 its PIXI sprite sizes block, every one
   the same as the hack's and through Lunar Magic's save, and enters every entrance past
   `1FF` as the hack does.

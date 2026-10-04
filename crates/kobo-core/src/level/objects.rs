@@ -271,6 +271,26 @@ impl Object {
         matches!(self, Object::Unplaced(bytes) if bytes.len() == 5 && bytes[2] == EXT_LONG_EXIT)
     }
 
+    /// The secondary entrance a screen exit in Lunar Magic's format (`u`
+    /// and `s`) leads to, long or not, kept as its bytes or not, as Lunar
+    /// Magic's code reads it ([`ScreenExit::lunar_magic_destination`]).
+    /// `None` for anything else: a normal exit leads to a level, and a
+    /// secondary one in the game's format to one of the game's 512
+    /// entrances.
+    pub fn lunar_magic_entrance(&self) -> Option<u16> {
+        let exit = match self {
+            Object::ScreenExit(exit) => *exit,
+            Object::Unplaced(bytes) if self.is_raw_long_exit() => ScreenExit {
+                screen: 0,
+                flags: bytes[4],
+                destination: bytes[3],
+            },
+            _ => return None,
+        };
+        let secondary = ScreenExit::LUNAR_MAGIC | ScreenExit::SECONDARY;
+        (exit.flags & secondary == secondary).then(|| exit.lunar_magic_destination())
+    }
+
     /// The number of a Lunar Magic object: one it places, or one of its
     /// settings objects with no place (`24`-`26`, `28`; not its long screen
     /// exit, an extended object).
@@ -882,6 +902,20 @@ mod tests {
             .objects;
         assert_eq!(raw, [Object::Unplaced(vec![0x03, 0x00, 0x02, 0x20, 0xB3])]);
         assert!(raw[0].is_raw_long_exit());
+        // The entrance an exit leads to, for the size of the tables: with
+        // `u` and `s` only, kept as bytes or not.
+        assert_eq!(long(3).lunar_magic_entrance(), Some(0x320));
+        assert_eq!(raw[0].lunar_magic_entrance(), None);
+        let raw_secondary = Object::Unplaced(vec![0x03, 0x04, 0x02, 0x20, 0x17]);
+        assert_eq!(raw_secondary.lunar_magic_entrance(), Some(0x320));
+        let normal = ScreenExit::lunar_magic(3, 0, 0x320);
+        assert_eq!(Object::ScreenExit(normal).lunar_magic_entrance(), None);
+        let game = ScreenExit {
+            screen: 3,
+            flags: ScreenExit::SECONDARY,
+            destination: 0x20,
+        };
+        assert_eq!(Object::ScreenExit(game).lunar_magic_entrance(), None);
         round_trip(&raw, Layout::Horizontal, Jumps::Tall);
         for layout in [Layout::Horizontal, Layout::Vertical] {
             let bytes = round_trip(&[long(0x13)], layout, Jumps::Tall);

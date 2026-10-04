@@ -801,3 +801,49 @@ fn game_animation(asar: &kobo_core::asar::Asar, rom: &Rom) {
         assert_eq!(first, None, "level {level:03X}");
     }
 }
+
+/// `entrances.asm` moves all six entrance tables to blocks of the count it
+/// is given, copying the game's entrances and Lunar Magic's further
+/// tables' settings, and refuses a count outside `$201`-`$2000`.
+#[test]
+fn entrance_tables_take_the_count_they_are_given() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let Some(asar) = common::asar() else { return };
+    for (_, rom) in installs(&clean) {
+        let before = level::read_entrances(&rom).unwrap();
+        let layout = kobo_core::entrance::Layout::of(&rom);
+        let extra = |rom: &Rom, layout: &kobo_core::entrance::Layout| -> Vec<Vec<u8>> {
+            layout
+                .extra
+                .unwrap()
+                .iter()
+                .map(|&t| rom.read(t, 0x1FE).unwrap().to_vec())
+                .collect()
+        };
+        for count in [0x201u16, 0x321, 0x2000] {
+            let moved = install::apply_entrances(&asar, &rom, count).unwrap();
+            assert_eq!(level::entrance_count(&moved), count);
+            let moved_layout = kobo_core::entrance::Layout::of(&moved);
+            for table in level::entrance_tables(&moved)
+                .into_iter()
+                .chain(moved_layout.extra.unwrap())
+            {
+                let pc = moved.pc(table).unwrap().as_usize();
+                let len = kobo_core::rats::tag_at(moved.data(), pc - 8);
+                assert_eq!(len, Some(count as usize), "the table at {table}");
+            }
+            let after = level::read_entrances(&moved).unwrap();
+            assert_eq!(after[..0x200], before[..]);
+            assert!(after[0x200..].iter().all(|e| *e == Default::default()));
+            assert_eq!(extra(&moved, &moved_layout), extra(&rom, &layout));
+        }
+        for count in [0x200u16, 0x2001] {
+            assert!(
+                install::apply_entrances(&asar, &rom, count).is_err(),
+                "a count of {count:X}"
+            );
+        }
+    }
+}

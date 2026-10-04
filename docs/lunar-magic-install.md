@@ -1257,8 +1257,21 @@ ExGFX pointers.
   own, behind the operands above; Lunar Magic 3.70's save sizes all six (the two further
   ones too) to the last entrance in use (riff2's `1FFF`: `$2000`; a Kobo build's `320`:
   `$321`, re-allocated), and leaves unused entrances past `1FF` with bit 3 of the
-  `$05FE00` byte clear. Kobo's builds with any such entrance or exit move the six tables
-  to `$2000` each (`entrances.asm`), copying the game's, and its save reads them back.
+  `$05FE00` byte clear. Since 2026-10-04 Kobo's builds size them so too
+  (`Project::entrance_count`, passed to `entrances.asm` as `!entrance_count`): the
+  highest entrance a level defines or an exit in Lunar Magic's format (`u` and `s`, long
+  or not, kept as bytes or not) names, plus one, from `$201` to `$2000`. Both observed
+  sizes are that rule (riff2 defines `1FFF` and names up to `323`; the Kobo build both
+  defines and names `320`); whether Lunar Magic counts an entrance only named is not
+  known, and counting it keeps every exit inside the tables. A normal long exit names a
+  level and moves nothing. A build with such an entrance moves all six tables, copying
+  the game's, and refuses an exit past the tables it has (`build::check_exits`). Lunar
+  Magic's save reads them back, every entrance's bytes the same, and still moves them,
+  at the same size (`tests/lunar_magic_save.rs`). Before, builds moved them to `$2000`
+  each (48 KiB) whatever was in use. riff2's build (240 levels) is byte for byte what it
+  was; without levels `0D8` and `12B`, which define `1FFE` and `1FFF`, its tables hold
+  `$CCE` (29,484 bytes less), and its 77 entrances past `1FF` enter as the hack's, and
+  survive the save (`save-check`).
   A long exit without `u` (Super Dram World has them, beside game-format exits on the
   same screens) leaves its fifth byte in `$19D8` too, where only `wush` is read; Kobo
   keeps it as bytes and builds it so.

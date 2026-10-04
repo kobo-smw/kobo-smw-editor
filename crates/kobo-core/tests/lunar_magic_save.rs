@@ -1821,8 +1821,9 @@ fn a_taller_level_build_survives_a_lunar_magic_save() {
 
 /// Level 105 with its secondary entrance numbered 320, past the game's
 /// tables, and a long screen exit to it on screen 4: a build moves the
-/// entrance tables to hold 2000 (entrances.asm), and Lunar Magic's save
-/// must read them, and keep the entrance and the exit as Kobo wrote them.
+/// entrance tables to hold 321, the last entrance in use (entrances.asm),
+/// and Lunar Magic's save must read them, and keep the entrance and the
+/// exit as Kobo wrote them.
 #[test]
 fn entrances_past_1ff_survive_a_lunar_magic_save() {
     let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
@@ -1860,10 +1861,14 @@ fn entrances_past_1ff_survive_a_lunar_magic_save() {
             .flat_map(|d| d.parts)
             .collect();
         assert!(parts.is_empty(), "level {LEVEL:X} after a save: {parts:?}");
-        // The save moves the tables again, to blocks as long as the last
-        // entrance in use needs (lunar-magic.md).
-        assert_eq!(kobo_core::level::entrance_count(&built), 0x2000);
+        // The save sizes the tables as the build does, to the last
+        // entrance in use (lunar-magic-install.md), and keeps every entrance.
+        assert_eq!(kobo_core::level::entrance_count(&built), 0x321);
         assert_eq!(kobo_core::level::entrance_count(&saved), 0x321);
+        let ours = kobo_core::level::read_entrances(&built).unwrap();
+        let theirs = kobo_core::level::read_entrances(&saved).unwrap();
+        let differ: Vec<usize> = (0..ours.len()).filter(|&i| ours[i] != theirs[i]).collect();
+        assert!(differ.is_empty(), "entrances after a save: {differ:03X?}");
         // And the exit leads where it did.
         let entered = |rom: &Rom| {
             let ram = kobo_core::expand::enter_by_exit(rom, 0x20, 0x17, false, 0, |_| {}).unwrap();

@@ -381,24 +381,30 @@ impl Project {
         })
     }
 
-    /// Whether a level has a secondary entrance past `1FF`, or a long exit
-    /// to one, which need the entrance tables moved to hold `$2000`
-    /// ([`install::ENTRANCES`]).
+    /// How many secondary entrances the build's tables hold: the game's
+    /// 512, or up to the last entrance in use past them, as Lunar Magic
+    /// 3.70's save sizes them (docs/lunar-magic-install.md, "Entrances,
+    /// exits, and midway points"). In use is the highest a level defines or
+    /// a screen exit in Lunar Magic's format leads to
+    /// ([`Object::lunar_magic_entrance`]), so that no exit reads past the
+    /// tables; at most [`tables::MAX_ENTRANCES`], past which a build
+    /// refuses the entrance.
+    pub fn entrance_count(&self) -> u16 {
+        self.levels
+            .iter()
+            .flat_map(|(_, level)| {
+                let defined = level.entrances.iter().map(|e| e.id);
+                defined.chain(exit_entrances(level))
+            })
+            .map(|id| id.saturating_add(1).min(tables::MAX_ENTRANCES))
+            .fold(tables::ENTRANCE_COUNT, u16::max)
+    }
+
+    /// Whether a level has a secondary entrance past `1FF`, or a screen
+    /// exit to one, which need the entrance tables moved to hold
+    /// [`Project::entrance_count`] ([`install::ENTRANCES`]).
     pub fn many_entrances(&self) -> bool {
-        self.levels.iter().any(|(_, level)| {
-            level
-                .entrances
-                .iter()
-                .any(|e| e.id >= tables::ENTRANCE_COUNT)
-                || level.layer1.iter().any(|o| match o {
-                    Object::ScreenExit(e) => e.is_long(),
-                    Object::Unplaced(bytes) if o.is_raw_long_exit() => {
-                        bytes[4] & objects::ScreenExit::LUNAR_MAGIC != 0
-                            && bytes[4] & objects::ScreenExit::LONG != 0
-                    }
-                    _ => false,
-                })
-        })
+        self.entrance_count() > tables::ENTRANCE_COUNT
     }
 
     /// Whether the project has anything only Lunar Magic's layout holds,
@@ -626,6 +632,9 @@ impl Stage {
                     hash.update([0]);
                     hash.update(text.as_bytes());
                 }
+                if entrances.is_some() {
+                    hash.update(project.entrance_count().to_le_bytes());
+                }
                 hash.finalize().to_vec()
             }
             // The pixels' indexes and the size: the palette is only for
@@ -837,12 +846,14 @@ impl Stage {
                     *rom = install::apply_lunar_magic(&asar, rom)
                         .map_err(|e| BuildError::Asar(Box::new(e)))?;
                     if project.many_entrances() {
-                        *rom = install::apply_entrances(&asar, rom).map_err(|e| match e {
-                            install::InstallError::Asar(e) => BuildError::Asar(Box::new(e)),
-                            e => BuildError::Install {
-                                message: e.to_string(),
-                            },
-                        })?;
+                        let count = project.entrance_count();
+                        *rom =
+                            install::apply_entrances(&asar, rom, count).map_err(|e| match e {
+                                install::InstallError::Asar(e) => BuildError::Asar(Box::new(e)),
+                                e => BuildError::Install {
+                                    message: e.to_string(),
+                                },
+                            })?;
                     }
                     if project.lunar_magic_graphics() {
                         *rom = install::apply_graphics(&asar, rom)
@@ -938,6 +949,7 @@ impl Stage {
                     write_level(rom, &before, &mut space, &mut bank07, *number, level)?;
                 }
                 write_entrances(rom, project)?;
+                check_exits(rom, project)?;
                 if project.lunar_magic_layout() {
                     write_level_settings(rom, project)?;
                     write_level_sizes(rom, project)?;
@@ -2029,6 +2041,39 @@ fn layer2_matches_mode(level: &Level) -> Result<(), String> {
     }
 }
 
+/// Refuses a screen exit to a secondary entrance past the tables the
+/// build has, which Lunar Magic's code and Kobo's would read past them.
+/// [`Project::entrance_count`] sizes the tables to hold every one a
+/// project's exit names.
+fn check_exits(rom: &Rom, project: &Project) -> Result<(), BuildError> {
+    let count = level::entrance_count(rom);
+    for (number, level) in &project.levels {
+        if let Some(id) = exit_entrances(level).find(|&id| id >= count) {
+            return Err(level_error(
+                *number,
+                format!(
+                    "a screen exit leads to entrance {id:03X}, past the {count} entrances the tables hold"
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The secondary entrances a level's screen exits in Lunar Magic's format
+/// lead to, on either layer ([`Object::lunar_magic_entrance`]).
+fn exit_entrances(level: &Level) -> impl Iterator<Item = u16> + '_ {
+    let layer2: &[Object] = match &level.layer2 {
+        Layer2::Objects(list) => list,
+        _ => &[],
+    };
+    level
+        .layer1
+        .iter()
+        .chain(layer2)
+        .filter_map(Object::lunar_magic_entrance)
+}
+
 /// Writes every project level's secondary entrances. A level's list is all
 /// of them: an entrance the base ROM had leading to it that the list does
 /// not name is cleared. One the base ROM has leading to a level the
@@ -2368,4 +2413,61 @@ fn place(rom: &mut Rom, space: &mut FreeSpace, bytes: &[u8]) -> Result<SnesAddr,
     let at = space.alloc(rom, bytes.len(), Contents::Data)?;
     rom.write(at, bytes)?;
     Ok(at)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rom::RomIdentity;
+
+    fn vanilla() -> Option<Rom> {
+        let rom = Rom::load(crate::config::vanilla_rom_path().ok()?).ok()?;
+        (rom.identify() == RomIdentity::VanillaUsa).then_some(rom)
+    }
+
+    /// The tables hold the last entrance in use, defined or named by an
+    /// exit, and an exit past the tables a ROM has is refused.
+    #[test]
+    fn entrance_tables_hold_the_last_entrance_in_use() {
+        let Some(clean) = vanilla() else {
+            eprintln!("skipping: no vanilla ROM configured");
+            return;
+        };
+        let (mut level, _) = crate::import::read_level(&clean, 0x105).unwrap();
+        let mut project = Project {
+            levels: vec![(0x105, level.clone())],
+            ..Default::default()
+        };
+        assert_eq!(project.entrance_count(), 0x200);
+        assert!(!project.many_entrances());
+        check_exits(&clean, &project).unwrap();
+
+        // A normal exit, long or not, names a level, not an entrance.
+        let exit = |flags, to| Object::ScreenExit(objects::ScreenExit::lunar_magic(4, flags, to));
+        level.layer1.push(exit(0, 0x3FF));
+        project.levels[0].1 = level.clone();
+        assert_eq!(project.entrance_count(), 0x200);
+        // An exit to an entrance no level defines counts.
+        level
+            .layer1
+            .push(exit(objects::ScreenExit::SECONDARY, 0x5FF));
+        project.levels[0].1 = level.clone();
+        assert_eq!(project.entrance_count(), 0x600);
+        // And so does an entrance no exit names.
+        level.entrances[0].id = 0x7FE;
+        project.levels[0].1 = level.clone();
+        assert_eq!(project.entrance_count(), 0x7FF);
+        assert!(project.many_entrances());
+        // At most 2000, past which the build refuses the entrance.
+        level.entrances[0].id = 0x2000;
+        project.levels[0].1 = level;
+        assert_eq!(project.entrance_count(), 0x2000);
+
+        // The clean ROM's tables hold 512: the exit to 5FF reads past them.
+        let error = check_exits(&clean, &project).unwrap_err().to_string();
+        assert!(
+            error.contains("entrance 5FF, past the 512 entrances"),
+            "{error}"
+        );
+    }
 }

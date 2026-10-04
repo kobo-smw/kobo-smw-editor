@@ -24,7 +24,8 @@
 //! `$0583B8`, `"LM"` at `$0FF15C`) it meets, and a build whose lists have
 //! layer 3 settings [`LAYER3`] (a `JSL` at `$00A01F`), and a build with
 //! secondary entrances past `1FF` [`ENTRANCES`], which moves their tables
-//! behind the pointers Lunar Magic's code keeps. Every patch takes
+//! behind the pointers Lunar Magic's code keeps, sized to the last one in
+//! use. Every patch takes
 //! the ROM's mapping and the game's variables from [`MEMORY`], so the same
 //! sources go on a LoROM image and on SA-1 Pack's.
 
@@ -108,9 +109,10 @@ pub const CHOC_ISLAND: (&str, &str) = (
 /// Where [`CHOC_ISLAND`] hooks the rooms' pointer load: a `JSL` there.
 pub const CHOC_ISLAND_HOOK: crate::addr::SnesAddr = crate::addr::SnesAddr::new(0x05DB4B);
 
-/// The secondary entrance tables moved to hold `$2000` entrances, for the
-/// entrances past `1FF` Lunar Magic's long screen exits name, applied
-/// after [`LUNAR_MAGIC`] by a build that has any. Kobo's code reads every
+/// The secondary entrance tables moved to hold as many entrances as the
+/// define `!entrance_count` says, for the entrances past `1FF` Lunar
+/// Magic's long screen exits name, applied after [`LUNAR_MAGIC`] by a
+/// build that has any ([`apply_entrances`]). Kobo's code reads every
 /// entrance through the pointers it changes.
 pub const ENTRANCES: (&str, &str) = (
     "entrances.asm",
@@ -133,9 +135,11 @@ pub fn apply_lunar_magic(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
     Ok(rom)
 }
 
-/// Applies [`ENTRANCES`], with the entrances the tables held before copied
-/// into the moved ones, Lunar Magic's further tables' too.
-pub fn apply_entrances(asar: &Asar, rom: &Rom) -> Result<Rom, InstallError> {
+/// Applies [`ENTRANCES`] with tables of `count` entrances, `$201` to
+/// `$2000` (the last in use plus one, as Lunar Magic sizes them), with the
+/// entrances the tables held before copied into the moved ones, Lunar
+/// Magic's further tables' too.
+pub fn apply_entrances(asar: &Asar, rom: &Rom, count: u16) -> Result<Rom, InstallError> {
     let entrances = crate::level::read_entrances(rom)?;
     let layout = crate::entrance::Layout::of(rom);
     let extra_count = crate::entrance::extra_count(rom, &layout);
@@ -146,7 +150,8 @@ pub fn apply_entrances(asar: &Asar, rom: &Rom) -> Result<Rom, InstallError> {
             .collect::<Result<Vec<_>, crate::rom::RomError>>()?,
         None => Vec::new(),
     };
-    let mut rom = asar.patch(rom, &patch(ENTRANCES))?.rom;
+    let sized = patch(ENTRANCES).define("entrance_count", format!("${count:04X}"));
+    let mut rom = asar.patch(rom, &sized)?.rom;
     crate::level::write_entrances(&mut rom, &entrances)?;
     if let Some(tables) = crate::entrance::Layout::of(&rom).extra {
         for (table, bytes) in tables.into_iter().zip(&extras) {

@@ -1200,12 +1200,55 @@ fn secondary_entrances_are_checked_and_written() {
     let built = build_with(vec![(0x105, l105.clone())]).unwrap();
     assert!(entrances_of(&built, 0x105).iter().any(|e| e.id == unused));
     // One past 1FF, which a long exit names, in tables the build moves to
-    // hold 2000 (entrances.asm); one past those is refused.
+    // hold the last entrance in use (entrances.asm), all six of them, as
+    // Lunar Magic's save sizes them; one past 1FFF is refused.
     l105.entrances.last_mut().unwrap().id = 0x320;
     let built = build_with(vec![(0x105, l105.clone())]).unwrap();
-    assert_eq!(level::entrance_count(&built), 0x2000);
+    assert_eq!(level::entrance_count(&built), 0x321);
+    let block = |at| {
+        let pc = built.pc(at).unwrap().as_usize();
+        kobo_core::rats::tag_at(built.data(), pc - 8)
+    };
+    let extra = kobo_core::entrance::Layout::of(&built).extra.unwrap();
+    for table in level::entrance_tables(&built).into_iter().chain(extra) {
+        assert_eq!(block(table), Some(0x321), "the table at {table}");
+    }
     assert!(entrances_of(&built, 0x105).iter().any(|e| e.id == 0x320));
     assert_eq!(entrances_of(&built, 0x106), theirs);
+    // The game's are copied, and the unused ones past 1FF are left clear.
+    let tables = level::read_entrances(&built).unwrap();
+    assert_eq!(tables.len(), 0x321);
+    let clean_tables = level::read_entrances(&clean).unwrap();
+    for id in 0..0x200 {
+        if !entrances_of(&clean, 0x105)
+            .iter()
+            .any(|e| e.id == id as u16)
+        {
+            assert_eq!(
+                tables[id].0[..3],
+                clean_tables[id].0[..3],
+                "entrance {id:03X}"
+            );
+        }
+    }
+    assert!(
+        tables[0x200..0x320]
+            .iter()
+            .all(|e| *e == Default::default())
+    );
+    // An exit to an entrance past the last one defined sizes them too.
+    let mut named = l105.clone();
+    named
+        .layer1
+        .push(kobo_core::level::objects::Object::ScreenExit(
+            kobo_core::level::objects::ScreenExit::lunar_magic(
+                1,
+                kobo_core::level::objects::ScreenExit::SECONDARY,
+                0x4AB,
+            ),
+        ));
+    let built = build_with(vec![(0x105, named)]).unwrap();
+    assert_eq!(level::entrance_count(&built), 0x4AC);
     l105.entrances.last_mut().unwrap().id = 0x2000;
     let error = build_with(vec![(0x105, l105)]).unwrap_err();
     assert!(error.contains("past the 8192"), "{error}");

@@ -52,9 +52,3 @@ settle it.
   touches, which comes from `$00E966` too and so takes a build (QLDC 2021 `06_Friday`'s
   level `106` built by Kobo touches what the hack does). Settles it: more tide levels
   built and played against their hacks.
-- **Builds move the entrance tables to `$2000` entrances, not to the last one in use**
-  (2026-10-02, `entrances.asm`). A project with an entrance or a long exit past `1FF`
-  gets six tables of `$2000` (48 KiB), whatever its highest entrance; Lunar Magic sizes
-  them to the last entrance in use, and its save re-allocates Kobo's so. Sizing them to
-  the project would need the patch to take the size as a define. Settles it: whether
-  the space matters.
