@@ -435,6 +435,7 @@ fn the_corpus_pages_0_and_1_build_as_the_hacks_have_them() {
 /// own routine, as Lunar Magic 3.70's full export of the hack shows them:
 /// every definition (Lunar Magic's empty tile, `$1004` four times, counting
 /// as Kobo's, zeros) and what every tile acts like, pages 2 to `7F`.
+/// Locked hacks, which Lunar Magic will not export from, are skipped.
 #[test]
 fn older_layouts_import_as_lunar_magic_exports_them() {
     let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
@@ -452,6 +453,11 @@ fn older_layouts_import_as_lunar_magic_exports_them() {
             .iter()
             .any(|n| n.contains("older Lunar Magic's layout"))
         {
+            continue;
+        }
+        // Lunar Magic refuses to export from a locked hack.
+        if kobo_core::gfx::is_locked(&rom) {
+            eprintln!("{}: locked, skipped", path.display());
             continue;
         }
         let name = path
