@@ -94,7 +94,8 @@ on the built ROM.
 - A build does not carry the `Lunar Magic Version` string at `$0FF0A0`. The hook spike
   showed Lunar Magic neither reads it to decide what is installed nor needs it, and writes
   it on its own first save. Since 2026-10-04 a build in Lunar Magic's layout writes one
-  byte there, `$00`, which the retry system checks for (review.md).
+  byte there, `$00`, which the retry system checks for; kept in every such build
+  (maintainer, 2026-10-05; lunar-magic-install.md, register).
 - A build always has a correct internal checksum; Lunar Magic warns that a ROM "may be
   Corrupt" otherwise.
 - Kobo writes the layout of the current Lunar Magic release and pins that release for the
