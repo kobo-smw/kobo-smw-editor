@@ -1139,7 +1139,8 @@ What the settings do, observed:
   a step behind 3.70's (`$0BEA`), and with layer 3 following layer 1 or autoscrolling
   vertically, the offset the load leaves (`$28` on the first frame, which the player's
   first collision keeps when it comes on that frame) from layer 3's position before
-  Kobo's code has placed it (review.md).
+  Kobo's code has placed it. Builds take both as they are (accepted on review,
+  2026-10-04; known-gaps.md).
 - With every QLDC entry added, `kobos_layer3_code_plays_as_lunar_magics` takes 85 hacks
   and agrees on every level it compares (one, QLDC 2021 `51_singlepat`, left out: Asar
   would place Kobo's code in a block of the hack's). In tide levels it leaves out what a

@@ -93,6 +93,12 @@ What a rendered level does not reproduce, and what the tooling does not handle.
   it appears. There is no option to render a later frame or a triggered state. Decided on
   review (2026-10-04) to wait for a GUI need: a frame count in `RenderOptions` would run
   the game loop (`expand::play_game_loop`) that many frames before drawing.
+- Two tide corners play otherwise than Lunar Magic 3.70's, in settings no corpus level has:
+  with `advanced` and a vertical autoscroll, the tide's vertical interaction offset is a
+  step behind; and with layer 3 following layer 1 or autoscrolling vertically, the offset
+  on the level's first frame comes from layer 3's position before Kobo's code places it.
+  Accepted on review (2026-10-04); lunar-magic-install.md, "Layer 3 settings", has how
+  they were found.
 - Lunar Magic 2.41's older ExAnimation lists (Kaizo Mario World 3, the corpus's only ROM
   with them) are not read from a ROM: where their table is had been found in a way that
   was not recorded, so the reading, and the conversion of the older format with it, were
