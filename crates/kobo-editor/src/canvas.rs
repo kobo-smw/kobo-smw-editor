@@ -1233,6 +1233,13 @@ fn draw(
     if view.entrances {
         draw_entries(&painter, canvas, camera, &open.entries);
     }
+    if view.changes
+        && let Some(head) = &open.head
+    {
+        crate::changes::draw(&painter, head, open.document.level(), geometry, |r| {
+            camera.rect_to_screen(canvas, r)
+        });
+    }
 
     if let Some(Drag::Marquee { from, to, .. }) = &open.drag {
         let r = camera.rect_to_screen(canvas, Rect::from_two_pos(*from, *to));

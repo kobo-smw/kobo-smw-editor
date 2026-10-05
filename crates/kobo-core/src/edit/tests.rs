@@ -433,3 +433,76 @@ fn an_exit_keeps_the_games_format_while_it_can() {
     assert_ne!(kept.flags & ScreenExit::LUNAR_MAGIC, 0);
     assert_eq!(ExitTarget::of(kept, 0x105), target);
 }
+
+#[test]
+fn every_change_is_found_and_taken_back_one_at_a_time() {
+    use super::diff::{self, Part};
+    let old = document().level().clone();
+    let mut document = document();
+    let coin = Object::Extended {
+        number: 0x41,
+        x: 2,
+        y: 2,
+    };
+    let moved = object_at(object(&document, 1), 7, 20);
+    let edits = [
+        Edit::ReplaceObject {
+            layer: ObjectLayer::One,
+            index: 1,
+            object: moved,
+        },
+        Edit::RemoveObject {
+            layer: ObjectLayer::One,
+            index: 2,
+        },
+        Edit::InsertObject {
+            layer: ObjectLayer::One,
+            index: 0,
+            object: coin,
+        },
+        Edit::InsertSprite {
+            index: 1,
+            sprite: sprite(0xAB, 25, 22),
+        },
+    ];
+    document.apply("Edits", &edits).unwrap();
+    let found = diff::diff(&old, document.level());
+    assert_eq!(found.len(), 4, "{found:?}");
+    assert!(!found.header);
+
+    // Each change back, diffing again after each.
+    for _ in 0..8 {
+        let found = diff::diff(&old, document.level());
+        let next = found
+            .layer1
+            .first()
+            .map(|&c| (Part::Objects(ObjectLayer::One), c))
+            .or_else(|| found.sprites.first().map(|&c| (Part::Sprites, c)));
+        let Some((part, change)) = next else { break };
+        let edits = diff::revert(&old, document.level(), part, change);
+        document.apply("Revert", &edits).unwrap();
+    }
+    assert_eq!(document.level(), &old);
+
+    // An object moved in the list is changed, and goes back.
+    let reorder = Edit::ReorderObject {
+        layer: ObjectLayer::One,
+        from: 0,
+        to: 2,
+    };
+    document.apply("Reorder", &[reorder]).unwrap();
+    for _ in 0..4 {
+        let found = diff::diff(&old, document.level());
+        let Some(&change) = found.layer1.first() else {
+            break;
+        };
+        let edits = diff::revert(
+            &old,
+            document.level(),
+            Part::Objects(ObjectLayer::One),
+            change,
+        );
+        document.apply("Revert", &edits).unwrap();
+    }
+    assert_eq!(document.level(), &old);
+}

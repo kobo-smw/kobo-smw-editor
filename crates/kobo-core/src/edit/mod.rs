@@ -8,6 +8,7 @@
 //! format. Every change, an outside one read back from disk included, is
 //! one undo step, kept as a snapshot of the level and its comments.
 
+pub mod diff;
 mod document;
 mod previews;
 mod workspace;

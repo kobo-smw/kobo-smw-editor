@@ -21,6 +21,20 @@ pub const WARNING: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x3c);
 pub const ERROR: Color32 = Color32::from_rgb(0xef, 0x6b, 0x6b);
 
 pub fn apply(ctx: &egui::Context) {
+    // Arrows and other symbols the proportional font lacks come from the
+    // monospace one.
+    let mut fonts = egui::FontDefinitions::default();
+    let mono = fonts
+        .families
+        .get(&egui::FontFamily::Monospace)
+        .and_then(|f| f.first().cloned());
+    if let (Some(mono), Some(proportional)) = (
+        mono,
+        fonts.families.get_mut(&egui::FontFamily::Proportional),
+    ) {
+        proportional.push(mono);
+    }
+    ctx.set_fonts(fonts);
     ctx.set_theme(egui::Theme::Dark);
     let mut visuals = egui::Visuals::dark();
     visuals.panel_fill = PANEL;

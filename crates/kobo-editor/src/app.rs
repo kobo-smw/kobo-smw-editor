@@ -28,6 +28,8 @@ pub struct View {
     pub source: bool,
     /// Markers where the player enters.
     pub entrances: bool,
+    /// Marks of what changed since the last commit (the Changes tab).
+    pub changes: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -92,6 +94,9 @@ pub struct OpenLevel {
     /// The file on disk does not parse.
     pub disk_error: Option<String>,
     pub source: source::SourceState,
+    /// The level as the last commit has it, for the Changes tab.
+    pub head: Option<crate::changes::Head>,
+    pub no_head: Option<crate::changes::NoHead>,
 }
 
 impl OpenLevel {
@@ -118,6 +123,8 @@ impl OpenLevel {
             conflict: None,
             disk_error: None,
             source: source::SourceState::default(),
+            head: None,
+            no_head: None,
         }
     }
 
@@ -146,6 +153,7 @@ enum LeftTab {
     Levels,
     Add,
     Outline,
+    Changes,
 }
 
 /// Where the clean ROM comes from, or why it could not be loaded.
@@ -164,6 +172,8 @@ pub struct Startup {
     pub source: bool,
     /// Show the palette rather than the level list.
     pub palette: bool,
+    /// The left panel's tab: `levels`, `add`, `outline`, or `changes`.
+    pub tab: Option<String>,
     /// Build once the level is open.
     pub build: bool,
     /// Save a picture of the window here once the level's picture is in,
@@ -252,15 +262,17 @@ impl App {
                 player: true,
                 source: startup.source,
                 entrances: true,
+                changes: false,
             },
             level_filter: String::new(),
             all_levels: false,
             adding: None,
             copy_to: 0,
-            left: if startup.palette {
-                LeftTab::Add
-            } else {
-                LeftTab::Levels
+            left: match (startup.palette, startup.tab.as_deref()) {
+                (true, _) | (_, Some("add")) => LeftTab::Add,
+                (_, Some("outline")) => LeftTab::Outline,
+                (_, Some("changes")) => LeftTab::Changes,
+                _ => LeftTab::Levels,
             },
             outline_filter: String::new(),
             palette: PaletteState::default(),
@@ -1171,19 +1183,23 @@ impl eframe::App for App {
         }
         egui::Panel::left("levels")
             .resizable(true)
-            .default_size(220.0)
+            .default_size(270.0)
             .frame(theme::side_frame())
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.left, LeftTab::Levels, "Levels");
                     ui.selectable_value(&mut self.left, LeftTab::Add, "Add");
                     ui.selectable_value(&mut self.left, LeftTab::Outline, "Outline");
+                    ui.selectable_value(&mut self.left, LeftTab::Changes, "Changes")
+                        .on_hover_text("What differs from the last commit");
                 });
                 ui.separator();
+                self.view.changes = self.left == LeftTab::Changes;
                 match self.left {
                     LeftTab::Levels => self.level_list(ui),
                     LeftTab::Add => palette::show(self, ui),
                     LeftTab::Outline => outline::show(self, ui),
+                    LeftTab::Changes => crate::changes::show(self, ui),
                 }
             });
         egui::Panel::right("inspector")

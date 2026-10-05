@@ -4,6 +4,7 @@
 mod app;
 mod build;
 mod canvas;
+mod changes;
 mod clipboard;
 mod inspector;
 mod outline;
@@ -41,6 +42,9 @@ struct Args {
     /// Show the palette of things to add rather than the level list.
     #[arg(long)]
     palette: bool,
+    /// The left panel's tab: levels, add, outline, or changes.
+    #[arg(long)]
+    tab: Option<String>,
     /// Build the project once the level is open.
     #[arg(long)]
     build: bool,
@@ -76,6 +80,7 @@ fn main() -> eframe::Result {
         select: args.select,
         source: args.source,
         palette: args.palette,
+        tab: args.tab,
         build: args.build,
         screenshot: args.screenshot,
     };

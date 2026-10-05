@@ -716,3 +716,65 @@ fn entrances_are_marked_where_the_loader_puts_the_player() {
     assert_eq!(place(EntryKind::Secondary(0x1CB)), Some((2072, 306)));
     assert_eq!(place(EntryKind::Midway).map(|(x, _)| x / 256), Some(9));
 }
+
+#[test]
+fn changes_since_the_last_commit_are_listed_and_taken_back() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "changes");
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&project.0)
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.com"])
+            .args(args)
+            .output()
+            .expect("git runs");
+        assert!(
+            status.status.success(),
+            "{}",
+            String::from_utf8_lossy(&status.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "Start"]);
+
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    look_at(&mut harness, 60, 20);
+    // Delete the ground ledge, and move the bush that stood on it.
+    click_tile(&mut harness, 65, 22);
+    harness.key_press(Key::Delete);
+    harness.step();
+    click_tile(&mut harness, 67, 19);
+    harness.key_press(Key::ArrowRight);
+    harness.step();
+
+    harness.get_by_label("Changes").click();
+    harness.run_steps(3);
+    let count = |app: &App| app.current().unwrap().head.as_ref().map(|h| h.diff().len());
+    assert_eq!(count(harness.state()), Some(2));
+    harness
+        .get_by_label_contains("Ground ledge at (60, 20)")
+        .click();
+    harness.step();
+    let revert = harness
+        .get_all_by_label("Revert")
+        .next()
+        .expect("a revert button");
+    revert.click();
+    harness.run_steps(3);
+    assert_eq!(count(harness.state()), Some(1), "the ledge is back");
+    let level = harness.state().current().unwrap().document.level().clone();
+    assert!(level.layer1.iter().any(|o| matches!(
+        o,
+        kobo_core::level::objects::Object::Standard {
+            number: 0x14,
+            x: 60,
+            y: 20,
+            ..
+        }
+    )));
+}
