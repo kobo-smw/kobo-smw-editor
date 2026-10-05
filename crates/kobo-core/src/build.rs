@@ -1368,9 +1368,40 @@ pub fn build_cached(
     build_on(clean, project, cache)
 }
 
+/// What a build says of a stage as it goes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StageEvent {
+    /// Its output came from the stage cache.
+    Cached,
+    Started,
+    Finished(std::time::Duration),
+}
+
+/// [`build_cached`], telling `report` of each stage as it goes.
+pub fn build_reporting(
+    clean: &Rom,
+    project: &Project,
+    cache: Option<&Cache>,
+    report: &mut dyn FnMut(Stage, StageEvent),
+) -> Result<Rom, BuildError> {
+    if clean.identify() != RomIdentity::VanillaUsa {
+        return Err(BuildError::NotClean(clean.sha1_hex()));
+    }
+    build_on_reporting(clean, project, cache, report)
+}
+
 /// [`build_cached`] on any base image laid out as the vanilla ROM is, for
 /// synthetic images in tests.
 pub fn build_on(base: &Rom, project: &Project, cache: Option<&Cache>) -> Result<Rom, BuildError> {
+    build_on_reporting(base, project, cache, &mut |_, _| {})
+}
+
+fn build_on_reporting(
+    base: &Rom,
+    project: &Project,
+    cache: Option<&Cache>,
+    report: &mut dyn FnMut(Stage, StageEvent),
+) -> Result<Rom, BuildError> {
     if project.manifest.lz3 && !project.manifest.sa1 {
         return Err(BuildError::Lz3WithoutSa1);
     }
@@ -1390,8 +1421,14 @@ pub fn build_on(base: &Rom, project: &Project, cache: Option<&Cache>) -> Result<
         Some((next, data)) => (next, Rom::from_headerless(data)?),
         None => (0, Rom::from_headerless(base.data().to_vec())?),
     };
+    for stage in &Stage::ALL[..first] {
+        report(*stage, StageEvent::Cached);
+    }
     for (i, stage) in Stage::ALL.iter().enumerate().skip(first) {
+        report(*stage, StageEvent::Started);
+        let started = std::time::Instant::now();
         stage.run_guarded(&mut rom, base, project)?;
+        report(*stage, StageEvent::Finished(started.elapsed()));
         if let Some(cache) = cache {
             cache.put(&keys[i], rom.data())?;
         }

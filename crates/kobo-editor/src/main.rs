@@ -2,6 +2,7 @@
 //! everything it shows and every change it makes (docs/step-3.md).
 
 mod app;
+mod build;
 mod canvas;
 mod clipboard;
 mod inspector;
@@ -40,6 +41,9 @@ struct Args {
     /// Show the palette of things to add rather than the level list.
     #[arg(long)]
     palette: bool,
+    /// Build the project once the level is open.
+    #[arg(long)]
+    build: bool,
     /// Save a picture of the window once the level is drawn, and quit.
     #[arg(long)]
     screenshot: Option<PathBuf>,
@@ -72,6 +76,7 @@ fn main() -> eframe::Result {
         select: args.select,
         source: args.source,
         palette: args.palette,
+        build: args.build,
         screenshot: args.screenshot,
     };
     eframe::run_native(

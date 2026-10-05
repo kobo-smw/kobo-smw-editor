@@ -660,3 +660,31 @@ fn closing_a_project_with_edits_asks_first() {
         "nothing was saved"
     );
 }
+
+#[test]
+fn building_writes_the_rom_and_a_patch_with_unsaved_edits() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "build");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    look_at(&mut harness, 60, 20);
+    click_tile(&mut harness, 65, 22);
+    harness.key_press(Key::Delete);
+    harness.step();
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::B);
+    harness.step();
+    assert!(harness.state().build.open, "the build window opens");
+    wait_for(&mut harness, "the build", |app| app.build.succeeded());
+    assert_eq!(
+        harness.state().build.stages_done(),
+        kobo_core::build::Stage::ALL.len()
+    );
+    let built = Rom::load(project.0.join("build.sfc")).unwrap();
+    let patch = std::fs::read(project.0.join("build.bps")).unwrap();
+    let patched = kobo_core::bps::apply_to_rom(&patch, &clean).unwrap();
+    assert_eq!(patched.data, built.data());
+    // The deleted ledge is not in the build: its tile is the blank one.
+    let loaded = kobo_core::expand::expand_level(&built, 0x105).unwrap();
+    assert_eq!(loaded.tiles.tile_at(65, 22), 0x25);
+}

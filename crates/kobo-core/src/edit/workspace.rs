@@ -169,6 +169,20 @@ impl Workspace {
         )?)
     }
 
+    /// Builds the project as it is in memory, telling `report` of each
+    /// stage as it goes.
+    pub fn build_reporting(
+        &self,
+        report: &mut dyn FnMut(build::Stage, build::StageEvent),
+    ) -> Result<Rom, WorkspaceError> {
+        Ok(build::build_reporting(
+            &self.clean,
+            &self.project,
+            self.cache.as_ref(),
+            report,
+        )?)
+    }
+
     /// Builds the project and renders `level` from the build, under
     /// `operation`, which can cancel the render.
     pub fn preview(

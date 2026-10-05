@@ -160,6 +160,8 @@ pub struct Startup {
     pub source: bool,
     /// Show the palette rather than the level list.
     pub palette: bool,
+    /// Build once the level is open.
+    pub build: bool,
     /// Save a picture of the window here once the level's picture is in,
     /// then quit: for documentation and checks without a display.
     pub screenshot: Option<PathBuf>,
@@ -205,7 +207,8 @@ pub struct App {
     /// The window was asked to close with unsaved edits.
     confirm_close: bool,
     allow_close: bool,
-    building: Option<std::thread::JoinHandle<Result<String, String>>>,
+    /// The build window and the build in progress.
+    pub build: crate::build::BuildState,
     startup: Startup,
     screenshot_frames: Option<u32>,
 }
@@ -263,7 +266,7 @@ impl App {
             editing: None,
             confirm_close: false,
             allow_close: false,
-            building: None,
+            build: Default::default(),
             startup: startup.clone(),
             screenshot_frames: None,
         };
@@ -287,6 +290,9 @@ impl App {
                         .collect();
                 }
             }
+        }
+        if startup.build {
+            crate::build::start(&mut app);
         }
         app
     }
@@ -588,37 +594,18 @@ impl App {
         }
     }
 
-    fn start_build(&mut self) {
-        if self.building.is_some() {
-            return;
+    /// Puts every open level's state in the workspace, as a build of it
+    /// should have them.
+    pub fn sync_levels(&mut self) {
+        if let Some(workspace) = &mut self.workspace {
+            for open in self.open.values() {
+                workspace.set_level(open.number, open.document.level());
+            }
         }
-        let Some(workspace) = self.workspace.clone() else {
-            return;
-        };
-        let out = workspace.project().root.join("build.sfc");
-        self.say("Building…");
-        self.building = Some(std::thread::spawn(move || {
-            let started = Instant::now();
-            let rom = workspace.build().map_err(|e| e.to_string())?;
-            std::fs::write(&out, rom.data()).map_err(|e| format!("{}: {e}", out.display()))?;
-            Ok(format!(
-                "Built {} in {:.1} s",
-                out.display(),
-                started.elapsed().as_secs_f32()
-            ))
-        }));
     }
 
-    fn finish_build(&mut self) {
-        if self.building.as_ref().is_some_and(|b| b.is_finished()) {
-            let result = self.building.take().unwrap().join();
-            let message = match result {
-                Ok(Ok(message)) => message,
-                Ok(Err(e)) => format!("Build failed: {e}"),
-                Err(_) => "The build stopped unexpectedly".to_string(),
-            };
-            self.say(message);
-        }
+    pub fn ctx(&self) -> &egui::Context {
+        &self.ctx
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
@@ -645,7 +632,7 @@ impl App {
             self.undo(true);
         }
         if build {
-            self.start_build();
+            crate::build::start(self);
         }
         if !typing {
             canvas::keys(self, ctx);
@@ -678,7 +665,7 @@ impl App {
                 return;
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let building = self.building.is_some();
+                let building = self.build.busy();
                 let build = ui
                     .add_enabled(
                         self.workspace.is_some() && !building,
@@ -687,7 +674,7 @@ impl App {
                     )
                     .on_hover_text("Build the project into build.sfc (Ctrl+B)");
                 if build.clicked() {
-                    self.start_build();
+                    crate::build::start(self);
                 }
                 let modified = self.modified().count();
                 let save = ui
@@ -1052,10 +1039,9 @@ impl App {
         let Some(path) = self.startup.screenshot.clone() else {
             return;
         };
-        let ready = self
-            .current()
-            .is_some_and(|o| o.picture.is_some() && o.up_to_date() && !self.palette.busy())
-            || matches!(self.clean, Clean::Missing(_))
+        let ready = self.current().is_some_and(|o| {
+            o.picture.is_some() && o.up_to_date() && !self.palette.busy() && !self.build.busy()
+        }) || matches!(self.clean, Clean::Missing(_))
             || self.workspace.is_none();
         match &mut self.screenshot_frames {
             None if ready => self.screenshot_frames = Some(0),
@@ -1129,9 +1115,9 @@ impl eframe::App for App {
         self.take_preview(&ctx);
         crate::start::poll(self, &ctx);
         self.follow_files();
-        self.finish_build();
+        crate::build::poll(self);
         self.shortcuts(&ctx);
-        if self.building.is_some() || self.previewer.busy() {
+        if self.previewer.busy() {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
 
@@ -1186,6 +1172,7 @@ impl eframe::App for App {
                 self.view_bar(ui);
                 canvas::show(self, ui);
             });
+        crate::build::window(self, &ctx);
         self.confirm_adding(&ctx);
         self.confirm_switch(&ctx);
         self.close_requests(&ctx);
