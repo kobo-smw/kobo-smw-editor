@@ -68,7 +68,9 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
   The canvas's menu adds one to a screen without.
 - **Entrances**: drag the start, the midway, or a secondary entrance; it snaps to where its
   settings can put the player (the game's table of places, or with Lunar Magic's position
-  method 2 any tile). The game's own midway entrance moves from screen to screen.
+  method 2 any tile). The game's own midway entrance moves from screen to screen. The
+  inspector sets how each places the player (the game's places or by tile) and the camera
+  (the game's positions, or rows from the player).
 - **Right click**: the menu for what is under the mouse.
 
 Undo (Ctrl+Z) and redo (Ctrl+Shift+Z) work per level; the Edit menu undoes back several

@@ -1083,3 +1083,31 @@ fn a_background_is_chosen_from_pictures_of_them_all() {
         Layer2::VanillaBackground(kobo_core::addr::SnesAddr::new(0x0C_D900))
     );
 }
+
+#[test]
+fn the_main_entrance_takes_a_camera_from_the_player() {
+    use egui_kittest::kittest::Queryable;
+    use kobo_core::entrance::Camera;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "camera");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.get_by_label("Main entrance").click();
+    harness.run_steps(2);
+    harness.get_by_value("the game's positions").click();
+    harness.run_steps(2);
+    harness.get_by_label("from the player").click();
+    harness.run_steps(2);
+    let level = harness.state().current().unwrap().document.level().clone();
+    assert_eq!(level.settings.relative, Some(false));
+    let e = level.entrance;
+    assert_eq!(
+        Camera::from_bits(e.fg_position, e.bg_position, level.settings.relative, false),
+        Camera::Relative(0)
+    );
+    assert_eq!(
+        harness.state().current().unwrap().document.undo_label(),
+        Some("Change the main entrance")
+    );
+}

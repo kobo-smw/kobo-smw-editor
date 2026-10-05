@@ -94,6 +94,46 @@ pub fn offset_bits(rows: i8) -> (bool, u8) {
     (bits & 0x10 != 0, bits & 0x0F)
 }
 
+/// Where an entrance puts the camera: the game's initial positions of
+/// layers 1 and 2 (0 to 3 each), or with Lunar Magic's `R` layer 1 a
+/// number of rows (-16 to 15) from the player.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Camera {
+    Positions { fg: u8, bg: u8 },
+    Relative(i8),
+}
+
+impl Camera {
+    /// From an entrance's FG and BG positions and its `F` bit, if it has a
+    /// relative camera. The offset's low bits are `ff:bb` in the main and
+    /// midway entrances, and `bb:ff` in a secondary entrance (`bb_above`).
+    pub fn from_bits(fg: u8, bg: u8, relative: Option<bool>, bb_above: bool) -> Self {
+        match relative {
+            None => Self::Positions { fg, bg },
+            Some(high) => {
+                let (upper, lower) = if bb_above { (bg, fg) } else { (fg, bg) };
+                Self::Relative(offset_rows(high, (upper & 3) << 2 | lower & 3))
+            }
+        }
+    }
+
+    /// The FG and BG positions and `F` that hold the camera.
+    pub fn to_bits(self, bb_above: bool) -> (u8, u8, Option<bool>) {
+        match self {
+            Self::Positions { fg, bg } => (fg & 3, bg & 3, None),
+            Self::Relative(rows) => {
+                let (high, low) = offset_bits(rows);
+                let (upper, lower) = (low >> 2, low & 3);
+                if bb_above {
+                    (lower, upper, Some(high))
+                } else {
+                    (upper, lower, Some(high))
+                }
+            }
+        }
+    }
+}
+
 /// A level's settings in Lunar Magic's per-level tables and midway tables,
 /// beyond the game's secondary header ([`level::SecondaryHeader`]), which
 /// holds the rest of the main entrance: the low bits of its position, and
@@ -596,6 +636,23 @@ mod tests {
         );
         let e = EntranceSettings::from_old_byte(0x60, false);
         assert_eq!(e.to_bytes(), (0x40, [0x01, 0x00]));
+    }
+
+    #[test]
+    fn cameras_round_trip() {
+        for bb_above in [false, true] {
+            for rows in -16..=15 {
+                let camera = Camera::Relative(rows);
+                let (fg, bg, f) = camera.to_bits(bb_above);
+                assert_eq!(Camera::from_bits(fg, bg, f, bb_above), camera);
+            }
+            let camera = Camera::Positions { fg: 2, bg: 1 };
+            let (fg, bg, f) = camera.to_bits(bb_above);
+            assert_eq!(Camera::from_bits(fg, bg, f, bb_above), camera);
+        }
+        // `ff:bb` against `bb:ff`: an offset of 6 rows is 0:01:10.
+        assert_eq!(Camera::Relative(6).to_bits(false), (1, 2, Some(false)));
+        assert_eq!(Camera::Relative(6).to_bits(true), (2, 1, Some(false)));
     }
 
     #[test]

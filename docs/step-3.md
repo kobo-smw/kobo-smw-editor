@@ -149,12 +149,13 @@ Since (2026-10-05 and 06, on master):
 - The sprite header (`Edit::SetSpriteSettings`), and layer 2's background chosen from
   pictures of every one of the game's (`level::game_backgrounds`, named in `names.toml`,
   `edit::background_preview`, `Edit::SetLayer2`).
+- Every entrance's position by the game's places or by tile, and its camera at the game's
+  positions or rows from the player (`entrance::Camera`).
 
 Next:
 
 - Positions in tiles past a vertical level's edge.
-- The rest of `LevelSettings` (a relative camera), and the graphics list, palette, and
-  ExAnimation, which are step 4's.
+- The graphics list, palette, and ExAnimation, which are step 4's.
 
 ## Running it
 

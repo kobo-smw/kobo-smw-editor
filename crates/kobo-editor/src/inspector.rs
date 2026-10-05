@@ -3,7 +3,7 @@
 
 use eframe::egui::{self, DragValue, Grid, Response, RichText};
 use kobo_core::edit::{self, Edit, ObjectLayer};
-use kobo_core::entrance::LevelSettings;
+use kobo_core::entrance::{Camera, EntranceSettings, LevelSettings};
 use kobo_core::level::objects::Object;
 use kobo_core::level::objects::ScreenExit;
 use kobo_core::level::{LevelMode, PrimaryHeader, SecondaryHeader};
@@ -817,6 +817,180 @@ fn exit_fields(
     ui.end_row();
 }
 
+/// Where an entrance puts the player and the camera, as its fields show
+/// them: a screen, X and Y as table settings or (`by_tile`) as tiles, and
+/// the camera.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Placed {
+    screen: u8,
+    x: u16,
+    y: u16,
+    by_tile: bool,
+    camera: Camera,
+}
+
+impl Placed {
+    /// From an entrance's settings: the low bits of X and Y, and method
+    /// 2's high bits if it places by tile.
+    fn new(screen: u8, x: u8, y: u8, tile: Option<(u8, u8)>, camera: Camera) -> Self {
+        let (x, y) = (u16::from(x), u16::from(y));
+        match tile {
+            Some((xh, yh)) => Self {
+                screen,
+                x: u16::from(xh) << 3 | x & 7,
+                y: u16::from(yh) << 4 | y & 15,
+                by_tile: true,
+                camera,
+            },
+            None => Self {
+                screen,
+                x,
+                y,
+                by_tile: false,
+                camera,
+            },
+        }
+    }
+
+    /// The settings' X and Y, and method 2's high bits.
+    fn split(self) -> (u8, u8, Option<(u8, u8)>) {
+        if self.by_tile {
+            (
+                (self.x & 7) as u8,
+                (self.y & 15) as u8,
+                Some(((self.x >> 3) as u8, (self.y >> 4) as u8)),
+            )
+        } else {
+            (self.x as u8, self.y as u8, None)
+        }
+    }
+}
+
+/// The fields of an entrance's place and camera, as rows of a grid; the
+/// response of the one that changed, and the new place.
+fn placed_fields(
+    ui: &mut egui::Ui,
+    id: impl std::hash::Hash + std::fmt::Debug + Copy,
+    placed: Placed,
+    vertical: bool,
+) -> Option<(Response, Placed)> {
+    let mut new = placed;
+    let mut changed: Option<Response> = None;
+    let mut note = |r: Response| {
+        if r.changed() {
+            changed = Some(r);
+        }
+    };
+    ui.label("Position");
+    let mut by_tile = new.by_tile;
+    let mut r = egui::ComboBox::from_id_salt(("position", id))
+        .selected_text(if by_tile {
+            "by tile"
+        } else {
+            "the game's places"
+        })
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut by_tile, false, "the game's places")
+                .on_hover_text("A screen, and X and Y settings that pick from the game's tables");
+            ui.selectable_value(&mut by_tile, true, "by tile")
+                .on_hover_text("Lunar Magic's position method 2: any tile of the screen");
+        })
+        .response;
+    if by_tile != new.by_tile {
+        r.mark_changed();
+        new.by_tile = by_tile;
+        // The settings' bits carry over; the high ones start clear.
+        (new.x, new.y) = (new.x & 7, new.y & 15);
+    }
+    note(r);
+    ui.end_row();
+
+    let (x_max, y_max) = match (new.by_tile, vertical) {
+        (false, _) => (7, 15),
+        (true, false) => (15, 1023),
+        (true, true) => (31, 15),
+    };
+    let mut screen = u16::from(new.screen);
+    ui.label("Screen");
+    note(number_field(ui, &mut screen, 0, 0x1F, false));
+    new.screen = screen as u8;
+    ui.end_row();
+    ui.label(if new.by_tile { "Tile X" } else { "X" });
+    note(number_field(ui, &mut new.x, 0, x_max, false));
+    ui.end_row();
+    ui.label(if new.by_tile { "Tile Y" } else { "Y" });
+    note(number_field(ui, &mut new.y, 0, y_max, false));
+    ui.end_row();
+
+    if let Some((r, camera)) = camera_fields(ui, id, new.camera) {
+        new.camera = camera;
+        note(r);
+    }
+    changed.filter(|_| new != placed).map(|r| (r, new))
+}
+
+/// The fields of an entrance's camera, as rows of a grid; the response of
+/// the one that changed, and the new camera.
+fn camera_fields(
+    ui: &mut egui::Ui,
+    id: impl std::hash::Hash + std::fmt::Debug + Copy,
+    camera: Camera,
+) -> Option<(Response, Camera)> {
+    let mut new = camera;
+    let mut changed: Option<Response> = None;
+    let mut note = |r: Response| {
+        if r.changed() {
+            changed = Some(r);
+        }
+    };
+    ui.label("Camera");
+    let relative = matches!(new, Camera::Relative(_));
+    let mut chosen = relative;
+    let mut r = egui::ComboBox::from_id_salt(("camera", id))
+        .selected_text(if relative {
+            "from the player"
+        } else {
+            "the game's positions"
+        })
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut chosen, false, "the game's positions")
+                .on_hover_text("Layers 1 and 2 start at one of four heights each");
+            ui.selectable_value(&mut chosen, true, "from the player")
+                .on_hover_text("Lunar Magic's: layer 1 starts a number of rows from the player");
+        })
+        .response;
+    if chosen != relative {
+        r.mark_changed();
+        new = if chosen {
+            Camera::Relative(0)
+        } else {
+            Camera::Positions { fg: 0, bg: 0 }
+        };
+    }
+    note(r);
+    ui.end_row();
+    match &mut new {
+        Camera::Positions { fg, bg } => {
+            for (label, value) in [("FG position", fg), ("BG position", bg)] {
+                ui.label(label);
+                let mut v = u16::from(*value);
+                note(number_field(ui, &mut v, 0, 3, false));
+                *value = v as u8;
+                ui.end_row();
+            }
+        }
+        Camera::Relative(rows) => {
+            ui.label("Rows");
+            let r = ui
+                .add(DragValue::new(rows).range(-16..=15).speed(0.1))
+                .on_hover_text("Layer 1's top, in rows from the player: up is negative");
+            note(r);
+            ui.end_row();
+        }
+    }
+    changed.filter(|_| new != camera).map(|r| (r, new))
+}
+
 /// A numbered field of a value: its label, what it holds, its largest
 /// value, and the value with it changed.
 type Field<T> = (&'static str, u8, u16, fn(T, u8) -> T);
@@ -837,6 +1011,8 @@ fn entrances(
             *change = Some(Change::new(r, label, vec![Edit::SetEntrance(entrance)]));
         }
     };
+    let vertical = level.header.level_mode.layer1_vertical();
+    let mut placed_change = None;
     egui::CollapsingHeader::new(RichText::new("Main entrance").strong())
         .default_open(false)
         .show(ui, |ui| {
@@ -844,29 +1020,22 @@ fn entrances(
                 .num_columns(2)
                 .spacing([12.0, 6.0])
                 .show(ui, |ui| {
-                    let fields: [Field<SecondaryHeader>; 8] = [
-                        ("Screen", e.entrance_screen, 0x1F, |h, v| SecondaryHeader {
-                            entrance_screen: v,
-                            ..h
-                        }),
-                        ("X", e.entrance_x, 7, |h, v| SecondaryHeader {
-                            entrance_x: v,
-                            ..h
-                        }),
-                        ("Y", e.entrance_y, 15, |h, v| SecondaryHeader {
-                            entrance_y: v,
-                            ..h
-                        }),
+                    let placed = Placed::new(
+                        e.entrance_screen,
+                        e.entrance_x,
+                        e.entrance_y,
+                        level.settings.tile_position,
+                        Camera::from_bits(
+                            e.fg_position,
+                            e.bg_position,
+                            level.settings.relative,
+                            false,
+                        ),
+                    );
+                    placed_change = placed_fields(ui, "main", placed, vertical);
+                    let fields: [Field<SecondaryHeader>; 3] = [
                         ("Action", e.entrance_action, 7, |h, v| SecondaryHeader {
                             entrance_action: v,
-                            ..h
-                        }),
-                        ("FG position", e.fg_position, 3, |h, v| SecondaryHeader {
-                            fg_position: v,
-                            ..h
-                        }),
-                        ("BG position", e.bg_position, 3, |h, v| SecondaryHeader {
-                            bg_position: v,
                             ..h
                         }),
                         ("Layer 2 scroll", e.layer2_scroll, 15, |h, v| {
@@ -918,6 +1087,32 @@ fn entrances(
                 });
         });
 
+    if let Some((r, placed)) = placed_change {
+        let (x, y, tile_position) = placed.split();
+        let (fg_position, bg_position, relative) = placed.camera.to_bits(false);
+        let header = SecondaryHeader {
+            entrance_screen: placed.screen,
+            entrance_x: x,
+            entrance_y: y,
+            fg_position,
+            bg_position,
+            ..e
+        };
+        let settings = LevelSettings {
+            tile_position,
+            relative,
+            ..level.settings
+        };
+        let mut edits = Vec::new();
+        if header != e {
+            edits.push(Edit::SetEntrance(header));
+        }
+        if settings != level.settings {
+            edits.push(Edit::SetSettings(settings));
+        }
+        *change = Some(Change::new(&r, "Change the main entrance", edits));
+    }
+
     lunar_settings(ui, level, change);
 
     section(ui, "Secondary entrances here");
@@ -958,20 +1153,37 @@ fn entrances(
                     .spacing([12.0, 6.0])
                     .show(ui, |ui| {
                         let e = *entrance;
-                        let fields: [Field<Entrance>; 6] = [
-                            ("Screen", e.screen, 0x1F, |e, v| Entrance { screen: v, ..e }),
-                            ("X", e.x, 7, |e, v| Entrance { x: v, ..e }),
-                            ("Y", e.y, 15, |e, v| Entrance { y: v, ..e }),
-                            ("Action", e.action, 7, |e, v| Entrance { action: v, ..e }),
-                            ("FG position", e.fg_position, 3, |e, v| Entrance {
-                                fg_position: v,
+                        let s = e.settings;
+                        let placed = Placed::new(
+                            e.screen,
+                            e.x,
+                            e.y,
+                            s.tile_position,
+                            Camera::from_bits(e.fg_position, e.bg_position, s.relative, true),
+                        );
+                        if let Some((r, placed)) =
+                            placed_fields(ui, ("secondary", index), placed, vertical)
+                        {
+                            let (x, y, tile_position) = placed.split();
+                            let (fg_position, bg_position, relative) = placed.camera.to_bits(true);
+                            let entrance = Entrance {
+                                screen: placed.screen,
+                                x,
+                                y,
+                                fg_position,
+                                bg_position,
+                                settings: EntranceSettings {
+                                    tile_position,
+                                    relative,
+                                    ..s
+                                },
                                 ..e
-                            }),
-                            ("BG position", e.bg_position, 3, |e, v| Entrance {
-                                bg_position: v,
-                                ..e
-                            }),
-                        ];
+                            };
+                            let edit = Edit::ReplaceEntrance { index, entrance };
+                            *change = Some(Change::new(&r, "Change entrance", vec![edit]));
+                        }
+                        let fields: [Field<Entrance>; 1] =
+                            [("Action", e.action, 7, |e, v| Entrance { action: v, ..e })];
                         for (label, value, max, with) in fields {
                             ui.label(label);
                             let mut v = u16::from(value);
@@ -1318,12 +1530,10 @@ fn lunar_settings(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>)
                                 s.midway.separate = Some(SeparateMidway::Entrance(m));
                                 s
                             };
-                            let fields: [MidwayField; 5] = [
+                            let fields: [MidwayField; 3] = [
                                 ("Its X tile", u16::from(m.x), 31, |m, v| MidwayEntrance { x: v as u8, ..m }),
                                 ("Its Y tile", m.y, 1023, |m, v| MidwayEntrance { y: v, ..m }),
                                 ("Its action", u16::from(m.action), 7, |m, v| MidwayEntrance { action: v as u8, ..m }),
-                                ("Its FG position", u16::from(m.fg_position), 3, |m, v| MidwayEntrance { fg_position: v as u8, ..m }),
-                                ("Its BG position", u16::from(m.bg_position), 3, |m, v| MidwayEntrance { bg_position: v as u8, ..m }),
                             ];
                             for (label, value, max, change_to) in fields {
                                 ui.label(label);
@@ -1331,6 +1541,12 @@ fn lunar_settings(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>)
                                 let r = number_field(ui, &mut v, 0, max, false);
                                 set(&r, "Change midway entrance", with(change_to(m, v)), change);
                                 ui.end_row();
+                            }
+                            let camera = Camera::from_bits(m.fg_position, m.bg_position, m.relative, false);
+                            if let Some((r, camera)) = camera_fields(ui, "midway", camera) {
+                                let (fg_position, bg_position, relative) = camera.to_bits(false);
+                                let m = MidwayEntrance { fg_position, bg_position, relative, ..m };
+                                set(&r, "Change midway entrance", with(m), change);
                             }
                             let flags: [MidwayFlag; 3] = [
                                 ("Its water", m.water, |m, v| MidwayEntrance { water: v, ..m }),
@@ -1349,4 +1565,19 @@ fn lunar_settings(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>)
                     }
                 });
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_place_by_tile_splits_into_the_settings_bits() {
+        let camera = Camera::Relative(-3);
+        let placed = Placed::new(4, 5, 9, Some((1, 2)), camera);
+        assert_eq!((placed.x, placed.y), (13, 41));
+        assert_eq!(placed.split(), (5, 9, Some((1, 2))));
+        let placed = Placed::new(4, 5, 9, None, camera);
+        assert_eq!(placed.split(), (5, 9, None));
+    }
 }
