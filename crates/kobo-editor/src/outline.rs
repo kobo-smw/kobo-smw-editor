@@ -139,13 +139,16 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             for row in &rows[range] {
                 match row {
                     Row::Heading(text) => {
-                        ui.add_sized(
-                            [ui.available_width(), height],
-                            egui::Label::new(
-                                RichText::new(text.to_uppercase())
-                                    .small()
-                                    .color(theme::MUTED),
-                            ),
+                        let (rect, _) = ui.allocate_exact_size(
+                            egui::vec2(ui.available_width(), height),
+                            egui::Sense::hover(),
+                        );
+                        ui.painter().text(
+                            rect.left_bottom() + egui::vec2(4.0, -4.0),
+                            egui::Align2::LEFT_BOTTOM,
+                            text.to_uppercase(),
+                            egui::FontId::proportional(10.5),
+                            theme::MUTED,
                         );
                     }
                     Row::Item(item, name, place) => {
@@ -162,20 +165,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             0.0,
                             egui::TextFormat::simple(mono, theme::MUTED),
                         );
-                        job.append(
-                            name,
-                            0.0,
-                            egui::TextFormat::simple(body.clone(), theme::TEXT),
-                        );
-                        job.append(
-                            &format!("  {place}"),
-                            0.0,
-                            egui::TextFormat::simple(body, theme::MUTED),
-                        );
-                        let response = ui.add_sized(
-                            [ui.available_width(), height],
+                        job.append(name, 0.0, egui::TextFormat::simple(body, theme::TEXT));
+                        let response = ui.add(
                             egui::Button::selectable(selected, job)
-                                .wrap_mode(egui::TextWrapMode::Truncate),
+                                .right_text(RichText::new(place).size(12.0).color(theme::MUTED))
+                                .wrap_mode(egui::TextWrapMode::Truncate)
+                                .min_size(egui::vec2(ui.available_width(), height)),
                         );
                         if response.clicked() {
                             clicked = Some(*item);

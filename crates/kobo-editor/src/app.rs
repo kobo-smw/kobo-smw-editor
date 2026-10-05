@@ -1012,7 +1012,7 @@ impl App {
         }
         ui.add(
             egui::TextEdit::singleline(&mut self.level_filter)
-                .hint_text("Find a level")
+                .hint_text("Find a level: 105, castle…")
                 .desired_width(f32::INFINITY),
         );
         ui.add_space(4.0);
@@ -1021,35 +1021,47 @@ impl App {
         };
         ui.checkbox(&mut self.all_levels, "The game's own levels too")
             .on_hover_text("Levels the project does not list build as the game has them. Choose one to add it.");
-        let filter = self.level_filter.trim().to_ascii_uppercase();
+        let filter = self.level_filter.trim().to_lowercase();
         let listed: Vec<u16> = if self.all_levels {
             (0..0x200).collect()
         } else {
             workspace.levels().collect()
         };
-        let levels: Vec<u16> = listed
+        // What a level is found by, and shown with: its tileset, and its
+        // screens and whether it is vertical.
+        let about = |number: u16| match workspace.level(number) {
+            Some(level) => {
+                let tileset =
+                    kobo_core::names::object_tileset(level.header.object_tileset).unwrap_or("?");
+                let screens = level.header.screens;
+                let size = match (level.header.level_mode.layer1_vertical(), screens) {
+                    (true, _) => format!("vertical, {screens}"),
+                    (false, 1) => "1 screen".to_string(),
+                    (false, n) => format!("{n} screens"),
+                };
+                (tileset.to_string(), size)
+            }
+            None => ("the game's own".to_string(), String::new()),
+        };
+        let levels: Vec<(u16, (String, String))> = listed
             .into_iter()
-            .filter(|n| filter.is_empty() || format!("{n:03X}").contains(&filter))
+            .map(|n| (n, about(n)))
+            .filter(|(n, (tileset, _))| {
+                filter.is_empty()
+                    || format!("{n:03x}").contains(&filter)
+                    || tileset.to_lowercase().contains(&filter)
+            })
             .collect();
         let mut clicked = None;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.with_layout(Layout::top_down_justified(Align::Min), |ui| {
-                    for number in levels {
+                    for (number, (tileset, size)) in levels {
                         let modified = self
                             .open
                             .get(&number)
                             .is_some_and(|o| o.document.is_modified());
-                        let about = match workspace.level(number) {
-                            Some(level) => {
-                                let tileset =
-                                    kobo_core::names::object_tileset(level.header.object_tileset)
-                                        .unwrap_or("?");
-                                format!("{tileset} · {}", level.header.screens)
-                            }
-                            None => "the game's own".to_string(),
-                        };
                         let mut job = egui::text::LayoutJob::default();
                         let font = egui::FontId::monospace(12.5);
                         job.append(
@@ -1068,15 +1080,14 @@ impl App {
                             );
                         }
                         job.append(
-                            &format!("  {about}"),
+                            &format!("  {tileset}"),
                             0.0,
-                            egui::TextFormat::simple(
-                                egui::FontId::proportional(12.0),
-                                theme::MUTED,
-                            ),
+                            egui::TextFormat::simple(egui::FontId::proportional(12.5), theme::TEXT),
                         );
                         let selected = self.current == Some(number);
-                        if ui.selectable_label(selected, job).clicked() {
+                        let row = egui::Button::selectable(selected, job)
+                            .right_text(RichText::new(size).size(11.5).color(theme::MUTED));
+                        if ui.add(row).clicked() {
                             clicked = Some(number);
                         }
                     }
