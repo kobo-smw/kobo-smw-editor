@@ -1321,8 +1321,11 @@ impl Cache {
         };
         fs::create_dir_all(&self.dir).map_err(fail)?;
         // Written whole under another name first, so a reader never sees
-        // half a snapshot.
-        let partial = path.with_extension(format!("{}.part", std::process::id()));
+        // half a snapshot; a name of its own for every write, so two
+        // builds in one process (the editor's, tests) never share one.
+        static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let partial = path.with_extension(format!("{}-{n}.part", std::process::id()));
         fs::write(&partial, data).map_err(fail)?;
         fs::rename(&partial, &path).map_err(fail)
     }

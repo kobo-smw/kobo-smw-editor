@@ -105,6 +105,82 @@ pub enum EditError {
     },
 }
 
+/// The line of `text`, a level file in Kobo's format, that holds entry
+/// `index` of array `list` (`layer1.objects`), counted from 0.
+pub fn entry_line(text: &str, list: &str, index: usize) -> Option<usize> {
+    let (table, key) = list.split_once('.')?;
+    let header = format!("[{table}]");
+    let opening = format!("{key} = [");
+    let mut lines = text.lines().enumerate();
+    lines.find(|(_, line)| *line == header)?;
+    lines.find(|(_, line)| *line == opening)?;
+    lines
+        .take_while(|(_, line)| *line != "]")
+        .filter(|(_, line)| line.trim_start().starts_with('{'))
+        .nth(index)
+        .map(|(n, _)| n)
+}
+
+/// One value a standard object's settings byte holds, as its level file
+/// names it: `width` and `height` in tiles, `type`, `length`, or the whole
+/// byte as `settings` where the object's handler is tileset-specific.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct SettingField {
+    pub name: &'static str,
+    pub value: u16,
+    pub min: u16,
+    pub max: u16,
+}
+
+/// The values a standard object's settings byte holds
+/// ([`Settings`](crate::level::objects::Settings)).
+pub fn setting_fields(number: u8, settings: u8) -> Vec<SettingField> {
+    use crate::level::objects::Settings;
+    let (hi, lo) = (u16::from(settings >> 4), u16::from(settings & 0x0F));
+    let field = |name, value, min, max| SettingField {
+        name,
+        value,
+        min,
+        max,
+    };
+    let height = field("height", hi + 1, 1, 16);
+    let width = field("width", lo + 1, 1, 16);
+    match Settings::of(number) {
+        Settings::HeightWidth => vec![height, width],
+        Settings::HeightType => vec![height, field("type", lo, 0, 15)],
+        Settings::TypeWidth => vec![field("type", hi, 0, 15), width],
+        Settings::Height => vec![height],
+        Settings::Width => vec![width],
+        Settings::Length => vec![field("length", u16::from(settings) + 1, 1, 256)],
+        Settings::Raw => vec![field("settings", u16::from(settings), 0, 255)],
+    }
+}
+
+/// The settings byte with field `name` set to `value`, clamped to the
+/// field's range; the byte as it was for a field the object does not
+/// have.
+pub fn with_setting(number: u8, settings: u8, name: &str, value: u16) -> u8 {
+    use crate::level::objects::Settings;
+    let Some(field) = setting_fields(number, settings)
+        .into_iter()
+        .find(|f| f.name == name)
+    else {
+        return settings;
+    };
+    let value = value.clamp(field.min, field.max);
+    match name {
+        "height" => (settings & 0x0F) | (((value - 1) as u8) << 4),
+        "width" => (settings & 0xF0) | (value - 1) as u8,
+        // A type and a width keep the type in the high nibble.
+        "type" if Settings::of(number) == Settings::TypeWidth => {
+            (settings & 0x0F) | ((value as u8) << 4)
+        }
+        "type" => (settings & 0xF0) | value as u8,
+        "length" => (value - 1) as u8,
+        _ => value as u8,
+    }
+}
+
 /// Where an object is placed, in tiles, if it has a place.
 pub fn object_position(object: &Object) -> Option<(u16, u16)> {
     match *object {

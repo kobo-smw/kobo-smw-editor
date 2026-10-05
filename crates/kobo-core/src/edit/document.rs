@@ -110,6 +110,40 @@ impl LevelDocument {
         Ok(())
     }
 
+    /// Applies `edits` as part of the last undo step rather than a new
+    /// one: a value dragged in the editor changes many times and is one
+    /// step. With no step to amend, the edits are a step of their own.
+    pub fn amend(&mut self, edits: &[Edit]) -> Result<(), EditError> {
+        if self.undo.is_empty() {
+            return self.apply("Edit", edits);
+        }
+        let mut level = self.level.clone();
+        let mut comments = self.comments.clone();
+        for edit in edits {
+            edit.apply(&mut level, &mut comments)?;
+        }
+        self.level = level;
+        self.comments = comments;
+        self.redo.clear();
+        self.text = self.level.to_toml(&self.comments);
+        Ok(())
+    }
+
+    /// Replaces the document with `text` as part of the last undo step,
+    /// as [`LevelDocument::amend`] does for edits: typing in the source
+    /// pane. On a parse error nothing changes.
+    pub fn amend_text(&mut self, text: &str) -> Result<(), EditError> {
+        if self.undo.is_empty() {
+            return self.set_text("Edit source", text);
+        }
+        let (level, comments) = Level::from_toml(text)?;
+        self.level = level;
+        self.comments = comments;
+        self.redo.clear();
+        self.text = self.level.to_toml(&self.comments);
+        Ok(())
+    }
+
     /// Replaces the document with `text`, as an outside edit or the source
     /// pane's: one undo step. On a parse error nothing changes.
     pub fn set_text(&mut self, label: impl Into<String>, text: &str) -> Result<(), EditError> {

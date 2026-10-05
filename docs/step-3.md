@@ -114,3 +114,15 @@ file by hand; when they do, the editor follows.
 6. Live reload and the source pane.
 7. The palette for adding objects and sprites; the header and entrances.
 8. Build from the editor, diagnostics, and CI on all three platforms.
+
+## Running it
+
+- `cargo run -p kobo-editor -- path/to/project --level 105` opens a level; with no
+  folder it asks for one. It finds the clean ROM as the CLI does.
+- `--screenshot out.png` saves the window once the level is drawn and quits, which with
+  `xvfb-run -a` shows the window on a machine without a display. The development server
+  has Mesa's GLX but not `libxkbcommon-x11`, which winit loads for X11: unpack
+  `libxkbcommon-x11-0` and `libxcb-xkb1` from Debian's packages
+  (`apt-get download`, `dpkg-deb -x`) and point `LD_LIBRARY_PATH` at them, with a
+  `libxkbcommon-x11.so` link to the `.so.0`.
+- `cargo test -p kobo-editor` drives the window without any display or GPU.

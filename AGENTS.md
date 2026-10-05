@@ -72,6 +72,9 @@ Early stage: roadmap steps 1 and 2 are complete; step 3, the GUI level editor, i
 - **Rust** (pinned in `rust-toolchain.toml` and `mise.toml`), edition 2024, cargo workspace.
   - `crates/kobo-core`: the library. All logic lives here.
   - `crates/kobo-cli`: the `kobo` binary. Thin shell over the core; no logic of its own.
+  - `crates/kobo-editor`: the `kobo-editor` binary, the level editor (egui). Also a thin
+    shell: it holds what is on screen, and changes a project only through
+    `kobo_core::edit`. Its tests drive the window headlessly (`egui_kittest`).
 - `kobo_core::addr` is the only place that knows how SNES addresses map to file offsets.
   Every ROM read takes a `SnesAddr` and goes through the ROM's `Mapping` (LoROM, SA-1, or
   SA-1 over 4 MiB); the bus follows an SA-1's bank registers (`SuperMmc`) once the game
@@ -235,6 +238,8 @@ cargo xtask verify [--strict] [--full]       # fmt, clippy, lint-tools, the test
 cargo xtask tiers                            # what this machine has for each test tier
 cargo xtask baseline                         # write every level's picture hashes (tests/render_baselines.rs)
 cargo xtask lint-tools                       # bash -n, shellcheck, and Python's parser on tools/
+cargo run -p kobo-editor -- [dir] [--level 105] [--select 10] [--source]  # the level editor
+cargo run -p kobo-editor -- dir --level 105 --screenshot out.png  # its window as a PNG, then quit (xvfb-run -a)
 cargo run -- rom info [-r rom]               # header, checksum, hash, identity
 cargo run -- rom expand 2M out.sfc [-r rom]  # a copy expanded, with the checksum fixed
 cargo run -- rom rats [-r rom]               # RATS blocks from $108000 on, and free space

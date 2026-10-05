@@ -287,3 +287,59 @@ fn objects_without_a_place_keep_none() {
     assert_eq!(object_position(&exit), None);
     assert_eq!(object_at(&exit, 3, 3), exit);
 }
+
+#[test]
+fn entries_are_found_by_line() {
+    let document = document();
+    let line = |list, index| entry_line(document.text(), list, index);
+    let text: Vec<&str> = document.text().lines().collect();
+    assert!(text[line("layer1.objects", 0).unwrap()].contains("obj = 0x21"));
+    assert!(text[line("layer1.objects", 2).unwrap()].contains("ext = 0x2D"));
+    assert_eq!(line("layer1.objects", 3), None);
+    assert!(text[line(SPRITE_LIST, 0).unwrap()].contains("id = 0x0F"));
+}
+
+#[test]
+fn setting_fields_read_and_write_the_byte() {
+    // Coin 05: height and width, each one less than the tiles.
+    let fields = setting_fields(0x05, 0x04);
+    assert_eq!(
+        fields.iter().map(|f| (f.name, f.value)).collect::<Vec<_>>(),
+        [("height", 1), ("width", 5)]
+    );
+    assert_eq!(with_setting(0x05, 0x04, "height", 3), 0x24);
+    assert_eq!(with_setting(0x05, 0x04, "width", 40), 0x0F);
+    // Ledge edge 13: height and a type in the low nibble.
+    assert_eq!(with_setting(0x13, 0x3B, "type", 13), 0x3D);
+    // Vertical pipe end 10: a type in the high nibble and a width.
+    assert_eq!(with_setting(0x10, 0x21, "type", 5), 0x51);
+    // Long ground ledge 21: a length in the whole byte.
+    assert_eq!(setting_fields(0x21, 0xBF)[0].value, 192);
+    assert_eq!(with_setting(0x21, 0xBF, "length", 256), 0xFF);
+    // A field the object has not leaves the byte alone.
+    assert_eq!(with_setting(0x21, 0xBF, "width", 3), 0xBF);
+}
+
+#[test]
+fn amending_keeps_one_undo_step() {
+    let mut document = document();
+    let at = |x| Edit::ReplaceObject {
+        layer: ObjectLayer::One,
+        index: 1,
+        object: object_at(object(&document, 1), x, 20),
+    };
+    let first = at(4);
+    document.apply("Move object", &[first]).unwrap();
+    for x in 5..9 {
+        let edit = Edit::ReplaceObject {
+            layer: ObjectLayer::One,
+            index: 1,
+            object: object_at(object(&document, 1), x, 20),
+        };
+        document.amend(&[edit]).unwrap();
+    }
+    assert_eq!(object_position(object(&document, 1)), Some((8, 20)));
+    assert!(document.undo());
+    assert_eq!(document.text(), LEVEL);
+    assert!(!document.undo());
+}

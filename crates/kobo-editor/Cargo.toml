@@ -1,0 +1,26 @@
+[package]
+name = "kobo-editor"
+description = "The Kobo level editor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "kobo-editor"
+path = "src/main.rs"
+
+[dependencies]
+kobo-core.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+eframe.workspace = true
+notify.workspace = true
+rfd.workspace = true
+
+[dev-dependencies]
+egui_kittest = { workspace = true, features = ["eframe"] }
+
+[lints]
+workspace = true
