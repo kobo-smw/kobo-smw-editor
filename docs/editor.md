@@ -25,8 +25,9 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
 - **Top bar**: the Project, Edit, and View menus; back and forward between levels;
   Commands (Ctrl+K); Undo, Redo, Save, Play, and Build.
 - **Left**: five tabs.
-  - *Levels*: the project's levels (and with the box ticked, the game's own, which are added
-    when chosen); *All levels as pictures* shows every level as a card.
+  - *Levels*: the project's levels by their names on the overworld (and with the box
+    ticked, the game's own, which are added when chosen), found by number, name, or
+    tileset; *All levels as pictures* shows every level as a card.
   - *Add*: the palette. Objects, extended objects, and sprites, each drawn as the open level
     draws it (its tileset, sprite set, graphics, and palette); and Map16, a page at a time,
     for placing a tile directly. Choosing one places it at each click on the canvas, until

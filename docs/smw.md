@@ -335,6 +335,16 @@ are SMWDisX's.
   them and continues them unstretched across the level, so parallax layers keep the entry
   screen's phase; an axis layer 3 does not scroll on repeats per screen horizontally and
   stays in the entry band vertically.
+- Level names (US): the overworld spells a translevel's name (levels `000`-`024` and
+  `101`-`13B` are translevels `00`-`5F`) from three parts a word of `LevelNames`
+  (`$04A0FC`) picks: its high byte's low seven bits through `DATA_049C91`, bits 4-7
+  through `DATA_049CCF`, bits 0-3 through `DATA_049CED`, each an offset into
+  `LevelNameStrings` (`$049AC5`) whose last tile has bit 7 set. A first part that is only
+  its last tile and a second that is only a space are left out, and no more than 19 tiles
+  are written (`CODE_049D07`, `CODE_049D7F`), which cuts the "3" after "YELLOW SWITCH
+  PALACE". Tiles: letters from `00`, `1C` a hyphen, `1F` a space, `5A` `#`, `5D` an
+  apostrophe, digits from `63`, and wide letters for "YELLOW" (`38`-`3C`) and " ILLUSI"
+  (`32`-`37`) (`level::level_name`).
 - Layer 2 scroll: the secondary header's setting (`$05F000` bits 7-4) indexes two tables,
   `DATA_05D720` for `$1413` and `DATA_05D710` for `$1414`; `UpdateScreenPosition` moves
   layer 2 by `$1413` across (0 not at all, 1 with layer 1, 2 at half) and by `$1414` up

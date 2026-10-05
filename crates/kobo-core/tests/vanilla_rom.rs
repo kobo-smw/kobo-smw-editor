@@ -68,3 +68,20 @@ fn vanilla_level_pointer_tables() {
         );
     }
 }
+
+#[test]
+fn level_names_read_as_the_overworld_shows_them() {
+    let Some(rom) = common::vanilla() else {
+        return;
+    };
+    let name = |level| kobo_core::level::level_name(&rom, level);
+    assert_eq!(name(0x105).as_deref(), Some("YOSHI'S ISLAND 1"));
+    assert_eq!(name(0x101).as_deref(), Some("#1 IGGY'S CASTLE"));
+    assert_eq!(name(0x014).as_deref(), Some("YELLOW SWITCH PALACE"));
+    assert_eq!(name(0x11E).as_deref(), Some("FOREST OF ILLUSION 1"));
+    assert_eq!(name(0x021).as_deref(), Some("CHOCO-GHOST HOUSE"));
+    assert_eq!(name(0x12A).as_deref(), Some("GNARLY"));
+    // A sublevel has no name, nor do the levels without one.
+    assert_eq!(name(0x1C7), None);
+    assert_eq!(name(0x000), None);
+}

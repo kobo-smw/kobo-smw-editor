@@ -378,6 +378,95 @@ pub fn layer3_setting(rom: &Rom, tileset: u8, setting: u8) -> Result<&'static st
     })
 }
 
+/// The overworld's level names (US): a word per translevel
+/// (`LevelNames`) whose high byte's low seven bits pick a first part
+/// (`DATA_049C91`), its bits 4-7 a second (`DATA_049CCF`), and bits 0-3 a
+/// third (`DATA_049CED`), each an offset into `LevelNameStrings`, whose
+/// characters end at one with bit 7 set. The overworld leaves out a
+/// first part that is only its end, and a second that is only a space
+/// (`CODE_049D07`).
+pub const LEVEL_NAMES: SnesAddr = SnesAddr::new(0x04A0FC);
+pub const LEVEL_NAME_FIRST: SnesAddr = SnesAddr::new(0x049C91);
+pub const LEVEL_NAME_SECOND: SnesAddr = SnesAddr::new(0x049CCF);
+pub const LEVEL_NAME_THIRD: SnesAddr = SnesAddr::new(0x049CED);
+pub const LEVEL_NAME_STRINGS: SnesAddr = SnesAddr::new(0x049AC5);
+
+/// The tiles a name shows: the overworld writes no more than `$26` bytes
+/// of them (`CODE_049D7F`).
+const NAME_TILES: usize = 19;
+
+/// A level's translevel, the number the overworld knows it by: levels
+/// `000`-`024` and `101`-`13B` have one, `00`-`5F`.
+pub fn translevel(level: u16) -> Option<u8> {
+    match level {
+        0x000..=0x024 => Some(level as u8),
+        0x101..=0x13B => Some((level - 0x101 + 0x25) as u8),
+        _ => None,
+    }
+}
+
+/// A character of the level names, from its tile on layer 3: letters
+/// from `00`, digits from `63`, and the wide letters of "YELLOW" and
+/// "ILLUSION" the switch palace and forest names use.
+fn name_char(tile: u8) -> Option<&'static str> {
+    const LETTERS: [&str; 26] = [
+        "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R",
+        "S", "T", "U", "V", "W", "X", "Y", "Z",
+    ];
+    const DIGITS: [&str; 10] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    Some(match tile {
+        0x00..=0x19 => LETTERS[usize::from(tile)],
+        0x1C => "-",
+        0x1F => " ",
+        0x32 => " I",
+        0x33 | 0x34 => "L",
+        0x35 => "U",
+        0x36 => "S",
+        0x37 => "I",
+        0x38 => "YE",
+        0x39 | 0x3A => "L",
+        0x3B => "O",
+        0x3C => "W",
+        0x5A => "#",
+        0x5D => "'",
+        0x63..=0x6C => DIGITS[usize::from(tile - 0x63)],
+        _ => return None,
+    })
+}
+
+/// The name the overworld shows for `level`, in the ROM's tables; `None`
+/// for a level without a translevel, an empty name, or one with a tile
+/// that is not a known character.
+pub fn level_name(rom: &Rom, level: u16) -> Option<String> {
+    let t = u32::from(translevel(level)?);
+    let word = rom.read_u16(LEVEL_NAMES.add(2 * t)).ok()?;
+    // The tiles of a part, as many as are left of the 19 a name shows.
+    let mut shown = 0;
+    let mut part = |table: SnesAddr, index: u16, skip: &dyn Fn(u8) -> bool| -> Option<String> {
+        let at = u32::from(rom.read_u16(table.add(2 * u32::from(index))).ok()?);
+        let mut text = String::new();
+        if skip(rom.read_u8(LEVEL_NAME_STRINGS.add(at)).ok()?) {
+            return Some(text);
+        }
+        for i in 0..64 {
+            let tile = rom.read_u8(LEVEL_NAME_STRINGS.add(at + i)).ok()?;
+            if shown < NAME_TILES {
+                text += name_char(tile & 0x7F)?;
+                shown += 1;
+            }
+            if tile & 0x80 != 0 {
+                break;
+            }
+        }
+        Some(text)
+    };
+    let mut name = part(LEVEL_NAME_FIRST, word >> 8 & 0x7F, &|t| t & 0x80 != 0)?;
+    name += &part(LEVEL_NAME_SECOND, word >> 4 & 0x0F, &|t| t == 0x9F)?;
+    name += &part(LEVEL_NAME_THIRD, word & 0x0F, &|_| false)?;
+    let name = name.trim().to_string();
+    (!name.is_empty()).then_some(name)
+}
+
 /// The game's layer 2 scroll rates for each of the secondary header's 16
 /// settings: horizontal (`DATA_05D720`, into `$1413`) and vertical
 /// (`DATA_05D710`, into `$1414`). `UpdateScreenPosition` moves layer 2 by

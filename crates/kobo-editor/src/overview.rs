@@ -219,6 +219,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     filter.is_empty()
                         || format!("{n:03x}").contains(&filter)
                         || tileset.contains(&filter)
+                        || app
+                            .level_name(n)
+                            .is_some_and(|name| name.to_lowercase().contains(&filter))
                 })
                 .collect();
             for row in cards.chunks(columns) {
@@ -293,18 +296,21 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                                 .strong()
                                                 .color(theme::ACCENT),
                                         );
-                                        if let Some(level) = level {
+                                        if let Some(name) = app.level_name(number) {
+                                            ui.label(RichText::new(name).color(theme::TEXT));
+                                        } else if let Some(level) = level {
                                             let tileset =
                                                 names::object_tileset(level.header.object_tileset)
                                                     .unwrap_or("?");
                                             ui.label(RichText::new(tileset).color(theme::TEXT));
+                                        }
+                                        if let Some(level) = level {
+                                            let screens = match level.header.screens {
+                                                1 => "1 screen".to_string(),
+                                                n => format!("{n} screens"),
+                                            };
                                             ui.label(
-                                                RichText::new(format!(
-                                                    "{} screens",
-                                                    level.header.screens
-                                                ))
-                                                .small()
-                                                .color(theme::MUTED),
+                                                RichText::new(screens).small().color(theme::MUTED),
                                             );
                                         }
                                         if modified {

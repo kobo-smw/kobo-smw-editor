@@ -267,6 +267,31 @@ pub fn game_background(address: crate::addr::SnesAddr) -> Option<&'static str> {
     NAMES.backgrounds.get(&address.raw()).map(String::as_str)
 }
 
+/// A level name as the overworld spells it (`level::level_name`), in title
+/// case: "YOSHI'S ISLAND 1" as "Yoshi's Island 1", "of" kept small.
+pub fn title_case(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for (i, word) in name.split(' ').enumerate() {
+        if i > 0 {
+            out.push(' ');
+        }
+        if i > 0 && word.eq_ignore_ascii_case("of") {
+            out.push_str("of");
+            continue;
+        }
+        let mut start = true;
+        for c in word.chars() {
+            out.push(if start {
+                c.to_ascii_uppercase()
+            } else {
+                c.to_ascii_lowercase()
+            });
+            start = c == '-';
+        }
+    }
+    out
+}
+
 /// An ExAnimation slot's type (`01`-`1B`).
 pub fn exanimation_type(kind: u8) -> Option<&'static str> {
     NAMES.exanimation_types.get(kind)
@@ -432,6 +457,14 @@ mod tests {
             "backgrounds",
             NAMES.backgrounds.values().map(String::as_str),
         );
+    }
+
+    #[test]
+    fn level_names_read_in_title_case() {
+        assert_eq!(title_case("YOSHI'S ISLAND 1"), "Yoshi's Island 1");
+        assert_eq!(title_case("#1 IGGY'S CASTLE"), "#1 Iggy's Castle");
+        assert_eq!(title_case("FOREST OF ILLUSION 1"), "Forest of Illusion 1");
+        assert_eq!(title_case("CHOCO-GHOST HOUSE"), "Choco-Ghost House");
     }
 
     #[test]

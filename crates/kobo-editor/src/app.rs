@@ -220,6 +220,8 @@ pub struct App {
     all_levels: bool,
     /// A level the user asked to add from the game's own, to confirm.
     pub(crate) adding: Option<u16>,
+    /// The overworld's names of the levels, read when first asked for.
+    level_names: std::sync::OnceLock<Vec<Option<String>>>,
     /// The levels shown before this one, and after it once gone back.
     history: Vec<u16>,
     future: Vec<u16>,
@@ -310,6 +312,7 @@ impl App {
             all_levels: false,
             adding: None,
             history: Vec::new(),
+            level_names: Default::default(),
             future: Vec::new(),
             look_at: None,
             removing: None,
@@ -551,6 +554,21 @@ impl App {
         } else {
             self.open_level(level);
         }
+    }
+
+    /// The name the overworld gives level `number`, in title case, if it
+    /// has one: read once from the clean ROM, whose names a build keeps.
+    pub fn level_name(&self, number: u16) -> Option<&str> {
+        let workspace = self.workspace.as_ref()?;
+        let names = self.level_names.get_or_init(|| {
+            (0..0x200)
+                .map(|n| {
+                    kobo_core::level::level_name(workspace.clean(), n)
+                        .map(|name| kobo_core::names::title_case(&name))
+                })
+                .collect()
+        });
+        names.get(usize::from(number))?.as_deref()
     }
 
     /// Whether level `number` is open with unsaved edits.
@@ -1015,6 +1033,9 @@ impl App {
             if let Some(open) = self.current() {
                 ui.label(RichText::new("/").color(theme::MUTED));
                 ui.label(RichText::new(format!("{:03X}", open.number)).strong());
+                if let Some(name) = self.level_name(open.number) {
+                    ui.label(RichText::new(name).color(theme::MUTED));
+                }
                 if open.document.is_modified() {
                     ui.label(RichText::new("● modified").color(theme::ACCENT).small());
                 }
@@ -1168,29 +1189,35 @@ impl App {
         } else {
             workspace.levels().collect()
         };
-        // What a level is found by, and shown with: its tileset, and its
-        // screens and whether it is vertical.
-        let about = |number: u16| match workspace.level(number) {
-            Some(level) => {
-                let tileset =
-                    kobo_core::names::object_tileset(level.header.object_tileset).unwrap_or("?");
-                let screens = level.header.screens;
-                let size = match (level.header.level_mode.layer1_vertical(), screens) {
-                    (true, _) => format!("vertical, {screens}"),
-                    (false, 1) => "1 screen".to_string(),
-                    (false, n) => format!("{n} screens"),
-                };
-                (tileset.to_string(), size)
+        // What a level is found by, and shown with: its name or else its
+        // tileset, and its screens and whether it is vertical.
+        let about = |number: u16| {
+            let name = self.level_name(number).map(str::to_string);
+            match workspace.level(number) {
+                Some(level) => {
+                    let tileset = kobo_core::names::object_tileset(level.header.object_tileset)
+                        .unwrap_or("?");
+                    let screens = level.header.screens;
+                    let size = match (level.header.level_mode.layer1_vertical(), screens) {
+                        (true, _) => format!("vertical, {screens}"),
+                        (false, 1) => "1 screen".to_string(),
+                        (false, n) => format!("{n} screens"),
+                    };
+                    (name, tileset.to_string(), size)
+                }
+                None => (name, "the game's own".to_string(), String::new()),
             }
-            None => ("the game's own".to_string(), String::new()),
         };
-        let levels: Vec<(u16, (String, String))> = listed
+        let levels: Vec<(u16, ListedLevel)> = listed
             .into_iter()
             .map(|n| (n, about(n)))
-            .filter(|(n, (tileset, _))| {
+            .filter(|(n, (name, tileset, _))| {
                 filter.is_empty()
                     || format!("{n:03x}").contains(&filter)
                     || tileset.to_lowercase().contains(&filter)
+                    || name
+                        .as_ref()
+                        .is_some_and(|name| name.to_lowercase().contains(&filter))
             })
             .collect();
         let mut clicked = None;
@@ -1198,7 +1225,7 @@ impl App {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.with_layout(Layout::top_down_justified(Align::Min), |ui| {
-                    for (number, (tileset, size)) in levels {
+                    for (number, (name, tileset, size)) in levels {
                         let modified = self
                             .open
                             .get(&number)
@@ -1220,15 +1247,25 @@ impl App {
                                 ),
                             );
                         }
+                        let (text, color) = match &name {
+                            Some(name) => (name.as_str(), theme::TEXT),
+                            None => (tileset.as_str(), theme::MUTED),
+                        };
                         job.append(
-                            &format!("  {tileset}"),
+                            &format!("  {text}"),
                             0.0,
-                            egui::TextFormat::simple(egui::FontId::proportional(12.5), theme::TEXT),
+                            egui::TextFormat::simple(egui::FontId::proportional(12.5), color),
                         );
                         let selected = self.current == Some(number);
                         let row = egui::Button::selectable(selected, job)
                             .right_text(RichText::new(size).size(11.5).color(theme::MUTED));
-                        if ui.add(row).clicked() {
+                        let response = ui.add(row);
+                        let response = if name.is_some() {
+                            response.on_hover_text(tileset.as_str())
+                        } else {
+                            response
+                        };
+                        if response.clicked() {
                             clicked = Some(number);
                         }
                     }
@@ -1685,7 +1722,10 @@ impl App {
             );
             title = format!("{name} — Kobo");
             if let Some(open) = self.current() {
-                title = format!("{name} / {:03X} — Kobo", open.number);
+                title = match self.level_name(open.number) {
+                    Some(level) => format!("{name} / {:03X} {level} — Kobo", open.number),
+                    None => format!("{name} / {:03X} — Kobo", open.number),
+                };
             }
             if self.modified().count() > 0 {
                 title = format!("● {title}");
@@ -1772,6 +1812,10 @@ fn same_file(a: &Path, b: &Path) -> bool {
 
 /// How many levels keep their pictures while others are shown.
 const KEPT_PICTURES: usize = 4;
+/// What the level list shows of a level: its name on the overworld, its
+/// tileset, and its size.
+type ListedLevel = (Option<String>, String, String);
+
 /// Levels the Back command remembers.
 const HISTORY: usize = 100;
 
