@@ -38,11 +38,15 @@ from that). Vanilla behaviour is in [smw.md](smw.md).
   Kobo's empty tile past it, as a ROM import reads the tables
   (`AllMap16::allocated_ends`). Both imports give the same pages, foreground and BG,
   for every current-layout corpus hack but Grand Poo World 2, whose group `40` has a
-  table the export does not show (`tests/map16_pages.rs`, 30 hacks, decided with the
-  maintainer 2026-10-05). The check found two ROM-import gaps, since fixed: a BG table
-  0 pointer at a mirror of the game's table (`$8D9100`, LAG), and acts-like settings
-  of tiles in a group Lunar Magic allocated no graphics for (Sakaya Sanctuary's
-  `4072`).
+  table the export does not show (`tests/map16_pages.rs`: 158 hacks with the QLDC
+  patches, decided with the maintainer 2026-10-05). The check found three ROM-import
+  gaps, since fixed: a BG table 0 pointer at a mirror of the game's table (`$8D9100`,
+  LAG); acts-like settings of tiles in a group Lunar Magic allocated no graphics for
+  (Sakaya Sanctuary's `4072`); and acts-like settings of tiles on a group's pages past
+  the last one Lunar Magic allocated graphics for, where its block ends but the
+  acts-like table goes on (QLDC 2021 `09_Lui`, `27_Morsel`, `72_Teyla`, `75_Gurjinter`,
+  `76_Bench-kun`, `24_HD_DankBaron`: tiles with no graphics that act like `$025`,
+  `$13E`, or `$1AA`).
 - Higher pages live in
   RATS-tagged blocks whose layout differs by Lunar Magic version; the routine at `$06F540`
   resolves any layer 1 tile number. Its `JSL` takes the place of the game's

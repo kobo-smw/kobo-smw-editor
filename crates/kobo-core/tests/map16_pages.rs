@@ -96,6 +96,61 @@ fn pages_build_and_read_back() {
     );
 }
 
+/// A page of a group past the last one with graphics, with tiles that
+/// only act like others: Lunar Magic allocates definitions only as far as
+/// its last page with graphics, and keeps what every tile acts like in the
+/// acts-like tables all the same, so the import reads those tiles' settings
+/// past the group's block (QLDC 2021 `09_Lui`, among others).
+#[test]
+fn tiles_that_only_act_like_others_read_back_past_the_last_page() {
+    if common::asar().is_none() {
+        return;
+    }
+    let base = common::synthetic_base();
+    let mut project = project();
+    let mut acts_only = Map16Page::default();
+    for tile in [0x1A00u16, 0x1A41, 0x1AFF] {
+        acts_only.tiles.insert(
+            tile,
+            Map16Entry {
+                gfx: Map16Tile::default(),
+                acts: 0x13E,
+            },
+        );
+    }
+    project.map16.insert(2, (0x1A, acts_only));
+    let built = build::build_on(&base, &project, None).unwrap();
+    check_read_back(&built, &project);
+    // As Lunar Magic leaves it: the group's block ends with page 13, its
+    // last with graphics. Kobo's build allocates as far as page 1A.
+    let group = &pages::PAGE_GROUPS[1];
+    let pc = |rom: &Rom, tile: u16| {
+        let at = group.definition(rom, tile).unwrap().unwrap();
+        rom.pc(at).unwrap().as_usize()
+    };
+    let (first, end) = (pc(&built, 0x1000), pc(&built, 0x1400));
+    let block = kobo_core::rats::blocks(&built)
+        .into_iter()
+        .map(|b| (built.pc(b.start).unwrap().as_usize(), b.len))
+        .find(|&(start, len)| start <= first && first < start + len)
+        .expect("the group's block");
+    let size = (end - block.0 - 1) as u16;
+    let mut data = built.data().to_vec();
+    let tag = block.0 - kobo_core::rats::TAG_LEN;
+    data[tag + 4..tag + 6].copy_from_slice(&size.to_le_bytes());
+    data[tag + 6..tag + 8].copy_from_slice(&(!size).to_le_bytes());
+    let shrunk = Rom::from_headerless(data).unwrap();
+    let (read, _) = import::read_map16(&shrunk).unwrap();
+    let page = read.iter().find(|(p, _)| *p == 0x1A).map(|(_, t)| t);
+    for tile in [0x1A00u16, 0x1A41, 0x1AFF] {
+        assert_eq!(
+            page.and_then(|p| p.tiles.get(&tile)).map(|e| e.acts),
+            Some(0x13E),
+            "tile {tile:04X} past the block"
+        );
+    }
+}
+
 #[test]
 fn cached_builds_equal_clean_ones() {
     if common::asar().is_none() {

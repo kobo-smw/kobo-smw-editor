@@ -1244,23 +1244,27 @@ pub fn read_map16(rom: &Rom) -> Result<Map16Import, ImportError> {
             older.push(group.pages());
             continue;
         };
+        // The pages past the block's end have no definitions, but what
+        // their tiles act like is in the acts-like tables all the same, as
+        // for a group Lunar Magic has not allocated.
+        let mut ended = false;
         for page in group.pages() {
-            let Some(span) = page_span(group, page) else {
-                break;
-            };
-            if !(block.start <= span.start && span.start < block.end) {
-                break;
-            }
+            ended |= !page_span(group, page)
+                .is_some_and(|span| block.start <= span.start && span.start < block.end);
             let mut tiles = Map16Page::default();
             let first = page as u16 * PAGE_TILES;
             for tile in first..first + PAGE_TILES {
-                let at = group.definition(rom, tile)?.expect("the group has a table");
-                // Past the block's end, where a group's last page may stop.
-                let inside = rom.pc(at).is_ok_and(|pc| pc.as_usize() + 8 <= block.end);
-                let gfx = if inside && !(tileset_page2 && page == 0x02) {
-                    Map16Tile::from_bytes(rom.read(at, 8)?.try_into().expect("8 bytes"))
-                } else {
+                let gfx = if ended || (tileset_page2 && page == 0x02) {
                     Map16Tile::default()
+                } else {
+                    let at = group.definition(rom, tile)?.expect("the group has a table");
+                    // Past the block's end, where a group's last page may stop.
+                    let inside = rom.pc(at).is_ok_and(|pc| pc.as_usize() + 8 <= block.end);
+                    if inside {
+                        Map16Tile::from_bytes(rom.read(at, 8)?.try_into().expect("8 bytes"))
+                    } else {
+                        Map16Tile::default()
+                    }
                 };
                 let entry = Map16Entry {
                     gfx,
