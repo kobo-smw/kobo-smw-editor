@@ -205,6 +205,54 @@ pub fn load_corpus_rom(path: &Path, clean: &mut Option<Rom>) -> Rom {
     }
 }
 
+/// Whether the checks of every level run (`KOBO_FULL_RENDER`, or
+/// `tests.full_render`): a test that draws a few levels of a build to
+/// compare with its base draws all 512 ([`every_level_draws_the_same`]).
+pub fn full_render() -> bool {
+    tiers::full_render().expect("valid configuration")
+}
+
+/// With the checks of every level on ([`full_render`]), every level of `b`
+/// draws as in `a`, drawn and as markers, but those in `except`, which
+/// must still differ: a fixed exception comes off the list. Off, nothing.
+pub fn every_level_draws_the_same(a: &Rom, b: &Rom, except: &[u16], what: &str) {
+    if !full_render() {
+        return;
+    }
+    let levels: Vec<u16> = (0..0x200).collect();
+    let differ = render_hashes::pictures_differ(a, b, &levels);
+    let hex = |l: &[u16]| {
+        l.iter()
+            .map(|l| format!("{l:03X}"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let unexpected: Vec<String> = differ
+        .iter()
+        .filter(|(l, _)| !except.contains(l))
+        .map(|(l, which)| format!("{l:03X} ({which})"))
+        .collect();
+    let fixed: Vec<u16> = except
+        .iter()
+        .copied()
+        .filter(|l| !differ.iter().any(|(d, _)| d == l))
+        .collect();
+    assert!(
+        unexpected.is_empty() && fixed.is_empty(),
+        "{what}: levels that draw differently: {}; listed as different but the same: {}",
+        unexpected.join(", "),
+        hex(&fixed)
+    );
+    eprintln!(
+        "{what}: all 512 levels draw the same{}",
+        if except.is_empty() {
+            String::new()
+        } else {
+            format!(" but {}", hex(except))
+        }
+    );
+}
+
 /// Corpus hacks some tests are written around: (name, headerless SHA-1).
 pub mod hacks {
     pub const GRAND_POO_WORLD_2: (&str, &str) = (

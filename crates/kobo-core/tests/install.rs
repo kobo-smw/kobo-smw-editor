@@ -156,6 +156,18 @@ fn vanilla_levels_draw_the_same() {
             let b = render::render_level(&rom, level, options).unwrap().image;
             assert!(a.pixels == b.pixels, "level {level:03X} with sprites");
         }
+        // The three pictures the patches change, on either mapping
+        // (docs/lunar-magic-install.md, "SA-1"; docs/review.md).
+        common::every_level_draws_the_same(
+            &base,
+            &rom,
+            &[0x012, 0x0F8, 0x101],
+            if base.mapping().is_sa1() {
+                "Kobo's patches on the SA-1 base"
+            } else {
+                "Kobo's patches on the vanilla ROM"
+            },
+        );
     }
 }
 

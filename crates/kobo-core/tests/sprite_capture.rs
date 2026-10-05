@@ -194,32 +194,10 @@ fn candle_flames_ride_on_layer_2() {
     assert!(scene.layer2_objects.is_empty());
 }
 
-/// Invictus level 136's per-level code stops every pass that runs the
-/// level loop. The level still loads, without a player and with markers,
-/// and says why.
+/// A vanilla level's passes report nothing; one that gives up is
+/// `corpus_hacks::passes_the_cpu_gives_up_on_are_reported`.
 #[test]
-fn passes_the_cpu_gives_up_on_are_reported() {
-    use expand::Pass;
-    if let Some((_, rom)) = common::corpus_hack(common::hacks::INVICTUS) {
-        let loaded = expand::expand_level(&rom, 0x136).unwrap();
-        let (_, scene) = capture(&rom, 0x136);
-        assert!(loaded.scene.player.is_empty());
-        assert!(loaded.diagnostics.iter().any(|d| matches!(
-            d,
-            expand::Diagnostic::Cpu {
-                pass: Pass::Player,
-                ..
-            }
-        )));
-        assert!(!scene.undrawn.is_empty());
-        assert!(scene.diagnostics.iter().any(|d| matches!(
-            d,
-            expand::Diagnostic::Cpu {
-                pass: Pass::Sprite { .. },
-                ..
-            }
-        )));
-    }
+fn a_clean_level_reports_nothing() {
     let Some(rom) = common::vanilla() else { return };
     let loaded = expand::expand_level(&rom, 0x105).unwrap();
     let (_, scene) = capture(&rom, 0x105);

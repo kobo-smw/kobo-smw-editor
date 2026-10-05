@@ -99,6 +99,8 @@ fn vanilla_imports_and_builds_back() {
             );
         }
     }
+    // Every level, with the checks of every level on.
+    common::every_level_draws_the_same(&clean, &built, &[], "the vanilla import, built");
     let _ = fs::remove_file(&built_path);
 }
 

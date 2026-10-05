@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Imports and builds every hack of the corpus, and lists what blocks each.
 
-    corpus-sweep out/ [hack.smc|patch.bps ...] [--no-render] [--no-save] [--only text]
-                      [--baseline old/results.json] [--no-build]
+    corpus-sweep out/ [hack.smc|patch.bps ...] [--no-render] [--no-save] [--no-tiles]
+                      [--only text] [--baseline old/results.json] [--no-build]
 
 Takes the hacks named, else the corpus (KOBO_LM_ROMS or `tests.lm_roms`,
 tools/kobo_config.py). For each it imports the hack's changed levels into a
 project and builds it; a build refused for a level drops that level from the
 project and builds again, until the rest builds or a refusal names no level.
-The build that results is compared with the hack (`kobo diff`, and
-`render_hashes` over the levels it holds) and saved by Lunar Magic
+The build that results is compared with the hack (`kobo diff`, `tiles_diff`
+and `render_hashes` over the levels it holds), imported again (the level and
+Map16 files must come back the same), and saved by Lunar Magic
 (`tools/lunar-magic/save-check`). Writes `out/<hack>/` (the project, the
 build, each step's output), `out/results.json` (each hack by its headerless
 SHA-1, with the revision swept), and `out/summary.md`.
@@ -19,8 +20,9 @@ It builds `kobo` and the `render_hashes` example in release first
 they report as JSON. A sweep that stopped part way resumes from
 results.json, for hacks swept at the same revision. With `--baseline`, each
 hack is compared with its result in an earlier sweep, and what got worse
-(a stage not reached, more levels refused, a diff or a save that passed
-and fails, fewer pictures the same) is listed in summary.md and fails the
+(a stage not reached, more levels refused, a diff, an import of the build,
+or a save that passed and fails, levels that resolve or draw differently
+that did not) is listed in summary.md and fails the
 sweep.
 """
 
@@ -37,6 +39,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 KOBO = Path(os.environ.get("KOBO_BIN", ROOT / "target/release/kobo"))
 RENDER = ROOT / "target/release/examples/render_hashes"
+TILES = ROOT / "target/release/examples/tiles_diff"
 SAVE_CHECK = ROOT / "tools/lunar-magic/save-check"
 sys.path.insert(0, str(ROOT / "tools"))
 import kobo_config  # noqa: E402
@@ -88,7 +91,8 @@ def revision():
 
 
 def build_binaries():
-    for what in (["--package", "kobo-cli"], ["--package", "kobo-core", "--example", "render_hashes"]):
+    for what in (["--package", "kobo-cli"],
+                 ["--package", "kobo-core", "--example", "render_hashes", "--example", "tiles_diff"]):
         print(f"cargo build --release {' '.join(what)}", flush=True)
         subprocess.run(["cargo", "build", "--release", "--quiet", *what], cwd=ROOT, check=True)
 
@@ -178,7 +182,39 @@ def render_compare(hack, built, levels, log):
             "diagnostics_differ": diagnostics}
 
 
-def sweep(hack, out, render, save):
+def tiles_compare(hack, built, levels, log):
+    """What every level built resolves (grid, background tilemap, Map16),
+    graphics aside, in the hack and in the build (tiles_diff)."""
+    if not levels:
+        return {"levels": 0, "differ": []}
+    code, out, err = run_split([TILES, hack, built, *levels], log=log, timeout=7200)
+    differ = [l[:3] for l in out.splitlines() if re.match(r"^[0-9A-F]{3}: ", l)]
+    return {"levels": len(levels), "differ": differ, "ok": code == 0}
+
+
+def project_files(project):
+    """A project's level and Map16 files, by path, as text."""
+    files = {}
+    for folder in ("levels", "map16"):
+        for path in sorted((project / folder).rglob("*")) if (project / folder).exists() else []:
+            if path.is_file():
+                files[str(path.relative_to(project))] = path.read_bytes()
+    return files
+
+
+def reimport_compare(project, built, work, log):
+    """The build imported again: the same level and Map16 files as the
+    hack's import gave."""
+    again = work / "again"
+    code, value, err = run_json([KOBO, "import", built, again], log=log)
+    if code or not value or not value.get("ok"):
+        return {"same": False, "error": (value or {}).get("error") or error_of(err)[0]}
+    a, b = project_files(project), project_files(again)
+    differ = sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
+    return {"same": not differ, "differ": differ[:40], "files": len(a)}
+
+
+def sweep(hack, out, render, save, tiles=True):
     name = hack.stem if hack.parent.name not in ("QLDC 2021", "QLDC 2022") else f"{hack.parent.name}/{hack.stem}"
     work = out / re.sub(r"[^A-Za-z0-9._-]+", "_", name)
     subprocess.run(["rm", "-rf", str(work)])
@@ -238,6 +274,9 @@ def sweep(hack, out, render, save):
     lines = [f"{d['level']}: {', '.join(d['parts'])}" for d in differ] or ([] if value else [err.strip()])
     result["diff"] = {"same": code == 0 and bool(value) and value["same"], "lines": lines[:40]}
 
+    result["reimport"] = reimport_compare(project, built, work, log)
+    if tiles:
+        result["tiles"] = tiles_compare(rom, built, levels, log)
     if render:
         result["render"] = render_compare(rom, built, levels, log)
     if save:
@@ -271,9 +310,14 @@ def regressions(results, baseline):
             new = {x["level"] for x in r["refusals"]} - {x["level"] for x in b.get("refusals", [])}
             out.append((r["hack"], f"{len(r['refusals'])} levels refused, was {len(b.get('refusals', []))}"
                         + (f" (new: {' '.join(sorted(new))})" if new else "")))
-        for part in ("diff", "save"):
+        for part in ("diff", "save", "reimport"):
             if b.get(part, {}).get("same") and part in r and not r[part]["same"]:
                 out.append((r["hack"], f"{part} passed and fails: {(r[part]['lines'] or ['?'])[0]}"))
+        tb, tr = b.get("tiles"), r.get("tiles")
+        if tb and tr:
+            worse = sorted(set(tr["differ"]) - set(tb["differ"]))
+            if worse:
+                out.append((r["hack"], f"{len(worse)} levels resolve differently that did not: {' '.join(worse[:24])}"))
         rb, rr = b.get("render"), r.get("render")
         if rb and rr:
             worse = sorted(set(rr["differ"] + rr["errors"]) - set(rb["differ"] + rb["errors"]))
@@ -284,8 +328,8 @@ def regressions(results, baseline):
 
 def summary(results, against=None):
     rows = [
-        "| Hack | LM | Mapping | Stage | Levels | Built | Refused | Not imported | Diff | Render same | Save |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        "| Hack | LM | Mapping | Stage | Levels | Built | Refused | Not imported | Diff | Again | Tiles same | Render same | Save |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     kinds = defaultdict(lambda: [set(), 0])
     for r in results:
@@ -298,9 +342,9 @@ def summary(results, against=None):
         if stop:
             kinds["stopped: " + kind(stop)][0].add(r["hack"])
             kinds["stopped: " + kind(stop)][1] += 1
-        render = r.get("render")
+        render, tiles, again = r.get("render"), r.get("tiles"), r.get("reimport")
         rows.append(
-            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
                 r["hack"],
                 r.get("lunar_magic") or "",
                 r.get("mapping") or "",
@@ -310,6 +354,8 @@ def summary(results, against=None):
                 len(refused),
                 f"{imp.get('ranges', 0)} ranges / {imp.get('blocks', 0)} blocks" if imp else "",
                 "" if "diff" not in r else ("same" if r["diff"]["same"] else (r["diff"]["lines"] or ["?"])[0]),
+                "" if not again else ("same" if again["same"] else f"{len(again.get('differ', []))} files differ"),
+                "" if not tiles else f"{tiles['levels'] - len(tiles['differ'])}/{tiles['levels']}",
                 "" if not render else f"{render['same']}/{render['levels']}",
                 "" if "save" not in r else ("same" if r["save"]["same"] else "differs"),
             )
@@ -344,6 +390,7 @@ def main():
     parser.add_argument("hacks", nargs="*", type=Path)
     parser.add_argument("--no-render", action="store_true")
     parser.add_argument("--no-save", action="store_true")
+    parser.add_argument("--no-tiles", action="store_true", help="skip tiles_diff")
     parser.add_argument("--only", help="only hacks whose path contains this")
     parser.add_argument("--summary", action="store_true", help="only rewrite summary.md from results.json")
     parser.add_argument("--baseline", type=Path, help="an earlier sweep's results.json to compare with")
@@ -377,7 +424,7 @@ def main():
             results.append(done[str(hack)])
             continue
         print(f"[{i}/{len(hacks)}] {hack.name}", flush=True)
-        result = sweep(hack, args.out, not args.no_render, not args.no_save)
+        result = sweep(hack, args.out, not args.no_render, not args.no_save, not args.no_tiles)
         print(f"    {result.get('stage')}: {len(result.get('refusals', []))} refused"
               + (f"; {result['error']}" if result.get("error") else ""), flush=True)
         results.append(result)

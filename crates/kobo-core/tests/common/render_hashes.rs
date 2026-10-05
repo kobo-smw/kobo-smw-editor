@@ -75,6 +75,36 @@ pub fn lines(rom: &Rom, levels: &[u16]) -> Vec<String> {
     })
 }
 
+/// The levels of `levels` whose pictures (drawn and as markers, not what
+/// the passes reported) differ between `a` and `b`, each with which:
+/// `drawn`, `markers`, or both, or the error one gave.
+pub fn pictures_differ(a: &Rom, b: &Rom, levels: &[u16]) -> Vec<(u16, String)> {
+    let (x, y) = std::thread::scope(|scope| {
+        let x = scope.spawn(|| lines(a, levels));
+        let y = lines(b, levels);
+        (x.join().expect("a render worker must not panic"), y)
+    });
+    let mut out = Vec::new();
+    for (&level, (x, y)) in levels.iter().zip(x.iter().zip(&y)) {
+        let (x, y): (Vec<&str>, Vec<&str>) = (x.split(' ').collect(), y.split(' ').collect());
+        if x.get(1) == Some(&"error:") || y.get(1) == Some(&"error:") {
+            if x != y {
+                out.push((level, "an error".into()));
+            }
+            continue;
+        }
+        let which: Vec<&str> = [(1, "drawn"), (2, "markers")]
+            .into_iter()
+            .filter(|&(i, _)| x.get(i) != y.get(i))
+            .map(|(_, name)| name)
+            .collect();
+        if !which.is_empty() {
+            out.push((level, which.join(" and ")));
+        }
+    }
+    out
+}
+
 /// The levels on which two runs' lines differ.
 pub fn differ(a: &[String], b: &[String]) -> Vec<String> {
     let level = |l: &String| l.get(..3).map(str::to_owned).unwrap_or_default();

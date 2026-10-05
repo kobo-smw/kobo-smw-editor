@@ -190,6 +190,14 @@ fn sa1_projects_build_onto_sa1_pack() {
         let b = kobo_core::render::render_level(&built, level, options).unwrap();
         assert!(a.image.pixels == b.image.pixels, "level {level:03X}");
     }
+    // The SA-1 build installs Kobo's patches, which change three pictures
+    // (tests/install.rs).
+    common::every_level_draws_the_same(
+        &base,
+        &built,
+        &[0x012, 0x0F8, 0x101],
+        "the SA-1 base's import, built",
+    );
 }
 
 /// SA-1 Pack on an image with no game data, so it runs without a ROM: CI
@@ -469,6 +477,7 @@ fn sa1_projects_store_gfx_as_lz3() {
         let b = kobo_core::render::render_level(&lz3, level, options).unwrap();
         assert!(a.image.pixels == b.image.pixels, "level {level:03X}");
     }
+    common::every_level_draws_the_same(&lz2, &lz3, &[], "an SA-1 build's GFX as LC_LZ3");
     let lorom = Project {
         manifest: Manifest {
             lz3: true,

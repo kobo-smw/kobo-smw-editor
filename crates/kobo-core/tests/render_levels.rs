@@ -454,21 +454,6 @@ fn boss_preparation_does_not_replace_the_level_dimensions() {
 }
 
 #[test]
-fn grand_poo_world_background_validation() {
-    if let Some((_, rom)) = common::corpus_hack(common::hacks::GRAND_POO_WORLD_2) {
-        // An unused slot with no background table of its own: the upload
-        // reads definitions from bank 0, as the game does.
-        let unused = kobo_core::expand::expand_level(&rom, 0x09F).unwrap();
-        assert!(unused.tiles.layer2_tilemap.is_some());
-        let objects = kobo_core::expand::expand_level(&rom, 0x00E).unwrap();
-        assert!(objects.tiles.layer2_tilemap.is_none());
-        let background = kobo_core::expand::expand_level(&rom, 0x046).unwrap();
-        assert_eq!(background.tiles.layer2_bg_rows(), 32);
-        assert!(background.tiles.bg_map16.len() > 0x350);
-    }
-}
-
-#[test]
 fn boss_arenas_capture_mode_switches_and_object_art() {
     let Some(rom) = common::vanilla() else { return };
     for (level, starts) in [
