@@ -420,6 +420,9 @@ fn main() {
                 println!("the same over {} frames", a.len());
             }
         }
-        _ => eprintln!("usage: sprite_probe play|compare ... (see the source)"),
+        _ => {
+            eprintln!("usage: sprite_probe play|spawns|compare ... (see the source)");
+            std::process::exit(2)
+        }
     }
 }

@@ -97,17 +97,21 @@ fn entry(rom: &Rom, level: u16) -> Vec<u8> {
             ram
         })
     };
-    let mut bytes = ram.bytes(ram::RamAddr::new(0x7E_0000), 0x2000);
-    bytes[0x100..0x200].fill(0);
+    // The stack withheld (clean room), and the scratch bytes, which hold
+    // whatever the last routine left.
+    let mut bytes = kobo_core::clean_room::bytes(&ram, ram::RamAddr::new(0x7E_0000), 0x2000);
     bytes[..0x10].fill(0);
     bytes
 }
 
 /// The address of Lunar Magic's separate midway settings table `n` (0 to
-/// 3), which the community's format documentation locates at
-/// `read3(read3($05D9E4) + $0A)`, one 512-byte table after another.
+/// 3), one 512-byte table after another (`kobo_core::entrance::Layout`).
 fn midway_table(rom: &Rom, n: u32) -> u32 {
-    read3(rom, read3(rom, 0x05D9E4) + 0x0A) + n * 0x200
+    kobo_core::entrance::Layout::of(rom)
+        .midway
+        .expect("no midway tables")
+        .raw()
+        + n * 0x200
 }
 
 /// The level size table (`SZ`), where Lunar Magic's layout has it.
@@ -317,6 +321,11 @@ fn main() {
                 println!("{line}: {}", values.join(" "));
             }
         }
-        _ => eprintln!("usage: entry_probe effects rom level | compare a b level [ignore...]"),
+        _ => {
+            eprintln!(
+                "usage: entry_probe effects rom level | compare a b level [ignore...] | batch rom level word... < cases | levels a b [ignore...] (see the source)"
+            );
+            std::process::exit(2)
+        }
     }
 }

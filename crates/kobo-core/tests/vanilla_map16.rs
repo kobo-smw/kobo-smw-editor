@@ -3,26 +3,12 @@
 
 mod common;
 
+use common::fixtures::sha1_hex;
 use kobo_core::map16::{self, BG_TILE_COUNT, FG_TILE_COUNT, TILESET_COUNT};
-use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 
 fn load_fixture() -> HashMap<String, String> {
-    include_str!("fixtures/vanilla_map16_lm_export.txt")
-        .lines()
-        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
-        .map(|l| {
-            let mut p = l.split_whitespace();
-            (p.next().unwrap().to_string(), p.next().unwrap().to_string())
-        })
-        .collect()
-}
-
-fn sha1_hex(bytes: &[u8]) -> String {
-    Sha1::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    common::fixtures::pairs(include_str!("fixtures/vanilla_map16_lm_export.txt"))
 }
 
 #[test]

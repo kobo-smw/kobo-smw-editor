@@ -693,30 +693,6 @@ fn lunar_magic_reads_an_lz3_build() {
     assert_eq!(saved.read_u8(setting).unwrap(), 0x00);
 }
 
-/// The sites of Lunar Magic's sprite loader group, put back to the game's
-/// bytes before Kobo's `sprites.asm` goes over a ROM of Lunar Magic's:
-/// its own patch does not write every byte Lunar Magic's took.
-const SPRITE_LOADER_RANGES: [(u32, u32); 18] = [
-    (0x02A826, 0x02A83B),
-    (0x02A846, 0x02A84D),
-    (0x02A95B, 0x02A95E),
-    (0x02A968, 0x02A968),
-    (0x02A9D7, 0x02A9D9),
-    (0x02AA61, 0x02AA64),
-    (0x02AB54, 0x02AB58),
-    (0x02ABD0, 0x02ABD4),
-    (0x02AC64, 0x02AC67),
-    (0x02ACA4, 0x02ACA7),
-    (0x02AF3D, 0x02AF40),
-    (0x02AFA7, 0x02AFAA),
-    (0x01AC40, 0x01AC49),
-    (0x02D03A, 0x02D043),
-    (0x02FED6, 0x02FEDF),
-    (0x03B86C, 0x03B875),
-    (0x01C08C, 0x01C093),
-    (0x01C0E2, 0x01C0E2),
-];
-
 /// `rom` with `sprites` as `level`'s list, at `$3F8000`, and the level's
 /// `tTT` byte set.
 fn with_sprites(rom: &Rom, level: u16, list: &[u8], ttt: u8) -> Rom {
@@ -825,20 +801,7 @@ fn loaders_spawn_alike(
     name: &str,
 ) {
     let lm = save(lunar_magic, clean, base, name);
-    let mut kobo = Rom::from_headerless(lm.data().to_vec()).unwrap();
-    for (start, end) in SPRITE_LOADER_RANGES {
-        let len = (end - start + 1) as usize;
-        let bytes = base.read(SnesAddr::new(start), len).unwrap().to_vec();
-        kobo.write(SnesAddr::new(start), &bytes).unwrap();
-    }
-    let piece = *kobo_core::install::LUNAR_MAGIC
-        .iter()
-        .find(|(name, _)| *name == "sprites.asm")
-        .unwrap();
-    let kobo = asar
-        .patch(&kobo, &kobo_core::install::patch(piece))
-        .unwrap()
-        .rom;
+    let kobo = common::swap::swap(asar, common::swap::Piece::Sprites, &lm, base).unwrap();
     use kobo_core::source::level::{Sprite, Sprites};
     const IDS: [u8; 18] = [
         0x0D, 0x0F, 0x04, 0x05, 0x1C, 0x3E, 0x2F, 0x7B, 0xC9, 0xE0, 0xDE, 0xE2, 0x26, 0x10, 0x1D,
@@ -1265,21 +1228,7 @@ fn kobos_first_camera_and_scrolling_off_are_lunar_magics() {
 /// it. The operands the patches autoclean are cleared first, so that they
 /// free nothing of Lunar Magic's.
 fn with_kobos_entrances(asar: &kobo_core::asar::Asar, lm: &Rom) -> Rom {
-    let mut kobo = Rom::from_headerless(lm.data().to_vec()).unwrap();
-    for (at, len) in [(0x05D7CE, 4), (0x05DA17, 4), (0x05DC86, 3), (0x05DC8B, 3)] {
-        kobo.write(SnesAddr::new(at), &vec![0xFF; len]).unwrap();
-    }
-    for file in ["exits.asm", "entrance.asm"] {
-        let piece = *kobo_core::install::LUNAR_MAGIC
-            .iter()
-            .find(|(name, _)| *name == file)
-            .unwrap();
-        kobo = asar
-            .patch(&kobo, &kobo_core::install::patch(piece))
-            .unwrap()
-            .rom;
-    }
-    kobo
+    common::swap::swap(asar, common::swap::Piece::Entrances, lm, lm).unwrap()
 }
 
 /// A screen exit in the game's format, Yoshi's wings, and the bonus game
@@ -1341,7 +1290,7 @@ fn kobos_special_exits_are_lunar_magics() {
 /// Kobo's VRAM patch (`vram.asm`) shows a lagging frame as Lunar Magic's
 /// does: the clean ROM saved by Lunar Magic, against the same with the
 /// patch's sites put back to the clean ROM's bytes and Kobo's patch
-/// applied (as `tools/lunar-magic/with-kobo-vram` does), every other frame
+/// applied (as `examples/swap.rs vram` does), every other frame
 /// lagging, with layer 1's and 2's scroll registers and tilemaps compared at
 /// every vertical blank but the row above the level's top, which Lunar
 /// Magic's patch fills and Kobo's leaves (docs/lunar-magic-install.md,

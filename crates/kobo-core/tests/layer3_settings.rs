@@ -5,12 +5,11 @@
 
 mod common;
 
-use kobo_core::addr::SnesAddr;
 use kobo_core::build::{self, Project};
 use kobo_core::exgfx::{self, GraphicsList, Layer3Settings, slot};
 use kobo_core::ram::{Ram, RamAddr};
 use kobo_core::source::project::Manifest;
-use kobo_core::{Rom, expand, import, install};
+use kobo_core::{Rom, expand, import};
 
 fn project(levels: Vec<(u16, kobo_core::source::level::Level)>) -> Project {
     Project {
@@ -474,20 +473,10 @@ fn a_tide_in_a_taller_level_fills_the_rows_lunar_magic_does() {
 /// RATS boundary limitation"), which a build, writing onto the clean ROM,
 /// never meets.
 fn with_kobos(hack: &Rom, clean: &Rom, asar: &kobo_core::asar::Asar) -> Option<Rom> {
-    let mut rom = Rom::from_bytes(hack.data().to_vec()).unwrap();
-    for (a, b) in [
-        (0x00A01F, 0x00A024),
-        (0x00A153, 0x00A156),
-        (0x0194B6, 0x0194BA),
-        (0x05C40C, 0x05C410),
-    ] {
-        let len = b - a + 1;
-        let bytes = clean.read(SnesAddr::new(a), len as usize).unwrap().to_vec();
-        rom.write(SnesAddr::new(a), &bytes).unwrap();
-    }
-    match install::apply_layer3(asar, &rom) {
+    use common::swap::{Piece, SwapError, swap};
+    match swap(asar, Piece::Layer3, hack, clean) {
         Ok(rom) => Some(rom),
-        Err(kobo_core::asar::AsarError::Damaged { .. }) => None,
+        Err(SwapError::Asar(kobo_core::asar::AsarError::Damaged { .. })) => None,
         Err(e) => panic!("layer3.asm: {e}"),
     }
 }

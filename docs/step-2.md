@@ -529,7 +529,7 @@ on the built ROM.
   ground shaking), whose `$05DA8A` a save keeps along with the table. Learned from what
   Lunar Magic's code does with every size (`examples/exlevel_probe.rs`), and checked by
   swapping Kobo's in for Lunar Magic's on seven hacks moved into a 3.70 ROM
-  (`tools/lunar-magic/with-kobo-exlevel`: the same RAM after every load, pictures, play,
+  (`examples/swap.rs exlevel`: the same RAM after every load, pictures, play,
   camera, and entrances); Luminescent's and ValuableAndBeautiful's levels built by Kobo
   resolve as the hacks do, and survive a Lunar Magic save (2026-09-28). `entrance.asm`
   places the layers by the level's height. Builds refuse a size a vertical level would
@@ -541,7 +541,7 @@ on the built ROM.
 - Remaining in 2b, each Lunar Magic runtime code reimplemented from observation, by the
   method the pieces above used (a probe that runs the ROM's own code with chosen state,
   then an A/B comparison with Kobo's code swapped in; `examples/*_probe.rs`,
-  `tools/lunar-magic/with-kobo`, `install-gate.py` for the save's checks):
+  `swap bank06` (examples/swap.rs), `install-gate.py` for the save's checks):
   - Lunar Magic's added layer 2 scroll settings (8 to 11, `S`, `H`): done (2026-10-01).
     Kobo's entrance code sets them up and its camera at `$00F79D` runs every rate and
     the moving ones as Lunar Magic's does, frame by frame; a save keeps them, and Kobo's
@@ -757,7 +757,7 @@ on the built ROM.
   palettes, ExGFX, expanded level sizes, the sprite data formats (new sprite system, 255
   sprites, PIXI extension bytes), secondary entrances and exits. Each is checked with Lunar
   Magic saving the build, and with a hack's content transferred by Lunar Magic's command
-  line into a Lunar Magic ROM with Kobo's pieces swapped in (`tools/lunar-magic/with-kobo`).
+  line into a Lunar Magic ROM with Kobo's pieces swapped in (`swap bank06` (examples/swap.rs)).
 - 2c progress, GPS: `[gps] dir` (its `list.txt`, `blocks/`, `routines/`), laid over the
   user's GPS folder (`tools.gps` or `KOBO_GPS`, never bundled), runs as the blocks stage
   after Map16, on Kobo's bank `$06` code, which it patches unchanged. PIXI refuses a ROM

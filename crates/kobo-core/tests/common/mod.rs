@@ -7,6 +7,7 @@ pub mod failures;
 pub mod fixtures;
 pub mod lm;
 pub mod render_hashes;
+pub mod swap;
 pub mod temp;
 
 use std::path::{Path, PathBuf};

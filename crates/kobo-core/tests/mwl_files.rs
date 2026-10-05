@@ -400,14 +400,7 @@ fn check_level(info: &RomInfo, file: &MwlFile, mwl: &Mwl, name: &str, counts: &m
 
 /// ROM hashes and the hash of the MWL files exported from each.
 fn load_fixture() -> HashMap<String, String> {
-    include_str!("fixtures/lunar_magic_mwl_export.txt")
-        .lines()
-        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
-        .map(|l| {
-            let mut p = l.split_whitespace();
-            (p.next().unwrap().to_string(), p.next().unwrap().to_string())
-        })
-        .collect()
+    common::fixtures::pairs(include_str!("fixtures/lunar_magic_mwl_export.txt"))
 }
 
 /// The directories of `KOBO_MWL_DIR` that hold a ROM and MWL files.

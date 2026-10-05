@@ -333,11 +333,11 @@ how each oracle is produced, where its data lives, and what is known not to matc
   (`KOBO_PROBE_DUMP=dir KOBO_PROBE_FRAME=n` writes that frame's VRAM of each, `a.vram`
   and `b.vram`). Paths are legs `dx,dy@frames/...` of pixels a frame for the player
   (`-1000,0@1/3,0` sends it back 1000 pixels on the first frame, a camera that skips
-  columns); `POKE_TILE=dx,dy,tile` puts a
+  columns); `KOBO_GFX_POKE_TILE=dx,dy,tile` puts a
   tile (a coin) beside the player first. For where a list's files go, make ExGFX
   files whose every 16-byte unit starts `A5 5A f j` and look for them in the VRAM dump.
-- **Kobo's VRAM patch against Lunar Magic's**: `tools/lunar-magic/with-kobo-vram lm.smc
-  out.sfc` swaps `vram.asm` into a Lunar Magic-saved ROM; then `gfx_probe loads` and
+- **Kobo's VRAM patch against Lunar Magic's**: `cargo run --release --example swap -- vram
+  lm.smc out.sfc` swaps `vram.asm` into a Lunar Magic-saved ROM; then `gfx_probe loads` and
   `scroll` compare the two. On vanilla saved once by Lunar Magic (2026-09-28): the same
   tilemaps after every level's load but for the unseen row above a level's top, and
   nothing visible different for longer than a frame on any level along seven paths
@@ -348,11 +348,11 @@ how each oracle is produced, where its data lives, and what is known not to matc
   `tests/install.rs` (`the_vram_patch_keeps_layer_1_in_view`) checks, with the ROM and
   Asar, that every cell in view on layer 1 holds its tile's definition along paths in a
   horizontal, a vertical, and a layer 2 objects level.
-- **Kobo's taller levels against Lunar Magic's**: `tools/lunar-magic/with-kobo-exlevel
+- **Kobo's taller levels against Lunar Magic's**: `cargo run --release --example swap -- exlevel
   lm.smc out.sfc` puts every site of Lunar Magic's taller levels piece back to the game's
   bytes, applies `exlevel.asm`, and moves the size table to where it then is; swap
-  Kobo's sprite loader and VRAM patch into both sides first (`with-kobo-sprites`,
-  `with-kobo-vram`), since swapping in one piece alone leaves the other's RAM otherwise.
+  Kobo's sprite loader and VRAM patch into both sides first (`swap sprites`,
+  `swap vram`), since swapping in one piece alone leaves the other's RAM otherwise.
   `examples/exlevel_probe.rs` then compares them: `compare a b level` plays a level in
   both frame by frame (the player carried, `path=`, or free with buttons held, `pad=`;
   `hold:`/`ram:` for RAM such as `$1887`, the ground shaking, or `$1412`, the vertical
@@ -372,7 +372,7 @@ how each oracle is produced, where its data lives, and what is known not to matc
   `lunar_magic_save.rs` (`a_taller_level_build_survives_a_lunar_magic_save`) has Lunar
   Magic save a build with a taller level, which must keep its size and Kobo's code, and
   without the `JSL` at `$05DA8A` lose the size.
-- **Kobo's graphics loader against Lunar Magic's**: `tools/lunar-magic/with-kobo-graphics
+- **Kobo's graphics loader against Lunar Magic's**: `cargo run --release --example swap -- graphics
   lm.smc out.sfc` swaps `graphics.asm` into a Lunar Magic-saved ROM with 4bpp files (and
   ExGFX and lists, if it has them), keeping its tables; `WITH_VRAM=1` swaps the VRAM patch
   first. `gfx_probe loads a b 0000-8000` then compares all of VRAM after every load, and
@@ -393,11 +393,11 @@ how each oracle is produced, where its data lives, and what is known not to matc
   Magic save such a build, with and without each checked byte.
 - **Layer 3 settings**: `examples/layer3_probe.rs` plays a level along a path and prints,
   per frame, layer 3's position and RAM, colour math and screens, and the scroll and
-  screen registers the frame's NMI and IRQ left (`play`, with `WATCH` and `POKE`);
+  screen registers the frame's NMI and IRQ left (`play`, with `KOBO_LAYER3_WATCH` and `KOBO_LAYER3_POKE`);
   `compare` and `loads` report where two ROMs differ in those, work RAM, and layer 3's
   VRAM; `sweep a b frames` reads cases (`level path SLOT:n ...`) from standard input,
   writes each list into both ROMs, and reports the cases that differ.
-  `tools/lunar-magic/with-kobo-layer3 lm.smc out.sfc` puts Kobo's layer 3 code
+  `cargo run --release --example swap -- layer3 lm.smc out.sfc` puts Kobo's layer 3 code
   (`layer3.asm`) in place of Lunar Magic's. Found and checked against a copy of `+ExGFX`
   with a level imported with settings (so it has Lunar Magic's code), with settings then
   written straight into its lists (2026-09-30): 1,500 random cases all the same, and
@@ -492,12 +492,12 @@ how each oracle is produced, where its data lives, and what is known not to matc
   vanilla ROM with Lunar Magic's command line (`tools/lunar-magic/transfer hack.smc
   mwl-dir out.smc`: `-ImportAllGraphics` of its `-ExportGFX`/`-ExportExGFX` first, then
   `-ImportAllMap16`, `-ImportSharedPalette`, `-ImportMultLevels` of its MWL exports,
-  `-TransferLevelGlobalExAnim`), then `tools/lunar-magic/with-kobo`
+  `-TransferLevelGlobalExAnim`), then `swap bank06` (examples/swap.rs)
   swaps Kobo's bank `$06` code in, keeping the tables, and `render_hashes` and
   `ramdiff.py --summary` compare the two over all 512 levels. Do not import into a Kobo
   install instead: Lunar Magic's save then installs most of its own code over it
   ([lunar-magic-install.md](lunar-magic-install.md)). Kaizo Kindergarten passes.
-  `with-kobo` also works on a hack itself, for its Lunar Magic 2.52-and-later layout:
+  `swap bank06` also works on a hack itself, for its Lunar Magic 2.52-and-later layout:
   Grand Poo World 2, Invictus, Luminescent, Baby Kaizo World 3, and SMW_2022-4-9 draw every
   level alike, but for Grand Poo World 2's `09F` (no background table) and 3 to 9 levels
   each whose pictures differ only with sprites, most likely because the swap drops the
@@ -556,9 +556,8 @@ how each oracle is produced, where its data lives, and what is known not to matc
   `kobos_layer3_code_plays_as_lunar_magics` takes the corpus's SA-1 hacks with SA-1 Pack's
   bytes at the hook sites. By hand: the twelve base patches on the SA-1 reference ROM,
   `render_hashes` against the reference ROM (all 512 levels the same but `012`, `0F8`,
-  and `101`, which draw as the LoROM build does), and the `tools/lunar-magic/with-kobo*`
-  scripts on Extended Interactions (an SA-1 hack's sites go back to SA-1 Pack's bytes:
-  `base-rom`, `KOBO_SA1_BASE`). Results (2026-10-01): on the SA-1 reference ROM saved
+  and `101`, which draw as the LoROM build does), and `examples/swap.rs` on Extended Interactions (an SA-1 hack's sites go back to
+  SA-1 Pack's bytes: the SA-1 reference ROM, `KOBO_SA1_REFERENCE`). Results (2026-10-01): on the SA-1 reference ROM saved
   once by Lunar Magic, the VRAM patch and the base pieces swapped in draw all 512
   levels as Lunar Magic's code does (and on vanilla saved once, as before). Extended
   Interactions' content moved into it (`transfer`, which takes an SA-1 hack into the
@@ -592,7 +591,7 @@ how each oracle is produced, where its data lives, and what is known not to matc
   and watched RAM (`play`), the frame each entry first loaded with the camera then
   (`spawns`), or where two ROMs differ (`compare`). Compare vanilla saved once by Lunar
   Magic with the same ROM with the loader group put back to the game's bytes and
-  `sprites.asm` applied (`tools/lunar-magic/with-kobo-sprites`); `lunar_magic_save.rs` (`kobos_sprite_loader_spawns_as_lunar_magics`,
+  `sprites.asm` applied (`examples/swap.rs sprites`); `lunar_magic_save.rs` (`kobos_sprite_loader_spawns_as_lunar_magics`,
   `KOBO_LOADER_SEED` and `KOBO_LOADER_CASES` to vary it) does that for 24 seeded random
   scenarios, and must find no frame that differs. `SPRITE_LOADER_SITES` there is the group,
   which a save must leave as a build wrote it. By hand, Kaizo Kindergarten with Kobo's
@@ -609,9 +608,9 @@ how each oracle is produced, where its data lives, and what is known not to matc
   the game loop and its NMI and prints, per frame, the VRAM words and CGRAM colours the
   frame changed and `$7FC000`-`$7FC0FF`; `ab a b level frames` prints the frames whose
   VRAM, CGRAM, or ExAnimation RAM differ between two ROMs. Chosen data goes into a copy in
-  memory (`ANIM`, `GLOBAL`, `SETTINGS`, `PALETTE`), RAM before the load (`ENTRY`) and
-  before frames (`SET`), and a word-numbered pattern at `$7EAD00` (`FILE`), so an upload
-  shows where it came from. `tools/lunar-magic/with-kobo-exanim lm.smc out.sfc` swaps
+  memory (`KOBO_EXANIM_ANIM`, `KOBO_EXANIM_GLOBAL`, `KOBO_EXANIM_SETTINGS`, `KOBO_EXANIM_PALETTE`), RAM before the load (`KOBO_EXANIM_ENTRY`) and
+  before frames (`KOBO_EXANIM_SET`), and a word-numbered pattern at `$7EAD00` (`KOBO_EXANIM_FILE`), so an upload
+  shows where it came from. `cargo run --release --example swap -- exanim lm.smc out.sfc` swaps
   Kobo's code into a ROM with Lunar Magic's, keeping its tables. `tests/lunar_magic_exanimation.rs`
   (with `KOBO_LUNAR_MAGIC`) has Lunar Magic install its own on the clean ROM, swaps Kobo's
   in, and plays seeded random lists, settings, trigger states, and events for 96 frames

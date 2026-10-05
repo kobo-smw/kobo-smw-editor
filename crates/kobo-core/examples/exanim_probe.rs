@@ -9,13 +9,13 @@
 //! whose VRAM, CGRAM, or ExAnimation RAM differ.
 //!
 //! Chosen data, written into a copy of the ROM in memory (never saved):
-//! `ANIM=hex` the level's ExAnimation data, `GLOBAL=hex` the global data
-//! (`GLOBAL=none` for none), `SETTINGS=xx` the level's byte of `$03FE00`;
-//! `SET=7E14AD=20@5-9;7FC0FC=0200@0` writes RAM before the frames given (one
+//! `KOBO_EXANIM_ANIM=hex` the level's ExAnimation data, `KOBO_EXANIM_GLOBAL=hex` the global data
+//! (`KOBO_EXANIM_GLOBAL=none` for none), `KOBO_EXANIM_SETTINGS=xx` the level's byte of `$03FE00`;
+//! `KOBO_EXANIM_SET=7E14AD=20@5-9;7FC0FC=0200@0` writes RAM before the frames given (one
 //! byte per two hex digits, from the address up; `@n` from frame `n` on).
-//! `FILE=hex` puts bytes at `$7EAD00` (the AN2 buffer) before the first frame.
-//! `VWORDS=lo-hi` prints the VRAM words a frame changed there, with their
-//! values (`VWORDS_ALL` every one of them); `ab` prints the ExAnimation RAM's
+//! `KOBO_EXANIM_FILE=hex` puts bytes at `$7EAD00` (the AN2 buffer) before the first frame.
+//! `KOBO_EXANIM_VWORDS=lo-hi` prints the VRAM words a frame changed there, with their
+//! values (`KOBO_EXANIM_VWORDS_ALL` every one of them); `ab` prints the ExAnimation RAM's
 //! values in both ROMs.
 //!
 //! `cargo run --release --example exanim_probe -- run rom.smc 105 64`
@@ -54,7 +54,7 @@ fn prepare(mut rom: Rom, level: u16) -> Rom {
         free += (bytes.len() as u32 + 0xFF) & !0xFF;
         at
     };
-    if let Ok(anim) = std::env::var("ANIM") {
+    if let Ok(anim) = std::env::var("KOBO_EXANIM_ANIM") {
         let t = hook_target(&rom).expect("no ExAnimation hook at $0583AD");
         let table = rom.read_u24(SnesAddr::new(t + 0xEA)).unwrap();
         let at = if anim == "none" {
@@ -65,7 +65,7 @@ fn prepare(mut rom: Rom, level: u16) -> Rom {
         rom.write_u24(SnesAddr::new(table + level as u32 * 3), at)
             .unwrap();
     }
-    if let Ok(global) = std::env::var("GLOBAL") {
+    if let Ok(global) = std::env::var("KOBO_EXANIM_GLOBAL") {
         let t = hook_target(&rom).expect("no ExAnimation hook at $0583AD");
         let at = if global == "none" {
             0
@@ -76,14 +76,14 @@ fn prepare(mut rom: Rom, level: u16) -> Rom {
             .unwrap();
         rom.write_u16(SnesAddr::new(t + 0x65), at as u16).unwrap();
     }
-    // PALETTE=hex: a custom palette for the level ($0EF600: back area colour,
+    // KOBO_EXANIM_PALETTE=hex: a custom palette for the level ($0EF600: back area colour,
     // then 256 colours), for ROMs with Lunar Magic's.
-    if let Ok(palette) = std::env::var("PALETTE") {
+    if let Ok(palette) = std::env::var("KOBO_EXANIM_PALETTE") {
         let at = place(&mut rom, &hex_bytes(&palette));
         rom.write_u24(SnesAddr::new(0x0EF600 + level as u32 * 3), at)
             .unwrap();
     }
-    if let Ok(s) = std::env::var("SETTINGS") {
+    if let Ok(s) = std::env::var("KOBO_EXANIM_SETTINGS") {
         rom.write_u8(
             SnesAddr::new(0x03FE00 + level as u32),
             u8::from_str_radix(&s, 16).unwrap(),
@@ -101,7 +101,7 @@ struct Set {
 }
 
 fn sets() -> Vec<Set> {
-    let Ok(spec) = std::env::var("SET") else {
+    let Ok(spec) = std::env::var("KOBO_EXANIM_SET") else {
         return Vec::new();
     };
     spec.split(';')
@@ -130,7 +130,7 @@ fn apply(sets: &[Set], frame: u32, ram: &mut Ram) {
         }
     }
     if frame == 0
-        && let Ok(file) = std::env::var("FILE")
+        && let Ok(file) = std::env::var("KOBO_EXANIM_FILE")
     {
         for (i, b) in hex_bytes(&file).iter().enumerate() {
             ram.set_u8(RamAddr::new(0x7E_AD00 + i as u32), *b);
@@ -164,8 +164,8 @@ fn play(rom: &Rom, level: u16, frames: u32) -> (State, Vec<State>) {
         level,
         frames,
         |ram| {
-            // ENTRY=7FC0FC=0100;...: RAM before the level's load.
-            if let Ok(spec) = std::env::var("ENTRY") {
+            // KOBO_EXANIM_ENTRY=7FC0FC=0100;...: RAM before the level's load.
+            if let Ok(spec) = std::env::var("KOBO_EXANIM_ENTRY") {
                 for item in spec.split(';').filter(|s| !s.is_empty()) {
                     let (a, v) = item.split_once('=').unwrap();
                     let a = u32::from_str_radix(a, 16).unwrap();
@@ -235,8 +235,8 @@ fn changed_words(a: &[u8], b: &[u8]) -> Vec<usize> {
 fn run(path: &str, level: u16, frames: u32) {
     let rom = prepare(Rom::load(path).unwrap(), level);
     let (first, states) = play(&rom, level, frames);
-    // COLOURS=lo-hi: CGRAM colours before the first frame.
-    if let Ok(r) = std::env::var("COLOURS") {
+    // KOBO_EXANIM_COLOURS=lo-hi: CGRAM colours before the first frame.
+    if let Ok(r) = std::env::var("KOBO_EXANIM_COLOURS") {
         let (lo, hi) = r.split_once('-').unwrap();
         let c: Vec<String> = (usize::from_str_radix(lo, 16).unwrap()
             ..=usize::from_str_radix(hi, 16).unwrap())
@@ -249,8 +249,8 @@ fn run(path: &str, level: u16, frames: u32) {
             .collect();
         println!("cgram before frame 0: {}", c.join(" "));
     }
-    // DUMP=lo-hi: work RAM ($0000-$1FFF) before the first frame.
-    if let Ok(r) = std::env::var("DUMP") {
+    // KOBO_EXANIM_DUMP=lo-hi: work RAM ($0000-$1FFF) before the first frame.
+    if let Ok(r) = std::env::var("KOBO_EXANIM_DUMP") {
         let (lo, hi) = r.split_once('-').unwrap();
         let (lo, hi) = (
             usize::from_str_radix(lo, 16).unwrap(),
@@ -286,7 +286,7 @@ fn run(path: &str, level: u16, frames: u32) {
         let mut line = format!("frame {f:3} $14={:02X}", s.frame);
         if !vram.is_empty() {
             line += &format!(" | vram {}", runs(&vram));
-            if std::env::var_os("WORDS").is_some() {
+            if std::env::var_os("KOBO_EXANIM_WORDS").is_some() {
                 line += &format!(" [{}]", value_runs(&vram, &s.vram));
             }
         }
@@ -296,9 +296,9 @@ fn run(path: &str, level: u16, frames: u32) {
         if !ex.is_empty() {
             line += &format!(" | 7FC0 {}", ex.join(" "));
         }
-        // VWORDS=lo-hi: the values of the VRAM words the frame changed there
+        // KOBO_EXANIM_VWORDS=lo-hi: the values of the VRAM words the frame changed there
         // (with VWORDS_ALL, all of them).
-        if let Ok(r) = std::env::var("VWORDS") {
+        if let Ok(r) = std::env::var("KOBO_EXANIM_VWORDS") {
             let (lo, hi) = r.split_once('-').unwrap();
             let (lo, hi) = (
                 usize::from_str_radix(lo, 16).unwrap(),
@@ -306,7 +306,7 @@ fn run(path: &str, level: u16, frames: u32) {
             );
             let w: Vec<String> = (lo..=hi)
                 .filter(|&i| {
-                    std::env::var_os("VWORDS_ALL").is_some()
+                    std::env::var_os("KOBO_EXANIM_VWORDS_ALL").is_some()
                         || prev.vram[2 * i..2 * i + 2] != s.vram[2 * i..2 * i + 2]
                 })
                 .map(|i| format!("{i:04X}={:02X}{:02X}", s.vram[2 * i + 1], s.vram[2 * i]))
@@ -315,8 +315,8 @@ fn run(path: &str, level: u16, frames: u32) {
                 line += &format!(" | words {}", w.join(" "));
             }
         }
-        // WATCH=lo-hi: work RAM ($0000-$1FFF) bytes the frame changed there.
-        if let Ok(r) = std::env::var("WATCH") {
+        // KOBO_EXANIM_WATCH=lo-hi: work RAM ($0000-$1FFF) bytes the frame changed there.
+        if let Ok(r) = std::env::var("KOBO_EXANIM_WATCH") {
             let (lo, hi) = r.split_once('-').unwrap();
             let (lo, hi) = (
                 usize::from_str_radix(lo, 16).unwrap(),
@@ -340,8 +340,8 @@ fn ab(a: &str, b: &str, level: u16, frames: u32) {
     let rb = prepare(Rom::load(b).unwrap(), level);
     let (fa, sa) = play(&ra, level, frames);
     let (fb, sb) = play(&rb, level, frames);
-    // EXRAM=lo-hi,...: the bytes of $7FC000-$7FC0FF compared.
-    let ex_range: Vec<usize> = match std::env::var("EXRAM") {
+    // KOBO_EXANIM_EXRAM=lo-hi,...: the bytes of $7FC000-$7FC0FF compared.
+    let ex_range: Vec<usize> = match std::env::var("KOBO_EXANIM_EXRAM") {
         Ok(r) => r
             .split(',')
             .flat_map(|r| {
@@ -351,8 +351,8 @@ fn ab(a: &str, b: &str, level: u16, frames: u32) {
             .collect(),
         Err(_) => (0x70..0x100).collect(),
     };
-    // VRAM_SKIP=lo-hi,...: word ranges left out (the player's tiles, say).
-    let skip: Vec<(usize, usize)> = std::env::var("VRAM_SKIP")
+    // KOBO_EXANIM_VRAM_SKIP=lo-hi,...: word ranges left out (the player's tiles, say).
+    let skip: Vec<(usize, usize)> = std::env::var("KOBO_EXANIM_VRAM_SKIP")
         .map(|s| {
             s.split(',')
                 .map(|r| {
@@ -376,8 +376,8 @@ fn ab(a: &str, b: &str, level: u16, frames: u32) {
             .copied()
             .filter(|&i| x.exram[i] != y.exram[i])
             .collect();
-        // AB_WRAM=lo-hi: work RAM $0000-$1FFF compared as well, in that range.
-        let wram: Vec<usize> = match std::env::var("AB_WRAM") {
+        // KOBO_EXANIM_AB_WRAM=lo-hi: work RAM $0000-$1FFF compared as well, in that range.
+        let wram: Vec<usize> = match std::env::var("KOBO_EXANIM_AB_WRAM") {
             Ok(r) => {
                 let (lo, hi) = r.split_once('-').unwrap();
                 (usize::from_str_radix(lo, 16).unwrap()..=usize::from_str_radix(hi, 16).unwrap())
@@ -423,6 +423,9 @@ fn main() {
             level(&args[3]),
             args[4].parse().unwrap(),
         ),
-        _ => eprintln!("exanim_probe run rom level frames | ab a b level frames"),
+        _ => {
+            eprintln!("usage: exanim_probe run rom level frames | ab a b level frames");
+            std::process::exit(2)
+        }
     }
 }

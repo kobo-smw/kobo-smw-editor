@@ -112,10 +112,6 @@ fn an_empty_project_builds_the_clean_rom() {
     let project = Project {
         root: std::path::PathBuf::from("."),
         manifest: Default::default(),
-        levels: Vec::new(),
-        map16: Vec::new(),
-        map16_bg: Vec::new(),
-        gfx: Vec::new(),
         ..Default::default()
     };
     assert_eq!(build::build(&clean, &project).unwrap().data(), clean.data());
@@ -135,9 +131,6 @@ fn edits_reach_the_rom() {
         root: std::path::PathBuf::from("."),
         manifest: Default::default(),
         levels: vec![(0x105, level.clone())],
-        map16: Vec::new(),
-        map16_bg: Vec::new(),
-        gfx: Vec::new(),
         ..Default::default()
     };
     let built = build::build(&clean, &project).unwrap();
@@ -266,9 +259,6 @@ fn lunar_magic_objects_build() {
             root: std::path::PathBuf::from("."),
             manifest: Default::default(),
             levels: vec![(0x105, level.clone())],
-            map16: Vec::new(),
-            map16_bg: Vec::new(),
-            gfx: Vec::new(),
             ..Default::default()
         };
         let built = common::build_as(&clean, &project, sa1).unwrap();
@@ -371,9 +361,6 @@ fn lunar_magic_object_forms_build() {
                 root: std::path::PathBuf::from("."),
                 manifest: Default::default(),
                 levels: vec![(number, level)],
-                map16: Vec::new(),
-                map16_bg: Vec::new(),
-                gfx: Vec::new(),
                 ..Default::default()
             };
             let built = common::build_as(&clean, &project, sa1).unwrap();
@@ -538,9 +525,6 @@ fn layer_2_must_match_the_level_mode() {
             root: std::path::PathBuf::from("."),
             manifest: Default::default(),
             levels: vec![(0x105, level)],
-            map16: Vec::new(),
-            map16_bg: Vec::new(),
-            gfx: Vec::new(),
             ..Default::default()
         };
         build::build_on(&base, &project, None).map(|_| ())
@@ -608,9 +592,6 @@ fn lunar_magic_backgrounds_build() {
                 root: std::path::PathBuf::from("."),
                 manifest: Default::default(),
                 levels: vec![(0x105, level.clone())],
-                map16: Vec::new(),
-                map16_bg: Vec::new(),
-                gfx: Vec::new(),
                 ..Default::default()
             };
             let built = common::build_as(&clean, &project, sa1).unwrap();
@@ -670,9 +651,6 @@ fn custom_palettes_build() {
             root: std::path::PathBuf::from("."),
             manifest: Default::default(),
             levels: vec![(0x105, level.clone())],
-            map16: Vec::new(),
-            map16_bg: Vec::new(),
-            gfx: Vec::new(),
             ..Default::default()
         };
         let built = common::build_as(&clean, &project, sa1).unwrap();
@@ -709,9 +687,6 @@ fn gfx_files_build() {
     let project = Project {
         root: std::path::PathBuf::from("."),
         manifest: Default::default(),
-        levels: Vec::new(),
-        map16: Vec::new(),
-        map16_bg: Vec::new(),
         gfx: images
             .iter()
             .map(|(i, image, _)| (*i, image.clone()))
@@ -827,9 +802,6 @@ fn entrances_in_lunar_magic_format_build() {
             root: std::path::PathBuf::from("."),
             manifest: Default::default(),
             levels: vec![(0x105, level.clone())],
-            map16: Vec::new(),
-            map16_bg: Vec::new(),
-            gfx: Vec::new(),
             ..Default::default()
         };
         let built = common::build_as(&clean, &project, sa1).unwrap();
@@ -954,9 +926,6 @@ fn lunar_magic_entrance_settings_build() {
             root: std::path::PathBuf::from("."),
             manifest: Default::default(),
             levels: vec![(0x105, level.clone())],
-            map16: Vec::new(),
-            map16_bg: Vec::new(),
-            gfx: Vec::new(),
             ..Default::default()
         };
         let built = common::build_as(&clean, &project, sa1).unwrap();
@@ -1080,9 +1049,6 @@ fn cached_builds_equal_clean_ones() {
         root: std::path::PathBuf::from("."),
         manifest: Default::default(),
         levels: vec![(0x105, level)],
-        map16: Vec::new(),
-        map16_bg: Vec::new(),
-        gfx: Vec::new(),
         ..Default::default()
     };
     let uncached = build::build(&clean, &project).unwrap();
@@ -1120,9 +1086,6 @@ fn a_synthetic_build_is_the_same_everywhere() {
         root: std::path::PathBuf::from("."),
         manifest: Default::default(),
         levels: vec![(0x105, level.clone()), (0x0C7, level)],
-        map16: Vec::new(),
-        map16_bg: Vec::new(),
-        gfx: Vec::new(),
         ..Default::default()
     };
     let built = build::build_on(&base, &project, None).unwrap();
@@ -1152,9 +1115,6 @@ fn secondary_entrances_are_checked_and_written() {
             root: PathBuf::from("."),
             manifest: Default::default(),
             levels,
-            map16: Vec::new(),
-            map16_bg: Vec::new(),
-            gfx: Vec::new(),
             ..Default::default()
         };
         build::build(&clean, &project).map_err(|e| e.to_string())
@@ -1274,9 +1234,6 @@ fn midway_redirects_and_what_is_refused() {
             root: std::path::PathBuf::from("."),
             manifest: Default::default(),
             levels,
-            map16: Vec::new(),
-            map16_bg: Vec::new(),
-            gfx: Vec::new(),
             ..Default::default()
         };
         let mut l105 = level(0x105);

@@ -52,30 +52,9 @@ fn target(rom: &Rom) -> u32 {
 /// `lm` with Kobo's ExAnimation code in place of Lunar Magic's, keeping the
 /// level table, the global list, the alternative files, and the settings,
 /// and with the
-/// game's palette copy at `$00A5E1` back (tools/lunar-magic/with-kobo-exanim).
+/// game's palette copy at `$00A5E1` back (`common::swap`).
 fn with_kobo(asar: &kobo_core::asar::Asar, clean: &Rom, lm: &Rom) -> Rom {
-    let mut rom = Rom::from_headerless(lm.data().to_vec()).unwrap();
-    let copy = clean.read(SnesAddr::new(0x00A5E1), 6).unwrap().to_vec();
-    rom.write(SnesAddr::new(0x00A5E1), &copy).unwrap();
-    // Nothing of Lunar Magic's for the patch's autoclean to free.
-    rom.write(SnesAddr::new(0x0583AE), &[0xFF; 3]).unwrap();
-    let mut rom = asar
-        .patch(
-            &rom,
-            &kobo_core::install::patch(kobo_core::install::EXANIMATION),
-        )
-        .unwrap()
-        .rom;
-    let (from, to) = (target(lm), target(&rom));
-    for (offset, len) in [(0xEA, 3), (0x5B, 2), (0x65, 2)] {
-        let bytes = lm.read(SnesAddr::new(from + offset), len).unwrap().to_vec();
-        rom.write(SnesAddr::new(to + offset), &bytes).unwrap();
-    }
-    for (at, len) in [(0x03BCC0, 16), (0x03FE00, 512)] {
-        let bytes = lm.read(SnesAddr::new(at), len).unwrap().to_vec();
-        rom.write(SnesAddr::new(at), &bytes).unwrap();
-    }
-    rom
+    common::swap::swap(asar, common::swap::Piece::ExAnimation, lm, clean).unwrap()
 }
 
 /// A slot's entry: type, trigger, frames less one, destination, frames.

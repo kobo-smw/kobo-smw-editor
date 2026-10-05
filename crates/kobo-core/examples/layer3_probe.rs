@@ -5,9 +5,9 @@
 //! `dx,dy@frames/...`, the player moved that much a frame), both layers'
 //! positions, layer 3's RAM (`$22`/`$24`, `$13D5`, `$1403`, `$145E`-`$1460`,
 //! `$40`, `$3E`, `$0D9D`/`$0D9E`, `$7FC01A`-`$7FC01F`), and the scroll and
-//! screen registers the frame's NMI and IRQ left. `WATCH=addr,len[;...]`
-//! adds work RAM ranges, `POKE=frame,addr,byte;...` (hex) sets bytes before
-//! a frame (`POKE_B`: in `compare`, for the second ROM only).
+//! screen registers the frame's NMI and IRQ left. `KOBO_LAYER3_WATCH=addr,len[;...]`
+//! adds work RAM ranges, `KOBO_LAYER3_POKE=frame,addr,byte;...` (hex) sets bytes before
+//! a frame (`KOBO_LAYER3_POKE_B`: in `compare`, for the second ROM only).
 //!
 //! `compare a b level frames path`: the frames on which the two ROMs leave
 //! anything of that, or work RAM `$0000`-`$1FFF`, or layer 3's VRAM
@@ -23,6 +23,9 @@
 //!
 //! `cargo run --release --example layer3_probe -- play rom.smc 105 60 3,0`
 
+#[path = "common/path.rs"]
+mod path;
+
 use kobo_core::Rom;
 use kobo_core::expand;
 use kobo_core::ram::{Ram, RamAddr};
@@ -32,42 +35,8 @@ fn level_arg(text: &str) -> u16 {
 }
 
 /// Moves the player along `path` (see the module docs) from `start`.
-fn steer(path: &str, frame: u32, ram: &mut Ram, start: (u16, u16)) {
-    let (mut x, mut y) = (start.0 as i32, start.1 as i32);
-    let mut left = frame as i32;
-    let mut vertical = false;
-    for leg in path.split('/') {
-        let (step, n) = match leg.split_once('@') {
-            Some((s, n)) => (s, n.parse::<i32>().unwrap()),
-            None => (leg, i32::MAX),
-        };
-        let (dx, dy) = step
-            .split_once(',')
-            .map(|(a, b)| (a.parse::<i32>().unwrap(), b.parse::<i32>().unwrap()))
-            .unwrap_or((0, 0));
-        vertical |= dy != 0;
-        let k = left.min(n);
-        x += dx * k;
-        y += dy * k;
-        left -= k;
-        if left == 0 {
-            break;
-        }
-    }
-    let (x, y) = (x.max(0) as u16, y.max(0) as u16);
-    ram.set_u16(RamAddr::new(0x7E_0094), x);
-    ram.set_u16(RamAddr::new(0x7E_0096), y);
-    ram.set_u16(RamAddr::new(0x7E_00D1), x);
-    ram.set_u16(RamAddr::new(0x7E_00D3), y);
-    ram.set_u8(RamAddr::new(0x7E_007B), 0);
-    ram.set_u8(RamAddr::new(0x7E_007D), 0);
-    // Invulnerable, so a path through enemies or lava goes on.
-    ram.set_u8(RamAddr::new(0x7E_1497), 0x7F);
-    if vertical {
-        ram.set_u8(RamAddr::new(0x7E_1412), 1);
-        ram.set_u8(RamAddr::new(0x7E_1404), 1);
-        ram.set_u8(RamAddr::new(0x7E_13F1), 1);
-    }
+fn steer(legs: &str, frame: u32, ram: &mut Ram, start: (u16, u16)) {
+    path::steer(legs, frame, ram, start, true);
 }
 
 /// What a frame left, for printing and comparing.
@@ -79,7 +48,7 @@ struct Frame {
 }
 
 fn watched() -> Vec<(u32, usize)> {
-    std::env::var("WATCH")
+    std::env::var("KOBO_LAYER3_WATCH")
         .ok()
         .map(|spec| {
             spec.split(';')
@@ -93,7 +62,7 @@ fn watched() -> Vec<(u32, usize)> {
 }
 
 fn frames(rom: &Rom, level: u16, n: u32, path: &str) -> Result<Vec<Frame>, String> {
-    frames_poked(rom, level, n, path, std::env::var("POKE").ok())
+    frames_poked(rom, level, n, path, std::env::var("KOBO_LAYER3_POKE").ok())
 }
 
 fn frames_poked(
@@ -116,7 +85,7 @@ fn frames_poked(
                 ram.u16(RamAddr::new(0x7E_0096)),
             ));
             steer(path, frame, ram, s);
-            // POKE=frame,addr,byte;...: RAM set before that frame.
+            // KOBO_LAYER3_POKE=frame,addr,byte;...: RAM set before that frame.
             if let Some(spec) = &poke {
                 for p in spec.split(';') {
                     let v: Vec<u32> = p
@@ -199,9 +168,9 @@ fn runs(list: &[usize]) -> String {
 
 /// What differs between two frames, or `None`.
 fn differs(a: &Frame, b: &Frame) -> Option<String> {
-    // LINE_ONLY=1: only layer 3's RAM and registers, for ROMs that differ
+    // KOBO_LAYER3_LINE_ONLY=1: only layer 3's RAM and registers, for ROMs that differ
     // elsewhere (a hack against a build of it).
-    if std::env::var_os("LINE_ONLY").is_some() {
+    if std::env::var_os("KOBO_LAYER3_LINE_ONLY").is_some() {
         return (a.line != b.line).then(|| format!("\n  a {}\n  b {}", a.line, b.line));
     }
     let ram: Vec<usize> = (0..a.wram.len())
@@ -279,7 +248,7 @@ fn main() {
             let n = args[4].parse().unwrap();
             let path = args.get(5).map(String::as_str).unwrap_or("0,0");
             // POKE_B: pokes for the second ROM only.
-            let fb = match std::env::var("POKE_B") {
+            let fb = match std::env::var("KOBO_LAYER3_POKE_B") {
                 Ok(p) => frames_poked(&b, level, n, path, Some(p)),
                 Err(_) => frames(&b, level, n, path),
             };
@@ -296,7 +265,7 @@ fn main() {
                 if let Some(d) = differs(&fa[f], &fb[f]) {
                     println!("frame {f}:{d}");
                     shown += 1;
-                    if shown >= 8 && std::env::var_os("ALL").is_none() {
+                    if shown >= 8 && std::env::var_os("KOBO_LAYER3_ALL").is_none() {
                         break;
                     }
                 }
@@ -371,6 +340,9 @@ fn main() {
             }
             println!("{same} of {cases} cases the same");
         }
-        _ => eprintln!("layer3_probe play rom level frames path | compare a b level frames path"),
+        _ => {
+            eprintln!("usage: layer3_probe play|compare|loads|sweep ... (see the source)");
+            std::process::exit(2)
+        }
     }
 }

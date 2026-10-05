@@ -56,10 +56,7 @@ fn project() -> Project {
     Project {
         root: PathBuf::from("."),
         manifest: Default::default(),
-        levels: Vec::new(),
         map16,
-        map16_bg: Vec::new(),
-        gfx: Vec::new(),
         ..Default::default()
     }
 }
@@ -204,10 +201,7 @@ fn bg_pages_build_and_read_back() {
     let project = Project {
         root: PathBuf::from("."),
         manifest: Default::default(),
-        levels: Vec::new(),
-        map16: Vec::new(),
         map16_bg,
-        gfx: Vec::new(),
         ..Default::default()
     };
     let built = build::build_on(&base, &project, None).unwrap();

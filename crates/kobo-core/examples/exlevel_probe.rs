@@ -52,19 +52,12 @@ fn hex(s: &str) -> u32 {
     u32::from_str_radix(s.trim_start_matches('$'), 16).unwrap()
 }
 
-fn read3(rom: &Rom, at: u32) -> u32 {
-    rom.read_u24(SnesAddr::new(at)).unwrap()
-}
-
-/// Where the level size table is: `$240` bytes before the `$05DA8A` hook's
-/// code, in Lunar Magic's layout and Kobo's.
+/// Where the level size table is, in Lunar Magic's layout and Kobo's
+/// (`kobo_core::level::size::table`).
 fn size_table(rom: &Rom) -> u32 {
-    assert_eq!(
-        rom.read_u8(SnesAddr::new(0x05DA8A)).unwrap(),
-        0x22,
-        "no JSL at $05DA8A: the ROM has no taller levels"
-    );
-    read3(rom, 0x05DA8B) - 0x240
+    kobo_core::level::size::table(rom)
+        .expect("no JSL at $05DA8A: the ROM has no taller levels")
+        .raw()
 }
 
 fn with_size(rom: &Rom, level: u16, size: u8) -> Rom {
@@ -81,8 +74,8 @@ fn entry(rom: &Rom, level: u16) -> Vec<u8> {
         let high = 0x04 | (level >> 8) as u8;
         expand::enter_by_exit(rom, level as u8, high, false, (level >> 8) as u8, |_| {}).unwrap()
     };
-    let mut bytes = ram.bytes(ram::RamAddr::new(0x7E_0000), 0x2000);
-    bytes[0x100..0x200].fill(0);
+    // The stack withheld (clean room), and the scratch bytes.
+    let mut bytes = kobo_core::clean_room::bytes(&ram, ram::RamAddr::new(0x7E_0000), 0x2000);
     bytes[..0x10].fill(0);
     bytes
 }
@@ -276,7 +269,9 @@ fn play(rom: &Rom, level: u16, o: &Options) -> Vec<(Vec<u8>, Vec<u8>)> {
             }
         },
         |_, played| {
-            let mut bytes = played.ram.bytes(ram::RamAddr::new(0x7E_0000), 0x20000);
+            // The stack withheld whatever `ignore=` says (clean room).
+            let mut bytes =
+                kobo_core::clean_room::bytes(played.ram, ram::RamAddr::new(0x7E_0000), 0x20000);
             for &(s, e) in &o.ignore {
                 bytes[s..e].fill(0);
             }
@@ -575,6 +570,11 @@ fn main() {
             let o = options(&args[4..]);
             compare(&rom(1), &rom(2), hex(&args[3]) as u16, &o);
         }
-        _ => eprintln!("usage: exlevel_probe sizes|ram|compare ..."),
+        _ => {
+            eprintln!(
+                "usage: exlevel_probe sizes|ram|show|entry|call|cells|compare ... (see the source)"
+            );
+            std::process::exit(2)
+        }
     }
 }

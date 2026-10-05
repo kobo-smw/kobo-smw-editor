@@ -1,6 +1,6 @@
 #!/bin/bash
-# The ROM a hack's hook sites go back to before Kobo's code goes over them, for the
-# with-kobo scripts:
+# The ROM a hack's content is moved into by `transfer`, and whose bytes a hack's hook
+# sites go back to before Kobo's code goes over them (examples/swap.rs does the same):
 #   base-rom hack.smc
 # prints the vanilla ROM's path (KOBO_SMW_ROM or `roms.smw`), or for an SA-1
 # hack ($00FFD5 = $23) the SA-1 reference ROM, the vanilla ROM with SA-1 Pack applied

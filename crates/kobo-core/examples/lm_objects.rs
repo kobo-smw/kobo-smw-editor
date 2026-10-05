@@ -63,9 +63,12 @@ fn main() {
             args[3].parse().unwrap(),
             command == "hashes",
         ),
-        _ => eprintln!(
-            "usage: lm_objects make in.mwl out.mwl group | grid|hashes rom.sfc level group"
-        ),
+        _ => {
+            eprintln!(
+                "usage: lm_objects make in.mwl out.mwl group | grid|hashes rom.sfc level group"
+            );
+            std::process::exit(2)
+        }
     }
 }
 

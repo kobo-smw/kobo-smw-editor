@@ -4,9 +4,10 @@
 # command line: its GFX and ExGFX, Map16, shared palette, levels (from their MWL exports,
 # tools/lunar-magic/export-mwl), and ExAnimation, with none of the hack's own code:
 #   transfer hack.smc mwl-dir out.smc
-# Then swap Kobo's pieces into a copy (with-kobo, with-kobo-vram, with-kobo-graphics) and
-# compare (docs/testing.md). The vanilla ROM comes from KOBO_SMW_ROM or kobo's
-# configuration.
+# Then swap Kobo's pieces into a copy (`cargo run --release --example swap -- bank06`,
+# `vram`, `graphics`) and compare (docs/testing.md). The vanilla ROM comes from
+# KOBO_SMW_ROM or `roms.smw`, the SA-1 reference ROM from KOBO_SA1_REFERENCE or
+# `tests.sa1_reference` (tools/kobo_config.py).
 set -euo pipefail
 here=$(dirname "$(realpath "$0")")
 hack=$(realpath "$1"); mwl=$(realpath "$2"); out=$(realpath -m "$3")

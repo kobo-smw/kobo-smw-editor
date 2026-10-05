@@ -10,6 +10,9 @@
 //!
 //! `cargo run --release --example gfx_probe -- vram rom.smc 105`
 
+#[path = "common/path.rs"]
+mod path;
+
 use kobo_core::{Rom, expand};
 
 fn load(path: &str, level: u16) -> expand::LoadedLevel {
@@ -108,8 +111,6 @@ fn map(a: &str, b: &str, level: u16) {
 /// one with vertical scrolling on, `diag` both.
 fn steer(mode: &str, frame: u32, ram: &mut kobo_core::ram::Ram, start: (u16, u16)) {
     use kobo_core::ram::RamAddr;
-    // Legs "dx,dy@frames/dx,dy@frames/...": each leg moves the player by
-    // (dx, dy) a frame for its frames, the last one for good.
     let named = match mode {
         "right" => "3,0",
         "left" => "-3,0",
@@ -118,39 +119,12 @@ fn steer(mode: &str, frame: u32, ram: &mut kobo_core::ram::Ram, start: (u16, u16
         "diag" => "3,2",
         other => other,
     };
-    let (mut x, mut y) = (start.0 as i32, start.1 as i32);
-    let mut left = frame as i32;
-    let mut vertical = false;
-    for leg in named.split('/') {
-        let (step, n) = match leg.split_once('@') {
-            Some((s, n)) => (s, n.parse::<i32>().unwrap()),
-            None => (leg, i32::MAX),
-        };
-        let (dx, dy) = step
-            .split_once(',')
-            .map(|(a, b)| (a.parse::<i32>().unwrap(), b.parse::<i32>().unwrap()))
-            .unwrap_or((0, 0));
-        vertical |= dy != 0;
-        let k = left.min(n);
-        x += dx * k;
-        y += dy * k;
-        left -= k;
-        if left == 0 {
-            break;
-        }
-    }
-    let (x, y) = (x.max(0) as u16, y.max(0) as u16);
-    ram.set_u16(RamAddr::new(0x7E_0094), x);
-    ram.set_u16(RamAddr::new(0x7E_0096), y);
-    ram.set_u16(RamAddr::new(0x7E_00D1), x);
-    ram.set_u16(RamAddr::new(0x7E_00D3), y);
-    ram.set_u8(RamAddr::new(0x7E_007B), 0);
-    ram.set_u8(RamAddr::new(0x7E_007D), 0);
-    // POKE_TILE=dx,dy,tile (hex): on the first frame, a tile at the
+    path::steer(named, frame, ram, start, false);
+    // KOBO_GFX_POKE_TILE=dx,dy,tile (hex): on the first frame, a tile at the
     // player's starting block plus (dx, dy) blocks of a horizontal level (a
     // coin the player then collects, say), for the tile change uploads.
     if frame == 0
-        && let Ok(spec) = std::env::var("POKE_TILE")
+        && let Ok(spec) = std::env::var("KOBO_GFX_POKE_TILE")
     {
         let v: Vec<i32> = spec
             .split(',')
@@ -165,11 +139,6 @@ fn steer(mode: &str, frame: u32, ram: &mut kobo_core::ram::Ram, start: (u16, u16
         };
         ram.set_u8(RamAddr::new(0x7E_C800 + offset as u32), v[2] as u8);
         ram.set_u8(RamAddr::new(0x7F_C800 + offset as u32), (v[2] >> 8) as u8);
-    }
-    if vertical {
-        ram.set_u8(RamAddr::new(0x7E_1412), 1);
-        ram.set_u8(RamAddr::new(0x7E_1404), 1);
-        ram.set_u8(RamAddr::new(0x7E_13F1), 1);
     }
 }
 
@@ -201,7 +170,7 @@ fn play(paths: &[String], level: u16, frames: u32, mode: &str) {
                     played.ram.u16(RamAddr::new(0x7E_001A)),
                     played.ram.u16(RamAddr::new(0x7E_001C)),
                     played.vram.to_vec(),
-                    played.ram.bytes(RamAddr::new(0x7E_0000), 0x2000),
+                    kobo_core::clean_room::bytes(played.ram, RamAddr::new(0x7E_0000), 0x2000),
                 ));
             },
         )
@@ -216,8 +185,8 @@ fn play(paths: &[String], level: u16, frames: u32, mode: &str) {
             if (x2, y2) != (x, y) {
                 line += &format!(" | other camera {x2:04X},{y2:04X}");
             }
-            // TILEMAPS=1: layer 1's and 2's tilemaps only.
-            let range = if std::env::var_os("TILEMAPS").is_some() {
+            // KOBO_GFX_TILEMAPS=1: layer 1's and 2's tilemaps only.
+            let range = if std::env::var_os("KOBO_GFX_TILEMAPS").is_some() {
                 0x3000..0x4000
             } else {
                 0..va.len() / 2
@@ -239,7 +208,7 @@ fn summarize(list: &[usize]) -> String {
     }
     let mut out = Vec::new();
     let mut i = 0;
-    while i < list.len() && (out.len() < 12 || std::env::var_os("FULL").is_some()) {
+    while i < list.len() && (out.len() < 12 || std::env::var_os("KOBO_GFX_FULL").is_some()) {
         let start = list[i];
         while i + 1 < list.len() && list[i + 1] == list[i] + 1 {
             i += 1;
@@ -300,14 +269,14 @@ fn watch(path: &str, level: u16, frames: u32, mode: &str) {
             }
             println!("{line}");
             prev = Some(played.vram.to_vec());
-            if std::env::var("DUMP_FRAME").ok().and_then(|f| f.parse::<u32>().ok()) == Some(frame) {
-                std::fs::write(std::env::var("DUMP_TO").unwrap(), played.vram).unwrap();
+            if std::env::var("KOBO_GFX_DUMP_FRAME").ok().and_then(|f| f.parse::<u32>().ok()) == Some(frame) {
+                std::fs::write(std::env::var("KOBO_GFX_DUMP_TO").unwrap(), played.vram).unwrap();
             }
-            // Which bytes of the given WRAM range ever change (WATCH_RAM=7F8183,504).
-            if let Ok(spec) = std::env::var("WATCH_RAM") {
+            // Which bytes of the given WRAM range ever change (KOBO_GFX_WATCH_RAM=7F8183,504).
+            if let Ok(spec) = std::env::var("KOBO_GFX_WATCH_RAM") {
                 let (a, n) = spec.split_once(',').unwrap();
                 let (a, n) = (u32::from_str_radix(a, 16).unwrap(), n.parse::<usize>().unwrap());
-                let now = played.ram.bytes(RamAddr::new(a), n);
+                let now = kobo_core::clean_room::bytes(played.ram, RamAddr::new(a), n);
                 let first = first_ram.get_or_insert(now.clone());
                 for (i, (x, y)) in now.iter().zip(first.iter()).enumerate() {
                     if x != y {
@@ -541,7 +510,7 @@ fn main() {
                             let hex: Vec<String> =
                                 bytes.iter().map(|b| format!("{b:02X}")).collect();
                             *count.entry(hex.join(" ")).or_default() += 1;
-                            if std::env::var_os("LEVELS").is_some() {
+                            if std::env::var_os("KOBO_GFX_LEVELS").is_some() {
                                 println!("  {level:03X}: {}", hex.join(" "));
                             }
                         }
@@ -557,6 +526,11 @@ fn main() {
             let loaded = load(&args[1], level_arg(&args[2]));
             std::fs::write(&args[3], &loaded.video.vram).unwrap();
         }
-        _ => eprintln!("gfx_probe vram rom level | map a b level"),
+        _ => {
+            eprintln!(
+                "usage: gfx_probe vram|dump|map|watch|play|bypass|loads|scroll ... (see the source)"
+            );
+            std::process::exit(2)
+        }
     }
 }

@@ -3,8 +3,8 @@
 
 mod common;
 
+use common::fixtures::sha1_hex;
 use kobo_core::gfx::{self, Bpp, GFX_FILE_COUNT, GfxFormat};
-use sha1::{Digest, Sha1};
 
 struct Expected {
     sha1: String,
@@ -12,18 +12,12 @@ struct Expected {
 }
 
 fn load_fixture() -> Vec<Option<Expected>> {
-    let text = include_str!("fixtures/vanilla_gfx_lm_export.txt");
     let mut out: Vec<Option<Expected>> = (0..0x34).map(|_| None).collect();
-    for line in text
-        .lines()
-        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
-    {
-        let mut parts = line.split_whitespace();
-        let name = parts.next().unwrap();
-        let index = usize::from_str_radix(name.trim_start_matches("GFX"), 16).unwrap();
+    for record in common::fixtures::records(include_str!("fixtures/vanilla_gfx_lm_export.txt")) {
+        let index = usize::from_str_radix(record[0].trim_start_matches("GFX"), 16).unwrap();
         out[index] = Some(Expected {
-            sha1: parts.next().unwrap().to_string(),
-            len: parts.next().unwrap().parse().unwrap(),
+            sha1: record[1].to_string(),
+            len: record[2].parse().unwrap(),
         });
     }
     out
@@ -38,10 +32,7 @@ fn gfx_files_match_lunar_magic_export() {
         let file = reader.read(index).unwrap();
         let export = file.to_lm_export();
         let want = expected[index as usize].as_ref().unwrap();
-        let got: String = Sha1::digest(&export)
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let got = sha1_hex(&export);
         assert_eq!(export.len(), want.len, "GFX{index:02X} size");
         assert_eq!(got, want.sha1, "GFX{index:02X} contents");
     }

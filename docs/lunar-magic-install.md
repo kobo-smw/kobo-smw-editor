@@ -158,7 +158,7 @@ what Lunar Magic does differently is recorded here.
 |---|---|---|---|
 | `$03BD9C`-`$03BD9F` = `4C 4D 10 01` (`"LM"` `$10 $01`), a marker in 3.x ROMs, not in 2.5x | Lunar Magic's MWL export and save read a secondary entrance's two further tables through `$05DC86`/`$05DC8B` only with it and the pointers below; without it they write new, empty tables | bisecting its `-ExportLevel` over a Kobo build and a Lunar Magic-saved vanilla ROM, printing addresses only, then taking each byte away from a Kobo build (2026-09-27); in neither the help file nor the open tools' sources | written (`entrance.asm`). With it, a save also writes `$03` rather than `$25` at `$0FEFB4`, in the area it keeps for itself (above); nothing else it writes changes |
 | The vanilla entrance tables' pointers, `$05DC81` = `$05FE00`, `$0DE191`/`98`/`9F` = `$05F800`/`FA00`/`FC00`, at the fixed addresses the community's level format page gives for them (`read3($0DE191)` and so on) | the same check: without `$05DC81` or `$0DE191` the further tables are lost, and without `$0DE198` and `$0DE19F` the save reads the main tables from elsewhere and a secondary entrance's Y is lost. The bytes before them, and the rest of `$05DC50`-`$05DC8E` and `$0DE190`-`$0DE1FF`, can stay `$FF` | the addresses from the community's page; that the check needs them, by taking each byte away from a Kobo build (2026-09-27). (The session that did so also printed and identified the byte before each pointer, which no check needs; that is not used: [clean-room-audit.md](clean-room-audit.md)) | written (`entrance.asm`), the pointers alone |
-| `$06F5FC`-`$06F5FD` = `4C 4D` (`"LM"`), just before the gate | Lunar Magic's Map16 editor and `-ExportAllMap16` read the acts-like tables through `$06F624`, pages `$10`-`$7F` through their pointers, and page 2 per tileset through `$06F547` and `$06F586` only with it; without it they read all of those from elsewhere, getting other bytes for every tile (pages 0 to `$0F` and the tilesets' pages 0 and 1 read the same either way), and a Map16 save from the editor would write that back | bisecting `-ExportAllMap16` of a Kobo build against the same with Lunar Magic's bytes copied in (a Lunar Magic-saved ROM with Kobo's bank `$06` code swapped in, `with-kobo`), printing addresses only (2026-09-27); in neither the help file nor the open tools' sources. Every build before it had its pages past `$0F` and its acts-like settings shown wrong in Lunar Magic's editor | written (`actslike.asm`). With it, a level save also writes other values at `$0FF05D`-`$0FF05E` and `$0FFFFF`, in the areas it keeps for itself (above); nothing else it writes changes |
+| `$06F5FC`-`$06F5FD` = `4C 4D` (`"LM"`), just before the gate | Lunar Magic's Map16 editor and `-ExportAllMap16` read the acts-like tables through `$06F624`, pages `$10`-`$7F` through their pointers, and page 2 per tileset through `$06F547` and `$06F586` only with it; without it they read all of those from elsewhere, getting other bytes for every tile (pages 0 to `$0F` and the tilesets' pages 0 and 1 read the same either way), and a Map16 save from the editor would write that back | bisecting `-ExportAllMap16` of a Kobo build against the same with Lunar Magic's bytes copied in (a Lunar Magic-saved ROM with Kobo's bank `$06` code swapped in, `swap bank06`), printing addresses only (2026-09-27); in neither the help file nor the open tools' sources. Every build before it had its pages past `$0F` and its acts-like settings shown wrong in Lunar Magic's editor | written (`actslike.asm`). With it, a level save also writes other values at `$0FF05D`-`$0FF05E` and `$0FFFFF`, in the areas it keeps for itself (above); nothing else it writes changes |
 | `$0FFFFF` not `$FF` (a build writes `$00`), when a build stores GFX as LC_LZ3 | Lunar Magic reads the compression setting at `$0FFFEB` only then: with `$FF` it exports every LC_LZ3 file as if LC_LZ2, and a save writes `$00` (LC_LZ2) at `$0FFFEB` over the ROM's `$02` | bisecting `-ExportGFX` of an SA-1 Kobo build with LC_LZ3 GFX against the same after Lunar Magic's `-ChangeCompression`, addresses only, then trying values (2026-09-27) | written by `[rom] lz3` builds (`build::Stage::Base`); `tests/lunar_magic_save.rs` checks both ways. What the byte records is not known; Lunar Magic's own saves leave `$00` or `$03` |
 | `$06F547` = `$06` to turn page 2 per tileset on | with the marker above, Lunar Magic 3.70's editor and export take page 2 as per tileset only when this byte is `$06`; `$00`-`$05`, `$07`, `$08`, `$0E`, `$16`, `$26`, `$46`, `$80`, `$86`, `$EA`, and `$FF` all read as off (the two Lunar Magic 2.53 ROMs of the corpus have `$06` there). Kobo's Map16 routine takes any value but `$00` as on | trying values with `-ExportAllMap16` (2026-09-27) | written by a build with page 2 per tileset (`build::write_tileset_page2`) |
 | `$00AAD8` = `$EA` (4bpp GFX), `$00AA47` = `$EA` and a `JSL` (`$22`) at `$0583B8` (ExGFX and lists), `"LM"` at `$0FF15C` (lists kept) | Lunar Magic reads the GFX files as 4bpp, and its ExGFX export and level export read the ExGFX tables and the level's list, only with the first three; its save keeps the lists and ExGFX tables as they are only with the marker ("Graphics", below) | bisecting `-ExportExGFX`, `-ExportLevel`, and a save over `+ExGFX` with Kobo's graphics code swapped in, printing addresses only (2026-09-28) | written (`graphics.asm`) by a build that uses Lunar Magic's graphics formats. Without the marker a save installs Lunar Magic's ExGFX code over the tables and rewrites the lists and ExGFX pointers; without any one of the other three a save keeps everything (tests/lunar_magic_save.rs) |
@@ -405,7 +405,7 @@ call site of `$00F44D` whose return address the chain sees (the low byte GPS com
 - With a hack's own tables: Kaizo Kindergarten, its levels, Map16, graphics, palette,
   and ExAnimation transferred into a Lunar Magic-saved vanilla ROM with Lunar Magic's
   command line, and the same ROM with Kobo's bank `$06` code swapped in and the table
-  pointers kept (`tools/lunar-magic/with-kobo`), render all 512 levels the same and
+  pointers kept (`swap bank06` (examples/swap.rs)), render all 512 levels the same and
   leave the same RAM after every load but `$0B`, a direct-page byte; no picture and no
   other RAM differs (2026-09-26).
 
@@ -470,7 +470,7 @@ vanilla saved by Lunar Magic, both with level `105` re-imported from its own exp
 `render_hashes` and `ramdiff.py --summary` over all 512 levels. With `map16.asm` and `actslike.asm` (2026-09-26): every picture and every level's
 data the same; RAM after load differs at `$0B` in 492 levels, at `$1693` in the 18 boss arenas, and
 in level `105`'s data pointers (each save put the level elsewhere). Re-measured
-2026-09-27, after the boss battles' pass-through below, with `with-kobo` on vanilla saved
+2026-09-27, after the boss battles' pass-through below, with `swap bank06` on vanilla saved
 by Lunar Magic (level `105` re-imported): RAM after load differs only at `$0B`, in the
 same 492 levels. Found on the way:
 
@@ -495,7 +495,7 @@ lookups add the split screen offsets `DATA_00BA60`/`BA70` (low) and `BA9C`/`BAAC
 All assume 27 rows (`$1B0` bytes a screen).
 
 The piece's sites, found as the bytes a save rewrites on a Kobo install without the
-`JSL` at `$05DA8A` and leaves alone with it (`tools/lunar-magic/with-kobo-exlevel` lists
+`JSL` at `$05DA8A` and leaves alone with it (`examples/swap.rs exlevel` lists
 them):
 
 - The 9 ranges `$00BDA8`-`$00BEA7`: in all four tables the entries for modes `00`, `01`,
@@ -628,7 +628,7 @@ the 32 sizes in the `$40` bytes after it. `entrance.asm` takes the level's heigh
 `$13D7` and `B` from `$0BF5` for the layers' positions and for vertical scrolling at
 will, and `exits.asm` now leaves an exit's entrance and flags in `$0BDA`-`$0BDC`, since
 the tables fill `$0BF6` before the entrance code reads them. Checked against Lunar
-Magic's (2026-09-28): with `with-kobo-exlevel` on vanilla saved by Lunar Magic and on
+Magic's (2026-09-28): with `swap exlevel` on vanilla saved by Lunar Magic and on
 Luminescent, ValuableAndBeautiful, Akogare2, SMW_2022-4-9, SMW_2021-5-1, Sakaya
 Sanctuary, and Advanced Shells moved into it (Kobo's sprite loader and VRAM patch
 swapped into both sides), every level leaves the same RAM after its load and draws the
@@ -649,7 +649,7 @@ differently), and a Lunar Magic save of the build keeps every level and size.
 A level's header may count more screens than its size leaves room for (layer 1's
 screens before layer 2's in a level with layer 2 objects, layer 2 the rest): QLDC 2021
 `22_FerpyMcFrosting` has seven at 15 screens where 37 rows leave 12, and with Kobo's
-code swapped in (`with-kobo-exlevel`) they load and play as under Lunar Magic's along
+code swapped in (`swap exlevel`) they load and play as under Lunar Magic's along
 three camera paths (2026-10-02). Objects on screens past that room are another matter:
 the screen pointers there are 0, so they would be written over low work RAM. Builds
 refuse objects past the room and build a screen count past it. No level of the corpus
@@ -795,7 +795,7 @@ reach them through the tiles' bit 9, as the game's own reach FG1-FG3 and BG1.
 A 64x32 tilemap holds 32 Map16 columns and 16 rows, wrapping both ways (column `c` at
 tile column `2c mod 64`, row `r` at tile row `2r mod 32`). What the patch keeps there,
 found by comparing the tilemaps frame by frame with Kobo's version of it swapped in
-(`gfx_probe play`, `scroll`, `loads`; tools/lunar-magic/with-kobo-vram) on every vanilla
+(`gfx_probe play`, `scroll`, `loads`; examples/swap.rs vram) on every vanilla
 level along several camera paths. A layer's camera cell is `cx` = X / 16 and `cy` =
 (Y + 1) / 16: the screen's first line shows the line below the layer's vertical position,
 and the rows follow what is on screen.
@@ -1163,7 +1163,7 @@ Kobo's (`asm/lunar-magic/layer3.asm`, installed by a build whose lists have any 
 `build::Project::lunar_magic_layer3`, after `graphics.asm`, whose `$7FC006` it reads)
 hooks the same four sites but `$00A153` (builds keep the overworld as the game has it)
 and meets the check with its own `JSL` at `$00A01F`. Against Lunar Magic's
-(tools/lunar-magic/with-kobo-layer3, `layer3_probe sweep`, 2026-09-30): 1,500 random
+(examples/swap.rs layer3, `layer3_probe sweep`, 2026-09-30): 1,500 random
 settings in random vanilla levels (not the five tide levels), along eight camera paths,
 240 frames each, the same layer 3 RAM, registers, and tilemap every frame, and all work
 RAM `$0000`-`$1FFF`; Kaizo Kindergarten's content (tools/lunar-magic/transfer), all 512
@@ -1187,7 +1187,7 @@ writes them (the overworld's own files) so its editor and save find them. Overwo
 graphics are left to the overworld work (roadmap step 4; review, 2026-10-04); an import
 notes the submaps whose lists name other files (Kaizo Kindergarten's 0-4 and 6).
 
-Against Lunar Magic's (tools/lunar-magic/with-kobo-graphics, gfx_probe `loads`, 2026-09-28):
+Against Lunar Magic's (examples/swap.rs graphics, gfx_probe `loads`, 2026-09-28):
 - vanilla+LM with 4bpp files: the same VRAM after every level's load, and the same
   RAM. The player's tile words (`$6040`-`$6187`, and SP1's last tile, `$67F0`) differed
   until 2026-09-30: the game builds the player's tile pointers (`DynGfxTilePtr`,
@@ -1231,7 +1231,7 @@ ExGFX pointers.
   "portions of files B, F and 21"), and what it does on the overworld and in the credits.
   In levels it changes nothing Kobo's loader does not: Kaizo Kindergarten (4bpp) with
   Kobo's graphics loader swapped in loads the same VRAM on every level, the Mode 7 boss
-  arenas included, but for the player's tile words (2026-10-04, `with-kobo-graphics`,
+  arenas included, but for the player's tile words (2026-10-04, `swap graphics`,
   `gfx_probe loads 0000-8000`).
 - SP4's high nibble: what its bits do, and why Lunar Magic 3.70's save clears bit 12
   (Kobo's builds keep what the source says). Bit 12 changes nothing a level's load
@@ -1835,7 +1835,7 @@ leaves as the game has it, making the copy in its own hook at `$00A5FD` instead,
 keeps its state where Lunar Magic's layout has it (the table and pointers at the same
 offsets from its hook's target, the documented RAM, `$7FC003` and `$7FC019`, and its queue at
 `$7FC0C0`). Against Lunar Magic's, on `vanilla+LM` with global lists transferred from
-SMW_2022-4-9 (tools/lunar-magic/with-kobo-exanim), random lists of every type and
+SMW_2022-4-9 (examples/swap.rs exanim), random lists of every type and
 trigger, global and level, random settings, starting trigger states, and trigger,
 timer, coin, stop, pause, and level-end events over 120 frames give the same VRAM (but
 the player's tiles), CGRAM, palette copies, and trigger RAM on every frame of 600

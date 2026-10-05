@@ -146,10 +146,13 @@ fn main() {
             let (x, y) = (args[2].parse().unwrap(), args[3].parse().unwrap());
             berry(&args[1], level, layer2, other, x, y, &tiles, &pokes)
         }
-        _ => eprintln!(
-            "usage: contact_probe place in.mwl out.mwl x y | run rom.sfc [x y] \
+        _ => {
+            eprintln!(
+                "usage: contact_probe place in.mwl out.mwl x y | run rom.sfc [x y] \
              | stand rom.sfc level x y tile... | berry rom.sfc x y tile... [level=n] [layer=2] [other=tile] | tongue rom.sfc tile... [level=n]"
-        ),
+            );
+            std::process::exit(2)
+        }
     }
 }
 

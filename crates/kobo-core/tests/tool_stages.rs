@@ -51,10 +51,6 @@ fn patches_apply_early_and_late_in_order() {
             late_patches: vec![PathBuf::from("asm/late.asm")],
             ..Manifest::default()
         },
-        levels: Vec::new(),
-        map16: Vec::new(),
-        map16_bg: Vec::new(),
-        gfx: Vec::new(),
         ..Default::default()
     };
     let built = build::build_on(&base, &project, None).unwrap();
@@ -135,10 +131,6 @@ fn addmusick_inserts_the_music() {
             music: Some(PathBuf::from("music")),
             ..Manifest::default()
         },
-        levels: Vec::new(),
-        map16: Vec::new(),
-        map16_bg: Vec::new(),
-        gfx: Vec::new(),
         ..Default::default()
     };
     let built = build::build(&clean, &project).unwrap();
@@ -299,10 +291,6 @@ fn uberasm_inserts_level_code() {
             uberasm: Some(PathBuf::from("uberasm")),
             ..Manifest::default()
         },
-        levels: Vec::new(),
-        map16: Vec::new(),
-        map16_bg: Vec::new(),
-        gfx: Vec::new(),
         ..Default::default()
     };
     let built = build::build(&clean, &project).unwrap();
@@ -385,10 +373,6 @@ fn gps_inserts_blocks() {
             gps: Some(PathBuf::from("blocks")),
             ..Manifest::default()
         },
-        levels: Vec::new(),
-        map16: Vec::new(),
-        map16_bg: Vec::new(),
-        gfx: Vec::new(),
         ..Default::default()
     };
     let built = build::build(&clean, &project).unwrap();
