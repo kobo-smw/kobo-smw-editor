@@ -845,8 +845,11 @@ fn named_picker(
         Some(n) => format!("{v:02X}  {n}"),
         None => format!("{v:02X}"),
     };
+    // Left-aligned, as a field reads: the empty right text takes the
+    // space after the name.
     let button = ui.add(
         egui::Button::new(text(value))
+            .right_text("")
             .truncate()
             .min_size(egui::vec2(200.0, 0.0)),
     );
