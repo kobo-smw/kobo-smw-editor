@@ -5,7 +5,7 @@ set -euo pipefail
 rom=$1; out=$2; levels=$3
 mesen=${MESEN:-$HOME/.local/share/kobo/tools/mesen2/Mesen}
 mkdir -p "$out"
-# Clean room (docs/step-2.md): dump_levels.lua stops at three of the game's
+# Clean room (docs/clean-room.md): dump_levels.lua stops at three of the game's
 # addresses, so each must still be the game's instruction or where a hook
 # starts, not the middle of Lunar Magic's code.
 python3 "$(dirname "$0")/../clean_room.py" sites "$rom" 0096D5 05D8B7 05DA65

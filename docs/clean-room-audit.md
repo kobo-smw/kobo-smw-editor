@@ -1,7 +1,7 @@
 # Clean-room audit, 2026-10-03
 
 Kobo looks at Lunar Magic only to interoperate with it, and never reads the instructions of
-its code (step-2.md, "Clean room"). This is the record of the audit that checked that
+its code ([clean-room.md](clean-room.md)). This is the record of the audit that checked that
 against everything Kobo knew of Lunar Magic on 2026-10-03: how the rule was broken before
 it covered everything it does now, what was learnt that way, what was removed for it, and
 what stays and why. It names nothing of Lunar Magic's code: no address inside it, no byte
@@ -9,7 +9,7 @@ of it, nothing of how it works.
 
 ## How it was done
 
-Seven reviews, each of one part, against the rule as step-2.md has it now: the docs
+Seven reviews, each of one part, against the rule as clean-room.md has it now: the docs
 (`lunar-magic.md` and the rest; `lunar-magic-install.md` in two halves), Kobo's patches
 (`asm/lunar-magic/`), the Rust library, examples, tests, and tools, the git history from
 the first commit, and the transcripts of every agent session this machine has
@@ -60,7 +60,7 @@ changed or removed.
   kilobyte of it printed as definitions. The session saw what it was, stopped, and deleted
   the output without studying it; nothing from it is in Kobo.
 
-Since 2026-10-02 `kobo_core::clean_room` closes all of these (step-2.md), the last since
+Since 2026-10-02 `kobo_core::clean_room` closes all of these ([clean-room.md](clean-room.md#kobos-outputs)), the last since
 2026-10-04: an output shows a Map16 definition only where the ROM's tables put that tile
 (`clean_room::Map16Shown`).
 

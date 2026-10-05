@@ -2,8 +2,41 @@
 
 What the tools a build runs require of the ROM they are given, how they find space, and what
 makes their output vary. From their sources (paths relative to each tool's repository), read
-2026-09-25; the versions are the ones [step-2.md](step-2.md) pins. `$xxxxxx` is a SNES
-address, "PC" an offset in the headerless file.
+2026-09-25; the versions are the ones below. `$xxxxxx` is a SNES address, "PC" an offset
+in the headerless file. Where each runs in a build is in [build.md](build.md#stages).
+
+## Which tools, and where they come from
+
+| Tool | Licence | Source | Notes |
+|---|---|---|---|
+| Asar 1.91 | LGPL-3.0+ | C++ | Dynamic linking is fine; PIXI and UberASM Tool use 1.91 too |
+| PIXI 1.43 (and 1.42) | GPL-3.0 | C++, CMake | Builds on Linux; its CFG editor's resources are Nintendo data |
+| UberASM Tool 2.1 (Fernap) | GPL-3.0 | C# | Built for x86 .NET 8, which Linux and macOS lack; needs an x64 rebuild |
+| AddmusicK 1.0.11 (AddMusicKFF) | none | C++, Makefile | Builds on Linux; holds SMW samples and music |
+| SA-1 Pack 1.40 | none | Asar patch | Holds code attributed to Lunar Magic |
+| GPS 1.4.4 | none | C++ | No repository; release on the Wayback Machine; builds on Linux |
+
+- A companion repository builds each licensed tool from a pinned upstream commit on CI for
+  all three platforms and publishes the builds with their sources, leaving out PIXI's CFG
+  editor and its Nintendo resources, and with UberASM Tool rebuilt for x64 with a native
+  `libasar`. Kobo downloads the one for its platform on first use, checks its SHA-256, and
+  caches it per user (below).
+- A `[tools]` path or environment variable overrides a tool, for people developing it;
+  the build is then marked as not reproducible: `kobo build` prints a note for each tool
+  a build takes from a configured path (`Located::note`), AddmusicK, GPS, and SA-1 Pack
+  included.
+- AddmusicK, SA-1 Pack, and GPS have no licence, and AddmusicK contains Nintendo data:
+  never bundled. Decided with the maintainer (2026-10-03): Kobo fetches SA-1 Pack 1.40
+  by hash from its author's GitHub release, which is not redistribution; AddmusicK (whose
+  release has Windows programs only, with an Asar of its own) and GPS (on the Wayback
+  Machine only) stay the user's own configured copy. Asking their maintainers to add a
+  licence would help, but nothing waits on it.
+- GPS runs unmodified, as the user supplies it, and Kobo's bank `$06` code has the shape
+  GPS patches (decided 2026-09-25; [clean-room.md](clean-room.md)). A licence would let
+  the companion repository patch GPS to use the documented `JSL` slots instead.
+- Each Kobo release pins one set of tool versions. A project may ask for another pinned
+  version where one is published (`[pixi] version`, PIXI 1.42 for baserom sprites written
+  for it).
 
 ## Kobo's pinned builds
 
@@ -78,7 +111,7 @@ address, "PC" an offset in the headerless file.
   can land in the erased block, even at the same place with the same length.
 - Kobo's own patches take free space through Asar like any patch, in the build's first
   stage after the base image, before Kobo or a tool has placed a block
-  ([step-2.md](step-2.md)).
+  ([build.md](build.md#stages)).
 - On LoROM, the addresses Asar gives free space are in banks `$80` and up (`$908008` for
   PC `0x80008`), since its `pctosnes` sets bit 23 (`libsmw.h:126-134`). Kobo's own
   allocator uses `$10`-`$3F`; the bytes are the same.
@@ -404,5 +437,5 @@ documentation describes it (`kobo_core::callisto`).
   never on its own output.
 - PIXI, GPS, and UberASM Tool order shared routines or library files by directory listing,
   which differs between operating systems and file systems. Fixing it takes patching the
-  tools to sort, or handing them one file at a time; [step-2.md](step-2.md) accepts the
-  variation for now.
+  tools to sort, or handing them one file at a time; the variation is accepted for now
+  ([build.md](build.md#stages)).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The clean room for Kobo's scripts (docs/step-2.md, "Clean room"), as
+"""The clean room for Kobo's scripts (docs/clean-room.md), as
 kobo_core::clean_room is for the library: what tells a ROM Lunar Magic saved, and
 where a script may stop or call into a ROM's code.
 

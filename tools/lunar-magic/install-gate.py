@@ -11,7 +11,7 @@ onto base.smc (a ROM Lunar Magic installs into, such as Kobo's), stop a save (im
 level.mwl as level 105) from rewriting WATCH. A watched range that holds a table is filled
 with a marker first, so that resetting it shows.
 
-Clean room (docs/step-2.md): it prints SNES addresses only, never the bytes of either ROM.
+Clean room (docs/clean-room.md): it prints SNES addresses only, never the bytes of either ROM.
 The ROMs it writes are scratch copies in a temporary directory, never kept. Run it where
 Lunar Magic's restore system finds the original ROM (it copies vanilla.smc there itself).
 KOBO_LM replaces the Lunar Magic wrapper (default: lm beside this script). A save that

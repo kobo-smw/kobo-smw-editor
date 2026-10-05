@@ -3,7 +3,7 @@
 What Lunar Magic changes in a ROM, as far as the library has to know: found from the formats
 the community documents, Lunar Magic's help file, and ROMs Lunar Magic produced, by their
 data, region diffs, and what their code leaves in memory, never from its executable or by
-reading the code it puts in a ROM (step-2.md, "Clean room";
+reading the code it puts in a ROM ([clean-room.md](clean-room.md);
 [clean-room-audit.md](clean-room-audit.md) has what was removed on 2026-10-03 for coming
 from that). Vanilla behaviour is in [smw.md](smw.md).
 
@@ -231,8 +231,8 @@ from that). Vanilla behaviour is in [smw.md](smw.md).
   own, one LC_RLE1 stream of 2048 bytes (32 rows to a half, low bytes then high bytes),
   in a RATS block; `C` without `F` decodes to 864 bytes. Lunar Magic 3.51 rewrites every
   vanilla background pointer to a full one with `V`; older versions leave bank `$FF`.
-- Lunar Magic opens and saves a step 2a build without loss (`tools/lunar-magic/save-check`,
-  2026-09-25): on the first save it installs itself (the gate, the 3.x hooks, the sprite
+- Lunar Magic opens and saves, without loss, a build that writes nothing in its layout
+  (`tools/lunar-magic/save-check`, 2026-09-25): on the first save it installs itself (the gate, the 3.x hooks, the sprite
   bank table), and every level reads back as Kobo wrote it. The level it saves is
   re-encoded, and its screen exits rewritten in its own format: `u` set, and `h` from the
   level number, which is the destination's bit 8 the game's format leaves implicit
@@ -397,8 +397,7 @@ Not confirmed:
 ## What Lunar Magic installs, and how it decides
 
 Found with Lunar Magic 3.70's command line under Wine, by byte diffs of ROMs before and
-after a save and by changing bytes and saving again (the hook spike of
-[step-2.md](step-2.md)); none of it comes from reading Lunar Magic's code.
+after a save and by changing bytes and saving again (step 2's hook spike); none of it comes from reading Lunar Magic's code.
 `tools/lunar-magic/` has the wrapper and the region diff used.
 
 - The first save into a vanilla ROM (here `-ImportLevel` of level `105`'s own MWL) expands

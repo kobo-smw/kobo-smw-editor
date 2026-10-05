@@ -2,7 +2,7 @@
 -- it logs the first writes to a RAM address after the level loader runs,
 -- with the instruction that made each.
 --   KOBO_ORACLE_LEVELS=102 KOBO_TRACE_ADDR=7EE400 KOBO_ORACLE_OUT=dir
--- Clean room (docs/step-2.md): it refuses a ROM Lunar Magic saved, since
+-- Clean room (docs/clean-room.md): it refuses a ROM Lunar Magic saved, since
 -- the instructions would show where its code is. That is the marker, or
 -- code in an area every save fills (tools/clean_room.py).
 local mem = emu.memType.snesMemory

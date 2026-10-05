@@ -343,9 +343,10 @@ folders make a full run about an hour; leave them out for a quicker one.
   reached, more levels refused, a diff, an import of the build, or a save that passed and
   fails, levels that resolve or draw differently that did not. Keep a sweep's
   `results.json` (it holds hashes and messages, no ROM data) as the next one's baseline.
-  The whole corpus (175 entries, QLDC 2021's and 2022's `.bps` patches included) takes
-  about two hours on four cores, mostly in rendering, and about 500 MB: point `out` and
-  `TMPDIR` at a disk, not a `/tmp` in memory. `save-check` leaves its work folder (the saved
+  The whole corpus (175 entries: the 47 loose and `corpus_more` hacks and QLDC 2021's and
+  2022's 128 `.bps` patches, 135 LoROM and 40 SA-1, Lunar Magic 1.62 to 3.51) takes about
+  45 minutes on four cores, mostly in rendering, and about 1 GB: point `out` and `TMPDIR`
+  at a disk, not a `/tmp` in memory. `save-check` leaves its work folder (the saved
   copy, Lunar Magic's files) in `SAVE_CHECK_KEEP` when that is set.
 - **A hack built by Kobo**: the corpus sweep imports each hack, builds it, compares what
   every level's load resolves (`examples/tiles_diff.rs hack.smc out.sfc levels...`: grid,
@@ -363,7 +364,7 @@ folders make a full run about an hour; leave them out for a quicker one.
   right at 3 and at 8 pixels a frame, and up or down, comparing the camera, the scroll
   and layer 3 RAM, the player, what he touches, and the tile planes frame by frame,
   until the level is left. Against the hack, what differs is often the hack's: its own
-  code, which the import does not carry (`docs/step-2.md`), and an older Lunar Magic's
+  code, which the import does not carry ([build.md](build.md#no-base)), and an older Lunar Magic's
   code. `against=` takes the hack's levels moved into a 3.70 ROM
   (`tools/lunar-magic/transfer`, with MWL exports from `tools/lunar-magic/export-mwl` for
   hacks without them) instead, which compares Kobo's code with 3.70's on the same levels:
@@ -542,10 +543,10 @@ or `entrances`, several joined by `+`. The probes below then compare the two ROM
   pages 0 and 1 and page 2, and every page the build lists as written (the file's layout is
   in [lunar-magic.md](lunar-magic.md)); without the marker at `$06F5FC` it shows the
   acts-like settings, page 2 per tileset, and pages past `$0F` wrong, and nothing else. A
-  new step 2b piece adds its part to that build. A build of the whole vanilla import passes
-  with levels `105` and `106`. The Lunar Magic features of step 2b are each to be checked
-  this way. Once a build writes any of the bytes Kobo writes only because Lunar Magic
-  checks them ([lunar-magic-install.md](lunar-magic-install.md#bytes-kobo-writes-because-lunar-magic-checks-them)),
+  new piece of Kobo's install adds its part to that build. A build of the whole vanilla
+  import passes with levels `105` and `106`. Every Lunar Magic feature builds write is
+  checked this way. Once a build writes any of the bytes Kobo writes only because Lunar Magic
+  checks them ([lunar-magic-install.md](lunar-magic-install.md#bytes-kobo-writes-because-lunar-magic-or-other-tools-check-them)),
   every feature's check runs twice, with those bytes and with them cleared back to what a
   build without them has, and anything Lunar Magic then does differently (installs, keeps,
   or drops) is recorded in that section.

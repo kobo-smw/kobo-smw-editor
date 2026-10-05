@@ -609,7 +609,7 @@ impl EntranceBytes {
 /// [`tables::ENTRANCES`], or where Lunar Magic moved them. Lunar Magic keeps
 /// pointers to them at fixed addresses the community's level format page
 /// documents, `read3($0DE191)`, `read3($0DE198)`, `read3($0DE19F)`, and
-/// `read3($05DC81)` (step-2.md, "Clean room": such pointers are interface),
+/// `read3($05DC81)` (docs/clean-room.md: such pointers are interface),
 /// and they are taken when each is the game's table (in either half of the
 /// banks) or the start of a RATS block. A ROM with more than 512 entrances
 /// has them there (Super Riff World 2).

@@ -1,6 +1,6 @@
 # The tools Kobo fetches from their authors' own releases, checked by
 # SHA-256 as the kobo-tools builds are. They have no licence, so Kobo
-# neither rebuilds nor redistributes them (docs/step-2.md, "Tools").
+# neither rebuilds nor redistributes them (docs/toolchain.md).
 # Edited by hand: a new version is a new URL, size, and hash.
 
 [sa1pack]

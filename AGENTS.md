@@ -2,7 +2,7 @@
 
 An open-source Super Mario World ROM editor and build system.
 Desktop app for Windows, Linux, and macOS.
-Early stage: roadmap step 1 is complete; step 2 is next, planned in `docs/step-2.md`.
+Early stage: roadmap steps 1 and 2 are complete; step 3, the GUI level editor, is next.
 
 ## Principles
 
@@ -51,7 +51,7 @@ Early stage: roadmap step 1 is complete; step 2 is next, planned in `docs/step-2
   Magic operation, bisecting which bytes it checks, and the memory effects of running Lunar
   Magic-saved ROMs. Never read Lunar Magic's instructions (a disassembly of the executable
   or of the code it puts in a ROM, or an instruction trace of that code), and never copy
-  its code. `docs/step-2.md` has why.
+  its code. `docs/clean-room.md` has why.
 - **Scope discipline.** Do not chase Lunar Magic feature parity before shipping something usable.
 - **License is MPL-2.0 across the board.** Application, core library, CLI, and ROM-side patches.
   New dependencies must be MPL-compatible; check each tool's license before adopting it.
@@ -330,7 +330,7 @@ skipped. Keep all three green.
 - .NET 8 SDK in `~/.dotnet` (user-local, from `dot.net/v1/dotnet-install.sh`); UberASM Tool
   built with it as x64 in `~/.local/share/kobo/tools/uberasm-x64` (docs/toolchain.md).
   `kobo-smw/kobo-tools` (its `build.py`, and a Docker image for Linux) makes the pinned builds.
-- Lunar Magic 3.70, the version step 2 targets: `~/.local/share/kobo/tools/lunar-magic-3.70/`
+- Lunar Magic 3.70, the version Kobo's builds target: `~/.local/share/kobo/tools/lunar-magic-3.70/`
   (from `fusoya.eludevisibility.org/lm/`). Run `x64/Lunar Magic.exe`, which needs only
   64-bit Wine; set `WINEDLLOVERRIDES="mscoree,mshtml="` so a new Wine prefix does not stop
   to offer Mono and Gecko. `Lunar Magic.chm` is its help file, which documents the
@@ -374,7 +374,11 @@ describes that module's code rather than the game). Do not grow this file with t
 - `docs/known-gaps.md`: what a rendered level does not reproduce.
 - `docs/toolchain.md`: what Asar, PIXI, GPS, UberASM Tool, AddmusicK, and SA-1 Pack require of a
   ROM, where they put things, what makes their output vary, their licences.
-- `docs/step-2.md`: the step 2 plan: decisions and their reasons, prework, work order, risks.
+- `docs/build.md`: what a build is and the decisions it rests on: Lunar Magic and Kobo
+  builds, no base, the source formats, the stages, Lunar Magic's layout piece by piece,
+  what builds refuse, what is left to Lunar Magic, and the risks.
+- `docs/clean-room.md`: why Kobo looks at Lunar Magic only to interoperate with it, what
+  evidence that allows, and how Kobo's outputs keep to it.
 - `docs/review.md`: decisions taken without the maintainer, and settings left refused,
   waiting for a batch review. Add to it rather than stopping to ask.
 - `docs/clean-room-audit.md`: the 2026-10-03 audit of everything Kobo knew of Lunar Magic:
