@@ -21,6 +21,7 @@ use thiserror::Error;
 use crate::entrance::LevelSettings;
 use crate::level::objects::ScreenExit;
 use crate::level::objects::{Layout, Object};
+use crate::level::size::LevelSize;
 use crate::level::{Layer2Kind, PrimaryHeader, SecondaryHeader};
 use crate::source::SourceError;
 use crate::source::level::{Entrance, Layer2, Level, Sprite};
@@ -90,6 +91,8 @@ pub enum Edit {
     },
     SetHeader(PrimaryHeader),
     SetEntrance(SecondaryHeader),
+    /// Lunar Magic's level size: a horizontal level's height.
+    SetSize(LevelSize),
     /// Lunar Magic's settings for the level and its entrances.
     SetSettings(LevelSettings),
     /// Changes one of the secondary entrances that lead into the level.
@@ -500,6 +503,7 @@ impl Edit {
             }
             Edit::SetHeader(header) => level.header = *header,
             Edit::SetEntrance(entrance) => level.entrance = *entrance,
+            Edit::SetSize(size) => level.size = *size,
             Edit::SetSettings(settings) => level.settings = *settings,
             Edit::ReplaceEntrance { index, entrance } => {
                 let list = &mut level.entrances;

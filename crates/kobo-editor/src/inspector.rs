@@ -665,7 +665,7 @@ fn entrances(
                 .num_columns(2)
                 .spacing([12.0, 6.0])
                 .show(ui, |ui| {
-                    let fields: [Field<SecondaryHeader>; 9] = [
+                    let fields: [Field<SecondaryHeader>; 8] = [
                         ("Screen", e.entrance_screen, 0x1F, |h, v| SecondaryHeader {
                             entrance_screen: v,
                             ..h
@@ -681,12 +681,6 @@ fn entrances(
                         ("Action", e.entrance_action, 7, |h, v| SecondaryHeader {
                             entrance_action: v,
                             ..h
-                        }),
-                        ("Midway screen", e.midway_screen, 15, |h, v| {
-                            SecondaryHeader {
-                                midway_screen: v,
-                                ..h
-                            }
                         }),
                         ("FG position", e.fg_position, 3, |h, v| SecondaryHeader {
                             fg_position: v,
@@ -745,36 +739,7 @@ fn entrances(
                 });
         });
 
-    let settings = &level.settings;
-    egui::CollapsingHeader::new(RichText::new("Level settings").strong())
-        .default_open(false)
-        .show(ui, |ui| {
-            Grid::new("settings")
-                .num_columns(2)
-                .spacing([12.0, 6.0])
-                .show(ui, |ui| {
-                    let flags: [Flag; 3] = [
-                        ("Slippery", settings.slippery, |s, v| s.slippery = v),
-                        ("Water", settings.water, |s, v| s.water = v),
-                        ("Face left", settings.face_left, |s, v| s.face_left = v),
-                    ];
-                    for (label, value, with) in flags {
-                        ui.label(label);
-                        let mut v = value;
-                        let r = ui.checkbox(&mut v, "");
-                        if r.changed() {
-                            let mut changed = *settings;
-                            with(&mut changed, v);
-                            *change = Some(Change::new(
-                                &r,
-                                format!("Change {}", label.to_lowercase()),
-                                vec![Edit::SetSettings(changed)],
-                            ));
-                        }
-                        ui.end_row();
-                    }
-                });
-        });
+    lunar_settings(ui, level, change);
 
     section(ui, "Secondary entrances here");
     let add = ui
@@ -874,4 +839,307 @@ fn copy_level(ui: &mut egui::Ui, to: &mut u16, taken: &[bool]) -> bool {
             .clicked();
     });
     copy
+}
+
+/// A field of a midway entrance of its own, as [`Field`] is of others.
+type MidwayField = (
+    &'static str,
+    u16,
+    u16,
+    fn(kobo_core::entrance::MidwayEntrance, u16) -> kobo_core::entrance::MidwayEntrance,
+);
+type MidwayFlag = (
+    &'static str,
+    bool,
+    fn(kobo_core::entrance::MidwayEntrance, bool) -> kobo_core::entrance::MidwayEntrance,
+);
+
+/// A level size as the panel names it.
+fn size_name(mode: u8) -> String {
+    let (height, screens) = kobo_core::level::size::SIZES[usize::from(mode)];
+    let rows = height / 16;
+    if mode == 0 {
+        format!("{rows} rows, {screens} screens: the game's")
+    } else {
+        format!("{rows} rows, {screens} screens")
+    }
+}
+
+/// Lunar Magic's settings for the level: its size, how its layers start,
+/// its sprites' spawning, and the midway entrance.
+fn lunar_settings(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>) {
+    use kobo_core::entrance::{Background, MidwayEntrance, SeparateMidway};
+    use kobo_core::level::size::LevelSize;
+
+    let settings = level.settings;
+    let header = level.entrance;
+    egui::CollapsingHeader::new(RichText::new("Lunar Magic's settings").strong())
+        .default_open(false)
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new(
+                    "A build that has any of these other than the game's way installs Kobo's code for Lunar Magic's layout.",
+                )
+                .small()
+                .color(theme::MUTED),
+            );
+            let set = |r: &Response, label: &str, s: LevelSettings, change: &mut Option<Change>| {
+                if r.changed() {
+                    *change = Some(Change::new(r, label, vec![Edit::SetSettings(s)]));
+                }
+            };
+            Grid::new("lunar-settings")
+                .num_columns(2)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    // The size: a horizontal level's height.
+                    let size = level.size;
+                    ui.label("Size");
+                    if level.header.level_mode.layer1_vertical() {
+                        ui.label(RichText::new("a vertical level takes none").color(theme::MUTED));
+                    } else {
+                        let mut mode = size.mode;
+                        let before = mode;
+                        let mut r = egui::ComboBox::from_id_salt("size")
+                            .selected_text(size_name(mode))
+                            .width(200.0)
+                            .show_ui(ui, |ui| {
+                                for m in 0..32u8 {
+                                    ui.selectable_value(&mut mode, m, size_name(m));
+                                }
+                            })
+                            .response;
+                        if mode != before {
+                            r.mark_changed();
+                            let edit = Edit::SetSize(LevelSize { mode, ..size });
+                            *change = Some(Change::new(&r, "Change level size", vec![edit]));
+                        }
+                    }
+                    ui.end_row();
+                    ui.label("Last row whole");
+                    let mut bottom = size.bottom_row;
+                    let r = ui
+                        .checkbox(&mut bottom, "")
+                        .on_hover_text("The camera goes low enough to show the level's last row whole");
+                    if r.changed() {
+                        let edit = Edit::SetSize(LevelSize {
+                            bottom_row: bottom,
+                            ..size
+                        });
+                        *change = Some(Change::new(&r, "Change level size", vec![edit]));
+                    }
+                    ui.end_row();
+
+                    let flags: [Flag; 5] = [
+                        ("Slippery", settings.slippery, |s, v| s.slippery = v),
+                        ("Water", settings.water, |s, v| s.water = v),
+                        ("Face left", settings.face_left, |s, v| s.face_left = v),
+                        ("Smart spawning", settings.smart_spawn, |s, v| s.smart_spawn = v),
+                        ("Screens set themselves", settings.auto_screens, |s, v| {
+                            s.auto_screens = v
+                        }),
+                    ];
+                    for (label, value, with) in flags {
+                        ui.label(label);
+                        let mut v = value;
+                        let r = ui.checkbox(&mut v, "");
+                        let mut changed = settings;
+                        with(&mut changed, v);
+                        set(&r, &format!("Change {}", label.to_lowercase()), changed, change);
+                        ui.end_row();
+                    }
+                    ui.label("Spawn range");
+                    let mut range = u16::from(settings.spawn_range);
+                    let r = number_field(ui, &mut range, 0, 3, false);
+                    set(
+                        &r,
+                        "Change spawn range",
+                        LevelSettings {
+                            spawn_range: range as u8,
+                            ..settings
+                        },
+                        change,
+                    );
+                    ui.end_row();
+
+                    // Layer 2's vertical scroll, apart from its horizontal.
+                    ui.label("Layer 2 vertical");
+                    ui.horizontal(|ui| {
+                        let mut own = settings.layer2_vertical_scroll.is_some();
+                        let r = ui.checkbox(&mut own, "its own");
+                        set(
+                            &r,
+                            "Change layer 2 scroll",
+                            LevelSettings {
+                                layer2_vertical_scroll: own.then_some(0),
+                                layer2_horizontal_high: false,
+                                ..settings
+                            },
+                            change,
+                        );
+                        if let Some(value) = settings.layer2_vertical_scroll {
+                            let mut v = u16::from(value);
+                            let r = number_field(ui, &mut v, 0, 31, false);
+                            set(
+                                &r,
+                                "Change layer 2 scroll",
+                                LevelSettings {
+                                    layer2_vertical_scroll: Some(v as u8),
+                                    ..settings
+                                },
+                                change,
+                            );
+                        }
+                    });
+                    ui.end_row();
+
+                    // Where the background starts.
+                    ui.label("Background");
+                    ui.horizontal(|ui| {
+                        let kind = match settings.background {
+                            Background::Height(_) => 0,
+                            Background::Offset(_) => 1,
+                            Background::Absolute => 2,
+                        };
+                        let mut chosen = kind;
+                        let names = ["shows its last row", "rows from layer 1", "at the top"];
+                        let mut r = egui::ComboBox::from_id_salt("background")
+                            .selected_text(names[kind])
+                            .show_ui(ui, |ui| {
+                                for (i, name) in names.iter().enumerate() {
+                                    ui.selectable_value(&mut chosen, i, *name);
+                                }
+                            })
+                            .response;
+                        if chosen != kind {
+                            r.mark_changed();
+                            let background = match chosen {
+                                0 => Background::Height(27),
+                                1 => Background::Offset(0),
+                                _ => Background::Absolute,
+                            };
+                            set(&r, "Change background position", LevelSettings { background, ..settings }, change);
+                        }
+                        match settings.background {
+                            Background::Height(rows) => {
+                                let mut v = u16::from(rows);
+                                let r = number_field(ui, &mut v, 1, 32, false)
+                                    .on_hover_text("The background's height in rows");
+                                set(&r, "Change background position", LevelSettings { background: Background::Height(v as u8), ..settings }, change);
+                            }
+                            Background::Offset(rows) => {
+                                let mut v = i32::from(rows);
+                                let r = ui.add(DragValue::new(&mut v).range(-15..=15).speed(0.1));
+                                set(&r, "Change background position", LevelSettings { background: Background::Offset(v as i8), ..settings }, change);
+                            }
+                            Background::Absolute => {}
+                        }
+                    });
+                    ui.end_row();
+
+                    // The midway entrance: its screen, and its own settings.
+                    ui.label("Midway screen");
+                    let screen = u16::from(header.midway_screen)
+                        | if settings.midway.screen_high { 0x10 } else { 0 };
+                    let mut v = screen;
+                    let r = number_field(ui, &mut v, 0, 31, true);
+                    if r.changed() {
+                        let mut s = settings;
+                        s.midway.screen_high = v & 0x10 != 0;
+                        let entrance = SecondaryHeader {
+                            midway_screen: (v & 0x0F) as u8,
+                            ..header
+                        };
+                        *change = Some(Change::new(
+                            &r,
+                            "Change midway screen",
+                            vec![Edit::SetEntrance(entrance), Edit::SetSettings(s)],
+                        ));
+                    }
+                    ui.end_row();
+
+                    ui.label("Midway entrance");
+                    let kind = match settings.midway.separate {
+                        None => 0,
+                        Some(SeparateMidway::Entrance(_)) => 1,
+                        Some(SeparateMidway::Redirect(_)) => 2,
+                    };
+                    let mut chosen = kind;
+                    let names = ["as the main one", "its own", "another level's"];
+                    let mut r = egui::ComboBox::from_id_salt("midway")
+                        .selected_text(names[kind])
+                        .show_ui(ui, |ui| {
+                            for (i, name) in names.iter().enumerate() {
+                                ui.selectable_value(&mut chosen, i, *name);
+                            }
+                        })
+                        .response;
+                    if chosen != kind {
+                        r.mark_changed();
+                        let mut s = settings;
+                        s.midway.separate = match chosen {
+                            1 => Some(SeparateMidway::Entrance(MidwayEntrance {
+                                slippery: settings.slippery,
+                                water: settings.water,
+                                action: header.entrance_action,
+                                x: 0,
+                                y: 0,
+                                fg_position: header.fg_position,
+                                bg_position: header.bg_position,
+                                relative: None,
+                                face_left: settings.face_left,
+                            })),
+                            2 => Some(SeparateMidway::Redirect(0)),
+                            _ => None,
+                        };
+                        set(&r, "Change midway entrance", s, change);
+                    }
+                    ui.end_row();
+                    match settings.midway.separate {
+                        Some(SeparateMidway::Redirect(to)) => {
+                            ui.label("Its level");
+                            let mut v = to;
+                            let r = ui.add(DragValue::new(&mut v).range(0..=0x1FF).speed(0.1).hexadecimal(3, false, true));
+                            let mut s = settings;
+                            s.midway.separate = Some(SeparateMidway::Redirect(v));
+                            set(&r, "Change midway entrance", s, change);
+                            ui.end_row();
+                        }
+                        Some(SeparateMidway::Entrance(m)) => {
+                            let with = |m: MidwayEntrance| {
+                                let mut s = settings;
+                                s.midway.separate = Some(SeparateMidway::Entrance(m));
+                                s
+                            };
+                            let fields: [MidwayField; 5] = [
+                                ("Its X tile", u16::from(m.x), 31, |m, v| MidwayEntrance { x: v as u8, ..m }),
+                                ("Its Y tile", m.y, 1023, |m, v| MidwayEntrance { y: v, ..m }),
+                                ("Its action", u16::from(m.action), 7, |m, v| MidwayEntrance { action: v as u8, ..m }),
+                                ("Its FG position", u16::from(m.fg_position), 3, |m, v| MidwayEntrance { fg_position: v as u8, ..m }),
+                                ("Its BG position", u16::from(m.bg_position), 3, |m, v| MidwayEntrance { bg_position: v as u8, ..m }),
+                            ];
+                            for (label, value, max, change_to) in fields {
+                                ui.label(label);
+                                let mut v = value;
+                                let r = number_field(ui, &mut v, 0, max, false);
+                                set(&r, "Change midway entrance", with(change_to(m, v)), change);
+                                ui.end_row();
+                            }
+                            let flags: [MidwayFlag; 3] = [
+                                ("Its water", m.water, |m, v| MidwayEntrance { water: v, ..m }),
+                                ("Slippery there", m.slippery, |m, v| MidwayEntrance { slippery: v, ..m }),
+                                ("Faces left", m.face_left, |m, v| MidwayEntrance { face_left: v, ..m }),
+                            ];
+                            for (label, value, change_to) in flags {
+                                ui.label(label);
+                                let mut v = value;
+                                let r = ui.checkbox(&mut v, "");
+                                set(&r, "Change midway entrance", with(change_to(m, v)), change);
+                                ui.end_row();
+                            }
+                        }
+                        None => {}
+                    }
+                });
+        });
 }
