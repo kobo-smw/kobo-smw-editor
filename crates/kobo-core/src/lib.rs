@@ -29,6 +29,7 @@ pub mod names;
 pub mod operation;
 pub mod palette;
 pub mod pixi;
+pub mod playtest;
 pub mod ram;
 pub mod rats;
 pub mod render;

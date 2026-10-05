@@ -14,6 +14,7 @@ mod outline;
 mod overview;
 mod palette;
 mod picture;
+mod play;
 mod preview;
 mod selection;
 mod source;

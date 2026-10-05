@@ -1321,3 +1321,35 @@ fn a_level_takes_a_palette_and_graphics_list_of_its_own() {
         Some("Add a graphics list")
     );
 }
+
+#[test]
+fn play_from_here_builds_a_rom_that_starts_there() {
+    let Some(clean) = vanilla() else { return };
+    if kobo_core::tools::Tool::Asar.locate_offline().is_err() {
+        return;
+    }
+    let project = Project::new(&clean, "play");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    // An unsaved edit is in the build too: a ledge goes.
+    look_at(&mut harness, 60, 20);
+    click_tile(&mut harness, 65, 22);
+    harness.key_press(Key::Delete);
+    harness.step();
+    let start = crate::play::start_at(0x105, (70.0 * 16.0, 19.0 * 16.0), 2);
+    assert_eq!((start.x, start.y), (70, 18));
+    crate::play::start(harness.state_mut(), start);
+    wait_for(&mut harness, "the build to play", |app| !app.play.busy());
+    let message = harness.state().status().unwrap_or_default().to_string();
+    assert!(message.starts_with("Playing level 105"), "{message}");
+    let rom = Rom::load(project.0.join("play.sfc")).unwrap();
+    assert_eq!(
+        rom.read_u8(kobo_core::addr::SnesAddr::new(0x009C64))
+            .unwrap(),
+        0x5C
+    );
+    let loaded = kobo_core::expand::expand_level(&rom, 0x105).unwrap();
+    assert_eq!(loaded.tiles.tile_at(65, 22), 0x25);
+    // The project's files are as they were: the edit is not saved.
+    assert!(harness.state().is_modified(0x105));
+}

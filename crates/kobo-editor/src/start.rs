@@ -487,6 +487,10 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
 
 /// Opens a file or folder with what the system opens it with.
 pub(crate) fn reveal(app: &mut App, path: &Path) {
+    // The tests open nothing.
+    if cfg!(test) {
+        return;
+    }
     let program = if cfg!(target_os = "windows") {
         "explorer"
     } else if cfg!(target_os = "macos") {

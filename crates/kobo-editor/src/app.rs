@@ -258,6 +258,7 @@ pub struct App {
     /// The build window and the build in progress.
     pub build: crate::build::BuildState,
     pub backgrounds: crate::backgrounds::Backgrounds,
+    pub play: crate::play::PlayState,
     startup: Startup,
     screenshot_frames: Option<u32>,
     /// The window's title as last set.
@@ -335,6 +336,7 @@ impl App {
             allow_close: false,
             build: Default::default(),
             backgrounds: Default::default(),
+            play: Default::default(),
             startup: startup.clone(),
             screenshot_frames: None,
             shown_title: String::new(),
@@ -1777,6 +1779,7 @@ impl eframe::App for App {
         self.title(&ctx);
         self.follow_files();
         crate::build::poll(self);
+        crate::play::poll(self);
         self.shortcuts(&ctx);
         if self.previewer.busy() {
             ctx.request_repaint_after(Duration::from_millis(100));

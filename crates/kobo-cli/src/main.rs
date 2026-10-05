@@ -130,6 +130,29 @@ enum Command {
         #[command(flatten)]
         rom: RomArg,
     },
+    /// Build a project to start in a level at a tile: from the title
+    /// screen straight there, and back there after a death.
+    Play {
+        /// The project directory.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Level number in hex, for example `105`.
+        #[arg(long)]
+        level: String,
+        /// The tile the player starts at, `x,y` in the level's tiles; the
+        /// level's main entrance if left out.
+        #[arg(long)]
+        at: Option<String>,
+        /// 0 small, 1 big, 2 cape, 3 fire.
+        #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(u8).range(0..=3))]
+        powerup: u8,
+        /// Output ROM path.
+        #[arg(long, short = 'o', default_value = "play.sfc")]
+        out: PathBuf,
+        /// The clean ROM. Defaults to the configured vanilla ROM.
+        #[command(flatten)]
+        rom: RomArg,
+    },
     /// Compare the levels of two ROMs as Kobo reads them, whatever their
     /// layouts; exits nonzero if any differ.
     Diff {
@@ -663,6 +686,14 @@ fn main() -> Result<()> {
             build(&dir, &out, bps.as_deref(), no_cache, &rom.load()?, json)
         }),
         Command::Fmt { dir, check } => fmt(&dir, check),
+        Command::Play {
+            dir,
+            level,
+            at,
+            powerup,
+            out,
+            rom,
+        } => play(&dir, &level, at.as_deref(), powerup, &out, rom.load()?),
         Command::Diff {
             a,
             b,
@@ -1488,6 +1519,47 @@ fn print_report(dir: &Path, report: &kobo_core::import::Report, json: bool) {
         report.levels.len(),
         report.map16.len()
     );
+}
+
+fn play(
+    dir: &Path,
+    level: &str,
+    at: Option<&str>,
+    powerup: u8,
+    out: &Path,
+    clean: Rom,
+) -> Result<()> {
+    use kobo_core::edit::Workspace;
+    use kobo_core::playtest::{self, Start};
+    let level = parse_level(level)?;
+    let workspace = Workspace::open(dir, std::sync::Arc::new(clean))?;
+    let (x, y) = match at {
+        Some(at) => {
+            let (x, y) = at
+                .split_once(',')
+                .and_then(|(x, y)| Some((x.trim().parse().ok()?, y.trim().parse().ok()?)))
+                .ok_or_else(|| anyhow::anyhow!("--at takes x,y in tiles, as 70,18"))?;
+            (x, y)
+        }
+        None => {
+            // Where the level's own load puts the player.
+            let rom = workspace.build()?;
+            let loaded = kobo_core::expand::expand_level(&rom, level)?;
+            let px = loaded.ram.u16(kobo_core::ram::PLAYER_X);
+            let py = loaded.ram.u16(kobo_core::ram::PLAYER_Y);
+            (px / 16, py / 16)
+        }
+    };
+    let start = Start {
+        level,
+        x,
+        y,
+        powerup,
+    };
+    let rom = playtest::build(&workspace, &start, &Asar::configured()?)?;
+    rom.save(out)?;
+    println!("{}: level {level:03X} from ({x}, {y})", out.display());
+    Ok(())
 }
 
 fn build(

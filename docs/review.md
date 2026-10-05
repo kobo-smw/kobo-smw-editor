@@ -46,3 +46,17 @@ settle it.
   OpenGL renderer (`glow`), which needs no Vulkan or EGL and runs under Mesa's GLX on the
   development server. Either works on the three platforms; wgpu is a feature flag away
   if a driver gives trouble.
+- **Play from here, ahead of step 4 (2026-10-06).** The roadmap puts play-from-level in
+  step 4; the editor has it now, as a build (`kobo_core::playtest`, `kobo play`) and an
+  emulator of the user's choosing, which the system opens `play.sfc` with. No emulator is
+  driven: Mesen-S and bsnes-plus integration stays step 4's. The build hooks two game
+  modes of the game's own (`asm/playtest.asm`): the title screen, which starts a game and
+  takes a screen exit, and the overworld's load, which goes back into the level, so a play
+  ROM never shows the overworld. It writes `play.sfc` into the project's folder, beside
+  `build.sfc`; a project's `.gitignore` should name both. To settle: the file's place (the
+  user's cache instead), whether the overworld should show after the level's end, and the
+  power-up and lives a play starts with (four lives, the power-up chosen in the menu).
+- **Lunar Magic's "Auto-Set Number of Screens" (2026-10-06).** The editor does not set a
+  level's screen count by itself, as Lunar Magic does when it saves; the flag is shown as
+  what it is ("Lunar Magic sets screens"), and *Fit* beside the screen count sets it from
+  the objects and sprites when the user asks (`edit::screens_used`).

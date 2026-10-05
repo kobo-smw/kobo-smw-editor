@@ -153,6 +153,9 @@ Since (2026-10-05 and 06, on master):
   `Edit::SetPalette`, `palette::game_palette` to start from).
 - Following a screen exit to where it leads (`Workspace::entrance_level`), back and forward
   between levels, and finding objects and sprites in every level (`edit::find`).
+- Play from here (`kobo_core::playtest`, `asm/playtest.asm`, `kobo play`): checked in
+  Mesen 2 on vanilla, a Lunar Magic hack, and an SA-1 one, from the title screen into the
+  level at the tile, and back there after a death and a game over.
 - Every entrance's position by the game's places or by tile, and its camera at the game's
   positions or rows from the player (`entrance::Camera`).
 

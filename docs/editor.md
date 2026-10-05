@@ -104,6 +104,14 @@ included, into `build.sfc` and, with the box ticked, `build.bps`. It shows each 
 it runs or comes from the stage cache. A failed build says why, and opens the level it was
 about. *Build and play* opens the ROM with what the system opens it with.
 
+**Play from here** (the canvas's menu, with the power-up to start with, or F5 where the
+mouse is; the command palette plays from the level's start) builds the project as the
+editor has it into `play.sfc` beside the project's build and opens it. The game goes from
+the title screen straight to that tile, through a secondary entrance put there in a copy
+of the level, and comes back there after a death, a game over (with four lives again), or
+the level's end; the project is not changed. `kobo play` does the same from the command
+line.
+
 A level that does not build does not stop the others from drawing: the picture's build
 leaves it out, as the game's own, and says so above the canvas.
 

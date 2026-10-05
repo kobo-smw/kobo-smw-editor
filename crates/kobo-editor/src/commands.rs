@@ -44,6 +44,8 @@ enum Command {
     Overview,
     /// Back to the level before, or with `true` forward again.
     Back(bool),
+    /// Play the open level from its start, with a power-up.
+    Play(u8),
     /// Shows or hides a layer, by its screen designation bit.
     Layer(u8),
     Background,
@@ -65,6 +67,22 @@ fn commands(app: &App) -> Vec<(String, &'static str, Command)> {
             "Forward to the next level".into(),
             "Alt+Right",
             Command::Back(true),
+        ),
+        ("Play the level from its start".into(), "", Command::Play(0)),
+        (
+            "Play the level from its start as Super Mario".into(),
+            "",
+            Command::Play(1),
+        ),
+        (
+            "Play the level from its start as Cape Mario".into(),
+            "",
+            Command::Play(2),
+        ),
+        (
+            "Play the level from its start as Fire Mario".into(),
+            "",
+            Command::Play(3),
         ),
         (
             "Show the level list".into(),
@@ -231,6 +249,24 @@ fn run(app: &mut App, command: Command) {
         }
         Command::Background => app.backgrounds.open = true,
         Command::Back(forward) => app.go_back(forward),
+        Command::Play(powerup) => {
+            let start = app.current().and_then(|open| {
+                let entry = open
+                    .entries
+                    .iter()
+                    .find(|e| e.kind == crate::preview::EntryKind::Main)?;
+                Some(kobo_core::playtest::Start {
+                    level: open.number,
+                    x: (entry.x.max(0) / 16) as u16,
+                    y: (entry.y.max(0) / 16) as u16,
+                    powerup,
+                })
+            });
+            if let Some(start) = start {
+                app.play.powerup = powerup;
+                crate::play::start(app, start);
+            }
+        }
         Command::Player => {
             view.player = !view.player;
             app.redraw();
@@ -407,6 +443,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                         ("Ctrl+wheel", "Zoom"),
                         ("Right click", "The menu for what is under the mouse"),
                         ("Double-click an exit", "Go to the level it leads to"),
+                        ("F5", "Play from where the mouse is"),
                         (
                             "Alt+Left, Alt+Right",
                             "Back to the level before, forward again",

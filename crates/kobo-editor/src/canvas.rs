@@ -526,6 +526,8 @@ fn show_canvas(
     let mut finished: Option<Finished> = None;
     let mut context_edit: Option<(String, Vec<Edit>)> = None;
     let mut find_query: Option<String> = None;
+    let mut play: Option<kobo_core::playtest::Start> = None;
+    let app_powerup = app.play.powerup;
     // A screen exit's label double-clicked: go where it leads.
     let mut follow: Option<kobo_core::level::objects::ScreenExit> = None;
     let mut clip: Option<(crate::clipboard::Action, Option<(u16, u16)>)> = None;
@@ -635,6 +637,11 @@ fn show_canvas(
         let camera = *camera;
 
         let pointer = response.hover_pos().map(|p| camera.to_level(canvas, p));
+        if let Some(at) = pointer
+            && ui.input(|i| i.key_pressed(Key::F5))
+        {
+            play = Some(crate::play::start_at(number, (at.x, at.y), app_powerup));
+        }
         let pills = exit_pills(&painter, canvas, &camera, open, geometry);
         let on_pill = |at: Pos2| pills.iter().find(|p| p.rect.contains(at)).map(|p| p.item);
         let on_exit = response.hover_pos().and_then(on_pill).is_some();
@@ -861,7 +868,14 @@ fn show_canvas(
         if placing.is_none() {
             response.context_menu(|ui| {
                 clip = clipboard_menu(ui, open, can_paste);
-                context_menu(ui, open, number, &mut context_edit, &mut find_query);
+                context_menu(
+                    ui,
+                    open,
+                    number,
+                    &mut context_edit,
+                    &mut find_query,
+                    &mut play,
+                );
             });
         }
 
@@ -1043,6 +1057,10 @@ fn show_canvas(
     {
         app.follow_exit(leads);
     }
+    if let Some(start) = play {
+        app.play.powerup = start.powerup;
+        crate::play::start(app, start);
+    }
     if let Some(query) = find_query {
         app.find.query = query;
         app.left = crate::app::LeftTab::Find;
@@ -1210,7 +1228,22 @@ fn context_menu(
     number: u16,
     edit: &mut Option<(String, Vec<Edit>)>,
     find: &mut Option<String>,
+    play: &mut Option<kobo_core::playtest::Start>,
 ) {
+    // The game, from where the menu was opened.
+    if let Some(at) = open.menu_at {
+        ui.menu_button("Play from here", |ui| {
+            for (i, name) in crate::play::POWERUPS.iter().enumerate() {
+                if ui.button(*name).clicked() {
+                    *play = Some(crate::play::start_at(number, (at.x, at.y), i as u8));
+                    ui.close();
+                }
+            }
+        })
+        .response
+        .on_hover_text("Build the project to start here, and open it (F5 where the mouse is)");
+        ui.separator();
+    }
     // A screen exit for the screen the menu was opened on, if it has none.
     if let Some(at) = open.menu_at {
         let vertical = open.document.level().header.level_mode.layer1_vertical();

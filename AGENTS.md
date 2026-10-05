@@ -205,6 +205,10 @@ Early stage: roadmap steps 1 and 2 are complete; step 3, the GUI level editor, i
   the hack's PIXI folder carries that insert as compiled code (`[pixi] compiled`,
   `source::pixi`), which a build writes back where PIXI put it; with it (`--pixi`), the
   project takes the folder's inputs as `[pixi] dir`.
+- `kobo_core::playtest` builds a project to start in a level at a tile (the editor's Play
+  from here, `kobo play`): a secondary entrance by tile in a copy of the level, and
+  Kobo's `asm/playtest.asm`, which hooks the title screen's and the overworld load's
+  game modes to take a screen exit to it.
 - `kobo_core::rats::FreeSpace` is the one way Kobo's library takes free space: everything it
   writes outside fixed addresses goes in a RATS-tagged block placed there. Kobo's own Asar
   patches take theirs with `freecode`/`freedata`, before anything else takes space. Asar
@@ -254,6 +258,7 @@ cargo run -- new dir --template rhr           # a project from a baserom templat
 cargo run -- build [dir] [-o out.sfc] [--bps out.bps]  # a project onto the clean ROM (and as a patch)
                                              # rom info, import, build, diff: --json for scripts
 cargo run -- fmt [dir] [--check]             # rewrite a project's files in Kobo's format
+cargo run -- play [dir] --level 105 [--at 70,18] [--powerup 2] [-o play.sfc]  # a build that starts there
 cargo run -- diff a.sfc b.sfc [--project dir] # levels that differ, however each ROM stores them
 tools/lunar-magic/save-check built.sfc       # Lunar Magic saves a copy; every level must survive
 tools/corpus-sweep out/ [--baseline old/results.json]  # import, build, diff, and save every corpus hack
