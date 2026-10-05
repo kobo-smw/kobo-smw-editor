@@ -132,7 +132,18 @@ impl Geometry {
                 )),
                 None => {
                     let list = objects(&self.level, object.layer)?;
-                    let (x, y) = edit::object_position(list.get(object.index)?)?;
+                    let placed = list.get(object.index)?;
+                    // A screen exit stands for its whole screen.
+                    if let kobo_core::level::objects::Object::ScreenExit(exit) = placed {
+                        let size = self.size();
+                        let start = f32::from(exit.screen) * 256.0;
+                        return Some(if self.loaded.tiles.vertical {
+                            Rect::from_min_size(Pos2::new(0.0, start), Vec2::new(size.x, 256.0))
+                        } else {
+                            Rect::from_min_size(Pos2::new(start, 0.0), Vec2::new(256.0, size.y))
+                        });
+                    }
+                    let (x, y) = edit::object_position(placed)?;
                     Some(tile_rect(i32::from(x), i32::from(y)))
                 }
             },
@@ -173,7 +184,12 @@ impl Geometry {
             let count = objects(&self.level, layer).map_or(0, Vec::len);
             for index in 0..count {
                 let item = Item::object(layer, index);
-                if self.bounds(item).is_some_and(|b| b.intersects(area)) {
+                // What has no place (screen exits) is not caught by a box.
+                let placed = objects(&self.level, layer)
+                    .and_then(|l| l.get(index))
+                    .and_then(edit::object_position)
+                    .is_some();
+                if placed && self.bounds(item).is_some_and(|b| b.intersects(area)) {
                     items.push(item);
                 }
             }

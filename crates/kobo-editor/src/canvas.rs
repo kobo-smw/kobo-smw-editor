@@ -6,6 +6,8 @@ use eframe::egui::{
     Stroke, StrokeKind, Vec2,
 };
 use kobo_core::edit::{self, Edit, ObjectLayer};
+use kobo_core::expand::ObjectRef;
+use kobo_core::level::objects::Object;
 use kobo_core::source::level::{Level, Sprite};
 
 use crate::app::{App, OpenLevel, Pending, SpriteView};
@@ -107,6 +109,67 @@ pub enum Drag {
     },
     /// Selecting what a rectangle meets.
     Marquee { from: Pos2, to: Pos2, add: bool },
+    /// Changing an object's size by its handle, in whole tiles.
+    Resize {
+        object: ObjectRef,
+        from: Pos2,
+        delta: (i32, i32),
+    },
+}
+
+/// The selected object whose size can be dragged, with its box: one
+/// standard object with a width, a height, or a length.
+fn resizable(open: &OpenLevel, geometry: &Geometry) -> Option<(ObjectRef, Rect)> {
+    let [Item::Object(o)] = open.selection[..] else {
+        return None;
+    };
+    let object = objects(open.document.level(), o.layer)?.get(o.index)?;
+    let Object::Standard {
+        number, settings, ..
+    } = object
+    else {
+        return None;
+    };
+    let sized = edit::setting_fields(*number, *settings)
+        .iter()
+        .any(|f| matches!(f.name, "width" | "height" | "length"));
+    sized.then(|| Some((o, geometry.bounds(Item::Object(o))?)))?
+}
+
+/// The edit that changes an object's size by `delta` tiles: its width or
+/// length across, its height down.
+fn resize_edit(level: &Level, o: ObjectRef, (dx, dy): (i32, i32)) -> Option<Edit> {
+    let object = objects(level, o.layer)?.get(o.index)?;
+    let Object::Standard {
+        number, settings, ..
+    } = object
+    else {
+        return None;
+    };
+    let mut new = *settings;
+    for field in edit::setting_fields(*number, *settings) {
+        let d = match field.name {
+            "width" | "length" => dx,
+            "height" => dy,
+            _ => continue,
+        };
+        let value = (i32::from(field.value) + d).clamp(i32::from(field.min), i32::from(field.max));
+        new = edit::with_setting(*number, new, field.name, value as u16);
+    }
+    let mut changed = object.clone();
+    if let Object::Standard { settings, .. } = &mut changed {
+        *settings = new;
+    }
+    (changed != *object).then_some(Edit::ReplaceObject {
+        layer: o.layer,
+        index: o.index,
+        object: changed,
+    })
+}
+
+/// The handle's square on screen, at the box's bottom right corner.
+fn handle_rect(camera: &Camera, canvas: Rect, bounds: Rect) -> Rect {
+    Rect::from_center_size(camera.to_screen(canvas, bounds.max), Vec2::splat(10.0))
 }
 
 /// What is under the mouse, for the status bar.
@@ -376,7 +439,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
         let camera = *camera;
 
         let pointer = response.hover_pos().map(|p| camera.to_level(canvas, p));
-        let hovered_item = pointer.and_then(|p| geometry.item_at(p, sprites_on));
+        let pills = exit_pills(&painter, canvas, &camera, open, geometry);
+        let on_pill = |at: Pos2| pills.iter().find(|p| p.rect.contains(at)).map(|p| p.item);
+        let hovered_item = match response.hover_pos().and_then(on_pill) {
+            Some(item) => Some(item),
+            None => pointer.and_then(|p| geometry.item_at(p, sprites_on)),
+        };
+        if response.secondary_clicked() {
+            open.menu_at = pointer;
+        }
 
         // Placing from the palette: each click puts one down.
         if placing.is_some() && !space {
@@ -409,11 +480,27 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
                     None => {}
                 }
             }
+            let handle = resizable(open, geometry);
             if response.drag_started_by(PointerButton::Primary)
                 && let Some(origin) = ui.input(|i| i.pointer.press_origin())
             {
                 let from = camera.to_level(canvas, origin);
+                let pill = on_pill(origin);
+                let on_handle = handle.filter(|(_, bounds)| {
+                    handle_rect(&camera, canvas, *bounds)
+                        .expand(3.0)
+                        .contains(origin)
+                });
                 match geometry.item_at(from, sprites_on) {
+                    _ if pill.is_some() => {}
+                    _ if on_handle.is_some() => {
+                        let (object, _) = on_handle.expect("checked");
+                        open.drag = Some(Drag::Resize {
+                            object,
+                            from,
+                            delta: (0, 0),
+                        });
+                    }
                     Some(item) => {
                         if !open.selection.contains(&item) {
                             if !shift {
@@ -445,6 +532,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
                         *delta = (d.x.round() as i32, d.y.round() as i32);
                     }
                     Some(Drag::Marquee { to, .. }) => *to = at,
+                    Some(Drag::Resize { from, delta, .. }) => {
+                        let d = (at - *from) / TILE;
+                        *delta = (d.x.round() as i32, d.y.round() as i32);
+                    }
                     None => {}
                 }
             }
@@ -459,6 +550,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
                             moved,
                             delta,
                         });
+                    }
+                    Some(Drag::Resize { object, delta, .. }) => {
+                        if let Some(edit) = resize_edit(open.document.level(), object, delta) {
+                            context_edit = Some(("Resize object".to_string(), vec![edit]));
+                        }
                     }
                     Some(Drag::Marquee { from, to, add }) => {
                         let area = Rect::from_two_pos(from, to);
@@ -480,11 +576,22 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
         // A menu on what was right-clicked.
         if placing.is_none() {
             response.context_menu(|ui| {
-                context_menu(ui, open, &mut context_edit);
+                context_menu(ui, open, number, &mut context_edit);
             });
         }
 
         let hovered_item = hovered_item.filter(|_| placing.is_none());
+        let selected = |item| open.selection.contains(&item);
+        let pill_shapes: Vec<(Rect, std::sync::Arc<egui::Galley>, bool)> = pills
+            .into_iter()
+            .map(|p| {
+                (
+                    p.rect,
+                    p.galley,
+                    selected(p.item) || hovered_item == Some(p.item),
+                )
+            })
+            .collect();
         draw(
             &painter,
             canvas,
@@ -494,6 +601,20 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
             view,
             hovered_item,
         );
+        for (rect, galley, lit) in pill_shapes {
+            let fill = if lit {
+                theme::SELECTION
+            } else {
+                Color32::from_rgb(0x2b, 0x5d, 0x3a)
+            };
+            let text = if lit {
+                theme::ON_SELECTION
+            } else {
+                Color32::WHITE
+            };
+            painter.rect_filled(rect, CornerRadius::same(4), fill);
+            painter.galley(rect.min + Vec2::new(6.0, 3.0), galley, text);
+        }
         if let (Some(placing), Some(at)) = (&placing, pointer) {
             let tile =
                 selection::tile_rect((at.x / TILE).floor() as i32, (at.y / TILE).floor() as i32);
@@ -565,6 +686,70 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
     hover
 }
 
+/// The level's screen exits, by their index in layer 1's list.
+fn exits(
+    level: &Level,
+) -> impl Iterator<Item = (usize, kobo_core::level::objects::ScreenExit)> + '_ {
+    level
+        .layer1
+        .iter()
+        .enumerate()
+        .filter_map(|(i, o)| match o {
+            Object::ScreenExit(exit) => Some((i, *exit)),
+            _ => None,
+        })
+}
+
+/// A screen exit's label on the canvas, at the top of its screen.
+struct ExitPill {
+    item: Item,
+    rect: Rect,
+    galley: std::sync::Arc<egui::Galley>,
+}
+
+fn exit_pills(
+    painter: &egui::Painter,
+    canvas: Rect,
+    camera: &Camera,
+    open: &OpenLevel,
+    geometry: &Geometry,
+) -> Vec<ExitPill> {
+    let level = open.document.level();
+    let vertical = geometry.loaded.tiles.vertical;
+    exits(level)
+        .map(|(index, exit)| {
+            let target = edit::ExitTarget::of(exit, open.number);
+            let text = if target.secondary {
+                format!("EXIT → entrance {:03X}", target.destination)
+            } else {
+                format!("EXIT → level {:03X}", target.destination)
+            };
+            let galley = painter.layout_no_wrap(text, FontId::monospace(11.0), Color32::WHITE);
+            let start = f32::from(exit.screen) * 256.0;
+            let corner = if vertical {
+                Pos2::new(0.0, start)
+            } else {
+                Pos2::new(start, 0.0)
+            };
+            let mut at = camera.to_screen(canvas, corner);
+            // Below the screen's label, and in view along the other axis.
+            if vertical {
+                at.x = at.x.max(canvas.left()) + 6.0;
+                at.y += 26.0;
+            } else {
+                at.x += 6.0;
+                at.y = at.y.max(canvas.top()) + 26.0;
+            }
+            let rect = Rect::from_min_size(at, galley.size() + Vec2::new(12.0, 6.0));
+            ExitPill {
+                item: Item::object(ObjectLayer::One, index),
+                rect,
+                galley,
+            }
+        })
+        .collect()
+}
+
 /// Puts what the palette chose at tile (`x`, `y`): an object last in
 /// layer 1's list, so it draws over the rest; a sprite where the loader
 /// reaches it.
@@ -610,7 +795,47 @@ fn geometry_ref(open: &OpenLevel) -> &Geometry {
     open.geometry.as_ref().expect("checked above")
 }
 
-fn context_menu(ui: &mut egui::Ui, open: &mut OpenLevel, edit: &mut Option<(String, Vec<Edit>)>) {
+fn context_menu(
+    ui: &mut egui::Ui,
+    open: &mut OpenLevel,
+    number: u16,
+    edit: &mut Option<(String, Vec<Edit>)>,
+) {
+    // A screen exit for the screen the menu was opened on, if it has none.
+    if let Some(at) = open.menu_at {
+        let vertical = open.document.level().header.level_mode.layer1_vertical();
+        let along = if vertical { at.y } else { at.x };
+        let screen = (along / 256.0).floor();
+        let level = open.document.level();
+        let has_exit = exits(level).any(|(_, exit)| f32::from(exit.screen) == screen);
+        if (0.0..32.0).contains(&screen) && !has_exit {
+            let screen = screen as u8;
+            if ui
+                .button(format!("Add screen exit on screen {screen:02X}"))
+                .clicked()
+            {
+                let exit = edit::ExitTarget {
+                    screen,
+                    destination: number,
+                    secondary: false,
+                    water: false,
+                }
+                .exit(number, false);
+                let index = level.layer1.len();
+                *edit = Some((
+                    "Add screen exit".to_string(),
+                    vec![Edit::InsertObject {
+                        layer: ObjectLayer::One,
+                        index,
+                        object: Object::ScreenExit(exit),
+                    }],
+                ));
+                open.selection = vec![Item::object(ObjectLayer::One, index)];
+                ui.close();
+            }
+            ui.separator();
+        }
+    }
     if open.selection.is_empty() {
         ui.label("Nothing selected");
         return;
@@ -802,6 +1027,33 @@ fn draw(
         for &item in items {
             outline(&painter, canvas, camera, geometry, item, delta, false);
         }
+    }
+
+    if let Some((_, bounds)) = resizable(open, geometry)
+        && open.pending.is_none()
+    {
+        let shown = match &open.drag {
+            Some(Drag::Resize { delta, .. }) => {
+                let max = bounds.max + Vec2::new(delta.0 as f32, delta.1 as f32) * TILE;
+                let r = Rect::from_min_max(bounds.min, max.max(bounds.min + Vec2::splat(TILE)));
+                painter.rect_stroke(
+                    camera.rect_to_screen(canvas, r),
+                    CornerRadius::same(2),
+                    Stroke::new(2.0, theme::ACCENT),
+                    StrokeKind::Outside,
+                );
+                r
+            }
+            _ => bounds,
+        };
+        let handle = handle_rect(camera, canvas, shown);
+        painter.rect(
+            handle,
+            CornerRadius::same(2),
+            Color32::WHITE,
+            Stroke::new(2.0, theme::SELECTION),
+            StrokeKind::Inside,
+        );
     }
 
     if let Some(Drag::Marquee { from, to, .. }) = &open.drag {

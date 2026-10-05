@@ -341,3 +341,50 @@ fn placing_puts_objects_last_and_sprites_in_screen_order() {
     assert!(harness.state().placing.is_none());
     wait_for(&mut harness, "the picture with both", drawn);
 }
+
+#[test]
+fn the_handle_resizes_an_object() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "resize");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    look_at(&mut harness, 60, 20);
+    click_tile(&mut harness, 65, 22);
+
+    // The ground ledge's box ends at the corner of tile (71, 24); its
+    // handle sits on that corner.
+    let corner = |app: &App| {
+        let open = app.current().unwrap();
+        let camera = open.camera.unwrap();
+        camera.to_screen(open.canvas, Pos2::new(72.0 * 16.0, 25.0 * 16.0))
+    };
+    let from = corner(harness.state());
+    let to = from
+        + egui::vec2(2.0 * 16.0, -16.0) * harness.state().current().unwrap().camera.unwrap().zoom;
+    harness.hover_at(from);
+    harness.step();
+    press(&mut harness, from, true);
+    harness.step();
+    for i in 1..=8 {
+        harness.hover_at(from + (to - from) * (i as f32 / 8.0));
+        harness.step();
+    }
+    press(&mut harness, to, false);
+    harness.step();
+
+    let open = harness.state().current().unwrap();
+    let text = open.document.text();
+    assert!(
+        text.contains("{ obj = 0x14, x = 60, y = 20, height = 4, width = 14 }"),
+        "{}",
+        text.lines()
+            .find(|l| l.contains("obj = 0x14, x = 60"))
+            .unwrap_or("")
+    );
+    assert_eq!(open.document.undo_label(), Some("Resize object"));
+    assert_eq!(
+        object_place(harness.state(), 10),
+        Some((60, 20)),
+        "it did not move"
+    );
+}

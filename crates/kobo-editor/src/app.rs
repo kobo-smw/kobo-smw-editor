@@ -75,6 +75,8 @@ pub struct OpenLevel {
     pub camera: Option<Camera>,
     /// Where the canvas was on the last frame, in screen points.
     pub canvas: egui::Rect,
+    /// Where on the level the canvas's menu was opened.
+    pub menu_at: Option<egui::Pos2>,
     pub drag: Option<Drag>,
     pub pending: Option<Pending>,
     /// Bring the selection into view on the next frame.
@@ -102,6 +104,7 @@ impl OpenLevel {
             selection: Vec::new(),
             camera: None,
             canvas: egui::Rect::NOTHING,
+            menu_at: None,
             drag: None,
             pending: None,
             focus: false,
@@ -689,28 +692,51 @@ impl App {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                for number in levels {
-                    let modified = self
-                        .open
-                        .get(&number)
-                        .is_some_and(|o| o.document.is_modified());
-                    let label = if modified {
-                        format!("{number:03X}  ●")
-                    } else {
-                        format!("{number:03X}")
-                    };
-                    let selected = self.current == Some(number);
-                    let text = RichText::new(label).monospace();
-                    if ui
-                        .add_sized(
-                            [ui.available_width(), 20.0],
-                            egui::Button::selectable(selected, text),
-                        )
-                        .clicked()
-                    {
-                        clicked = Some(number);
+                ui.with_layout(Layout::top_down_justified(Align::Min), |ui| {
+                    for number in levels {
+                        let modified = self
+                            .open
+                            .get(&number)
+                            .is_some_and(|o| o.document.is_modified());
+                        let about = workspace.level(number).map(|level| {
+                            let tileset =
+                                kobo_core::names::object_tileset(level.header.object_tileset)
+                                    .unwrap_or("?");
+                            format!("{tileset} · {}", level.header.screens)
+                        });
+                        let mut job = egui::text::LayoutJob::default();
+                        let font = egui::FontId::monospace(12.5);
+                        job.append(
+                            &format!("{number:03X}"),
+                            0.0,
+                            egui::TextFormat::simple(font, theme::TEXT),
+                        );
+                        if modified {
+                            job.append(
+                                " ●",
+                                0.0,
+                                egui::TextFormat::simple(
+                                    egui::FontId::proportional(12.0),
+                                    theme::ACCENT,
+                                ),
+                            );
+                        }
+                        if let Some(about) = about {
+                            job.append(
+                                &format!("  {about}"),
+                                0.0,
+                                egui::TextFormat::simple(
+                                    egui::FontId::proportional(12.0),
+                                    theme::MUTED,
+                                ),
+                            );
+                        }
+                        let selected = self.current == Some(number);
+                        if ui.selectable_label(selected, job).clicked() {
+                            clicked = Some(number);
+                        }
                     }
-                }
+                });
             });
         if let Some(number) = clicked {
             self.open_level(number);

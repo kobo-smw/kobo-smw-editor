@@ -406,3 +406,30 @@ fn a_sprite_moved_to_another_screen_moves_in_the_list() {
     // Neither had to move in the list to keep it in screen order.
     assert_eq!(edits.len(), 2);
 }
+
+#[test]
+fn an_exit_keeps_the_games_format_while_it_can() {
+    use crate::level::objects::ScreenExit;
+    // Level 105's exit to level 1CB, in the game's format: bit 8 is the
+    // level's.
+    let exit = ScreenExit {
+        screen: 7,
+        flags: 0,
+        destination: 0xCB,
+    };
+    let target = ExitTarget::of(exit, 0x105);
+    assert_eq!(target.destination, 0x1CB);
+    assert_eq!(target.exit(0x105, false), exit);
+    // To level 0CB, in the other bank: only Lunar Magic's format says it.
+    let other = ExitTarget {
+        destination: 0x0CB,
+        ..target
+    };
+    let lunar = other.exit(0x105, false);
+    assert_ne!(lunar.flags & ScreenExit::LUNAR_MAGIC, 0);
+    assert_eq!(ExitTarget::of(lunar, 0x105), other);
+    // One already in Lunar Magic's format stays so.
+    let kept = target.exit(0x105, true);
+    assert_ne!(kept.flags & ScreenExit::LUNAR_MAGIC, 0);
+    assert_eq!(ExitTarget::of(kept, 0x105), target);
+}

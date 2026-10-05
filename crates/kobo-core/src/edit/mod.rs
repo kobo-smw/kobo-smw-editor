@@ -16,10 +16,12 @@ pub use workspace::{Preview, Workspace, WorkspaceError};
 
 use thiserror::Error;
 
+use crate::entrance::LevelSettings;
+use crate::level::objects::ScreenExit;
 use crate::level::objects::{Layout, Object};
 use crate::level::{Layer2Kind, PrimaryHeader, SecondaryHeader};
 use crate::source::SourceError;
-use crate::source::level::{Layer2, Level, Sprite};
+use crate::source::level::{Entrance, Layer2, Level, Sprite};
 
 pub use crate::level::objects::ObjectLayer;
 
@@ -83,6 +85,13 @@ pub enum Edit {
     },
     SetHeader(PrimaryHeader),
     SetEntrance(SecondaryHeader),
+    /// Lunar Magic's settings for the level and its entrances.
+    SetSettings(LevelSettings),
+    /// Changes one of the secondary entrances that lead into the level.
+    ReplaceEntrance {
+        index: usize,
+        entrance: Entrance,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -110,6 +119,52 @@ pub enum EditError {
         #[source]
         source: std::io::Error,
     },
+}
+
+/// What a screen exit leads to, whichever format it is kept in.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ExitTarget {
+    /// The screen it is taken from, 0 to 31.
+    pub screen: u8,
+    /// A level (`000`-`1FF`), or with `secondary` a secondary entrance
+    /// (up to `1FFF` in Lunar Magic's format).
+    pub destination: u16,
+    pub secondary: bool,
+    /// In Lunar Magic's format: water, for a secondary exit; the midway
+    /// entrance, for a normal one.
+    pub water: bool,
+}
+
+impl ExitTarget {
+    /// What `exit`, in level `level`, leads to: in the game's format the
+    /// destination's bit 8 is the level's own.
+    pub fn of(exit: ScreenExit, level: u16) -> Self {
+        let lunar = exit.in_lunar_magic_format(level);
+        Self {
+            screen: exit.screen,
+            destination: lunar.lunar_magic_destination(),
+            secondary: exit.flags & ScreenExit::SECONDARY != 0,
+            water: lunar.flags & ScreenExit::WATER != 0,
+        }
+    }
+
+    /// The exit that leads here from level `level`: in the game's format
+    /// when `lunar` is false and the game's can say it, so that changing
+    /// an exit does not alone make a build install Lunar Magic's layout;
+    /// in Lunar Magic's otherwise.
+    pub fn exit(self, level: u16, lunar: bool) -> ScreenExit {
+        let flags = if self.water { ScreenExit::WATER } else { 0 }
+            | if self.secondary {
+                ScreenExit::SECONDARY
+            } else {
+                0
+            };
+        let exit = ScreenExit::lunar_magic(self.screen, flags, self.destination);
+        match exit.in_game_format(level) {
+            Some(game) if !lunar => game,
+            _ => exit,
+        }
+    }
 }
 
 /// The screen the game's sprite loader files a sprite under: its column
@@ -421,6 +476,12 @@ impl Edit {
             }
             Edit::SetHeader(header) => level.header = *header,
             Edit::SetEntrance(entrance) => level.entrance = *entrance,
+            Edit::SetSettings(settings) => level.settings = *settings,
+            Edit::ReplaceEntrance { index, entrance } => {
+                let list = &mut level.entrances;
+                check_index("entrance", *index, list.len())?;
+                list[*index] = *entrance;
+            }
         }
         Ok(())
     }

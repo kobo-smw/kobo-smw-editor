@@ -128,18 +128,25 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            for (placing, n, name) in list {
-                let selected = app.placing.as_ref() == Some(&placing);
-                let text = RichText::new(format!("{n:02X}  {name}"));
-                let row = ui.add_sized(
-                    [ui.available_width(), 20.0],
-                    egui::Button::selectable(selected, text)
-                        .wrap_mode(egui::TextWrapMode::Truncate),
-                );
-                if row.clicked() {
-                    chosen = Some(if selected { None } else { Some(placing) });
+            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                for (placing, n, name) in list {
+                    let selected = app.placing.as_ref() == Some(&placing);
+                    let mut job = egui::text::LayoutJob::default();
+                    job.append(
+                        &format!("{n:02X}  "),
+                        0.0,
+                        egui::TextFormat::simple(egui::FontId::monospace(12.5), theme::ACCENT),
+                    );
+                    job.append(
+                        name,
+                        0.0,
+                        egui::TextFormat::simple(egui::FontId::proportional(13.0), theme::TEXT),
+                    );
+                    if ui.selectable_label(selected, job).clicked() {
+                        chosen = Some(if selected { None } else { Some(placing) });
+                    }
                 }
-            }
+            });
         });
     if let Some(choice) = chosen {
         app.placing = choice;
