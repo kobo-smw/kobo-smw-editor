@@ -330,6 +330,19 @@ pub fn reorder(level: &Level, o: ObjectRef, order: Order) -> Option<(&'static st
     ))
 }
 
+/// Every object and sprite of `level` in drawing order: layer 1's
+/// objects, layer 2's, then the sprites.
+fn drawing_order(level: &Level) -> Vec<Item> {
+    let mut order: Vec<Item> = (0..level.layer1.len())
+        .map(|i| Item::object(ObjectLayer::One, i))
+        .collect();
+    if let Some(list) = objects(level, ObjectLayer::Two) {
+        order.extend((0..list.len()).map(|i| Item::object(ObjectLayer::Two, i)));
+    }
+    order.extend((0..level.sprites.list.len()).map(Item::Sprite));
+    order
+}
+
 /// The keys that act on the selection, when no text field has them.
 pub fn keys(app: &mut App, ctx: &egui::Context) {
     let Some(open) = app.current() else { return };
@@ -360,6 +373,40 @@ pub fn keys(app: &mut App, ctx: &egui::Context) {
     }
     if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::G)) {
         app.view.grid = !app.view.grid;
+    }
+    // Tab and Shift+Tab: the next or the one before in drawing order,
+    // which reaches what draws behind something else.
+    let step = ctx.input_mut(|i| {
+        if i.consume_key(egui::Modifiers::SHIFT, Key::Tab) {
+            Some(false)
+        } else if i.consume_key(egui::Modifiers::NONE, Key::Tab) {
+            Some(true)
+        } else {
+            None
+        }
+    });
+    if step.is_some() {
+        // Not egui's move to the next widget, which would put the
+        // keyboard in a text field.
+        ctx.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
+    }
+    if let Some(forward) = step
+        && let Some(open) = app.current_mut()
+    {
+        let order = drawing_order(open.document.level());
+        if !order.is_empty() {
+            let at = selection
+                .first()
+                .and_then(|item| order.iter().position(|i| i == item));
+            let next = match (at, forward) {
+                (None, true) => 0,
+                (None, false) => order.len() - 1,
+                (Some(at), true) => (at + 1) % order.len(),
+                (Some(at), false) => (at + order.len() - 1) % order.len(),
+            };
+            open.selection = vec![order[next]];
+            open.focus = true;
+        }
     }
     let (delete, escape, all, nudge) = ctx.input_mut(|i| {
         let step = if i.modifiers.shift { 16 } else { 1 };

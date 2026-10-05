@@ -1442,3 +1442,27 @@ fn several_selected_are_listed_and_one_chosen_alone() {
         [Item::object(ObjectLayer::One, 10)]
     );
 }
+
+#[test]
+fn tab_steps_through_the_level_in_drawing_order() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "tab");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().current_mut().unwrap().selection = vec![Item::object(ObjectLayer::One, 10)];
+    harness.step();
+    harness.key_press(Key::Tab);
+    harness.step();
+    assert_eq!(
+        harness.state().current().unwrap().selection,
+        [Item::object(ObjectLayer::One, 11)]
+    );
+    for _ in 0..2 {
+        harness.key_press_modifiers(Modifiers::SHIFT, Key::Tab);
+        harness.step();
+    }
+    assert_eq!(
+        harness.state().current().unwrap().selection,
+        [Item::object(ObjectLayer::One, 9)]
+    );
+}

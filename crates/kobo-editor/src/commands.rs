@@ -420,6 +420,10 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                         ("Ctrl+D", "Duplicate"),
                         ("Ctrl+A, Esc", "Select everything, nothing"),
                         (
+                            "Tab, Shift+Tab",
+                            "Select the next, the one before, in drawing order",
+                        ),
+                        (
                             "Ctrl+[, Ctrl+]",
                             "Send backward, bring forward (Shift: to the back, front)",
                         ),
