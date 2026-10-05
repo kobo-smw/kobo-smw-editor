@@ -47,7 +47,8 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
   player; a hidden layer is left out as the PPU leaves out a layer neither screen has, so
   what is behind it shows.
 - **Right**: the inspector. What is selected, or with nothing selected the level: its
-  header, the sprite settings, the background (a click shows every one of the game's as
+  header (*Fit* sets the screens to as many as its objects and sprites reach; each palette
+  setting shows its colours), the sprite settings, the background (a click shows every one of the game's as
   the level would draw it, to choose from), the main entrance, Lunar Magic's settings
   (size, background, spawning, the midway entrance), its graphics list (each slot's file,
   and whether they replace the tilesets'), its palette (a click on a colour changes it; a

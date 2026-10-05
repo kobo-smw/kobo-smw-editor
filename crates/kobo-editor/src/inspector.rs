@@ -74,6 +74,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .and_then(|w| kobo_core::palette::game_palette(w.clean(), &level.header).ok());
     let mut show_table: Option<&'static str> = None;
     let strips = app.workspace().map(|w| palette_strips(w.clean()));
+    // From the picture of the level as it is, not an older one.
+    let screens_used = open
+        .geometry
+        .as_ref()
+        .filter(|g| g.level == level)
+        .map(|g| edit::screens_used(&g.loaded, &level));
     // Propose the first free number after this level.
     if taken[usize::from(copy_to) & 0x1FF] {
         copy_to = (1..0x200u16)
@@ -87,7 +93,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             match selection[..] {
                 [] => {
-                    header(ui, &level, strips.as_ref(), &mut change, |ui| {
+                    header(ui, &level, strips.as_ref(), screens_used, &mut change, |ui| {
                         crate::backgrounds::row(app, ui);
                     });
                     entrances(ui, &level, free_entrance, &mut change, |ui, change| {
@@ -599,6 +605,7 @@ fn header(
     ui: &mut egui::Ui,
     level: &Level,
     strips: Option<&Strips>,
+    screens_used: Option<u8>,
     change: &mut Option<Change>,
     more: impl FnOnce(&mut egui::Ui),
 ) {
@@ -616,15 +623,29 @@ fn header(
         .show(ui, |ui| {
             let mut screens = u16::from(h.screens);
             ui.label("Screens");
-            let r = number_field(ui, &mut screens, 1, 32, false);
-            set(
-                &r,
-                "Change screens",
-                PrimaryHeader {
-                    screens: screens as u8,
-                    ..h
-                },
-            );
+            ui.horizontal(|ui| {
+                let r = number_field(ui, &mut screens, 1, 32, false);
+                set(
+                    &r,
+                    "Change screens",
+                    PrimaryHeader {
+                        screens: screens as u8,
+                        ..h
+                    },
+                );
+                if let Some(used) = screens_used.filter(|&n| n != h.screens) {
+                    let r = ui
+                        .small_button(format!("Fit: {used}"))
+                        .on_hover_text("As many as its objects and sprites reach");
+                    if r.clicked() {
+                        set(
+                            &r,
+                            "Fit the screens to the level",
+                            PrimaryHeader { screens: used, ..h },
+                        );
+                    }
+                }
+            });
             ui.end_row();
 
             ui.label("Mode");

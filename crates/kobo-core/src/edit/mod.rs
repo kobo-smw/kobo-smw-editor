@@ -470,6 +470,29 @@ pub fn with_setting(number: u8, settings: u8, name: &str, value: u16) -> u8 {
     }
 }
 
+/// The screens a level needs for what it holds, 1 to 32: up to the last
+/// screen an object's tiles reach on layer 1 or a sprite stands on, from
+/// its load. Lunar Magic's "Auto-Set Number of Screens" counts so when it
+/// saves (docs/lunar-magic.md).
+pub fn screens_used(loaded: &crate::expand::LoadedLevel, level: &Level) -> u8 {
+    let vertical = loaded.tiles.vertical;
+    let screen_of = |(x, y): (usize, usize)| if vertical { y / 16 } else { x / 16 };
+    let objects = (0..level.layer1.len()).flat_map(|index| {
+        let object = crate::expand::ObjectRef {
+            layer: ObjectLayer::One,
+            index,
+        };
+        loaded.objects.tiles(&loaded.tiles, object)
+    });
+    let sprites = level
+        .sprites
+        .list
+        .iter()
+        .map(|s| (usize::from(s.x), usize::from(s.y)));
+    let last = objects.chain(sprites).map(screen_of).max().unwrap_or(0);
+    (last + 1).clamp(1, 32) as u8
+}
+
 /// Where an object is placed, in tiles, if it has a place.
 pub fn object_position(object: &Object) -> Option<(u16, u16)> {
     match *object {

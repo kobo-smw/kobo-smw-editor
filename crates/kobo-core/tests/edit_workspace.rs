@@ -465,3 +465,21 @@ fn each_palette_setting_gives_its_colours() {
     assert_eq!(back.len(), 1);
     assert_eq!(back[0].to_rgb8(), [0x00, 0x63, 0xBD]);
 }
+
+#[test]
+fn the_screens_a_level_uses_are_counted_from_its_load() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-screens");
+    fs::write(dir.join("kobo.toml"), "format = 1\n").unwrap();
+    let clean = Arc::new(clean);
+    let workspace = Workspace::open(&dir, clean.clone()).unwrap();
+    for number in [0x105u16, 0x106, 0x13B, 0x01E] {
+        let level = workspace.clean_level(number).unwrap();
+        let loaded = kobo_core::expand::expand_level(&clean, number).unwrap();
+        let used = kobo_core::edit::screens_used(&loaded, &level);
+        // The game's levels end where what they hold ends.
+        assert_eq!(used, level.header.screens, "level {number:03X}");
+    }
+}
