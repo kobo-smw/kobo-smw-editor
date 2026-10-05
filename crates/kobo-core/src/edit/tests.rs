@@ -250,7 +250,7 @@ fn source_text_is_an_undo_step_and_must_parse() {
 
 #[test]
 fn reloading_follows_the_file_unless_edited() {
-    let dir = std::env::temp_dir().join(format!("kobo-edit-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kobo-test-edit-reload-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("105.toml");
     std::fs::write(&path, LEVEL).unwrap();
