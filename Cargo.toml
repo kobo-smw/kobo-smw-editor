@@ -15,7 +15,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
 # The editor: egui on its OpenGL renderer, with AccessKit (docs/step-3.md).
-eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
+eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "glow", "persistence", "wayland", "x11"] }
 egui_kittest = "0.36"
 flate2 = "1"
 libc = "0.2"

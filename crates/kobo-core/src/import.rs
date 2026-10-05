@@ -365,6 +365,26 @@ pub struct Report {
     pub unread_blocks: Vec<RatsBlock>,
 }
 
+/// A hack to import, from its file: a ROM, headered or not, or a BPS
+/// patch of the clean ROM, which is applied to it.
+pub fn read_hack(path: &Path, clean: &Rom) -> Result<Rom, ImportError> {
+    let is_patch = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("bps"));
+    if !is_patch {
+        return Ok(Rom::load(path)?);
+    }
+    let patch = fs::read(path).map_err(|source| ImportError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let patched = crate::bps::apply_to_rom(&patch, clean).map_err(|source| ImportError::Bps {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    Ok(Rom::from_headerless(patched.data)?)
+}
+
 /// Imports a ROM's levels into a new project in `dir`: every level that
 /// differs from what the project builds onto, or every level with `all`.
 /// That is the clean ROM, or for an SA-1 ROM the clean ROM with SA-1 Pack

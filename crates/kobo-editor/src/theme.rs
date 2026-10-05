@@ -16,6 +16,7 @@ pub const SELECTION: Color32 = Color32::from_rgb(0x43, 0xc6, 0xff);
 pub const SPRITE: Color32 = Color32::from_rgb(0xff, 0x7d, 0xe9);
 pub const ON_SELECTION: Color32 = Color32::from_rgb(0x00, 0x20, 0x2e);
 pub const HEADER: Color32 = Color32::from_rgb(0x7d, 0xd3, 0xfc);
+pub const OK: Color32 = Color32::from_rgb(0x5f, 0xcf, 0x8a);
 pub const WARNING: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x3c);
 pub const ERROR: Color32 = Color32::from_rgb(0xef, 0x6b, 0x6b);
 

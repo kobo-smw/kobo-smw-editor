@@ -11,6 +11,7 @@ mod picture;
 mod preview;
 mod selection;
 mod source;
+mod start;
 mod theme;
 mod watch;
 

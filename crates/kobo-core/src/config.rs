@@ -11,7 +11,7 @@
 use std::env;
 use std::fmt;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use thiserror::Error;
@@ -38,6 +38,16 @@ pub enum ConfigError {
         #[source]
         source: toml::de::Error,
     },
+    #[error("failed to parse {path}: {source}")]
+    Edit {
+        path: PathBuf,
+        #[source]
+        source: Box<toml_edit::TomlError>,
+    },
+    #[error("{0}: `{1}` is not a table")]
+    NotTable(PathBuf, &'static str),
+    #[error("this platform has no folder for Kobo's config file")]
+    NoConfigDir,
     #[error(
         "no vanilla SMW ROM configured; set {ROM_ENV_VAR} or add `roms.smw` to {}",
         config_path().map(|p| p.display().to_string()).unwrap_or_default()
@@ -193,6 +203,42 @@ pub fn load() -> Result<Config, ConfigError> {
     toml::from_str(&text).map_err(|source| ConfigError::Parse { path, source })
 }
 
+/// Sets `roms.smw` in the user's config file to `path`, keeping the rest
+/// of the file and its comments, and making the file if there is none.
+/// Returns where the file is. `KOBO_SMW_ROM`, when set, still wins.
+pub fn set_vanilla_rom(path: &Path) -> Result<PathBuf, ConfigError> {
+    let file = config_path().ok_or(ConfigError::NoConfigDir)?;
+    set_vanilla_rom_in(&file, path)?;
+    Ok(file)
+}
+
+/// [`set_vanilla_rom`] in the config file at `file`.
+pub fn set_vanilla_rom_in(file: &Path, path: &Path) -> Result<(), ConfigError> {
+    let file = file.to_path_buf();
+    let text = match fs::read_to_string(&file) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(source) => return Err(ConfigError::Io { path: file, source }),
+    };
+    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|source| ConfigError::Edit {
+        path: file.clone(),
+        source: Box::new(source),
+    })?;
+    let roms = doc
+        .entry("roms")
+        .or_insert_with(toml_edit::table)
+        .as_table_mut()
+        .ok_or_else(|| ConfigError::NotTable(file.clone(), "roms"))?;
+    roms["smw"] = toml_edit::value(path.to_string_lossy().into_owned());
+    if let Some(dir) = file.parent() {
+        fs::create_dir_all(dir).map_err(|source| ConfigError::Io {
+            path: dir.to_path_buf(),
+            source,
+        })?;
+    }
+    fs::write(&file, doc.to_string()).map_err(|source| ConfigError::Io { path: file, source })
+}
+
 /// Resolves the path to the vanilla SMW ROM.
 pub fn vanilla_rom_path() -> Result<PathBuf, ConfigError> {
     if let Some(p) = env::var_os(ROM_ENV_VAR).filter(|p| !p.is_empty()) {
@@ -257,4 +303,32 @@ pub fn sa1pack_path() -> Result<PathBuf, ConfigError> {
 /// build.
 pub fn asar_library_path() -> Result<PathBuf, ConfigError> {
     configured("asar", ASAR_ENV_VAR, ConfigError::NoAsar)
+}
+
+#[cfg(test)]
+mod set_tests {
+    use super::*;
+
+    #[test]
+    fn the_rom_is_recorded_and_the_rest_kept() {
+        let dir = std::env::temp_dir().join(format!("kobo-test-config-{}", std::process::id()));
+        let file = dir.join("kobo").join("config.toml");
+        set_vanilla_rom_in(&file, Path::new("/roms/smw.sfc")).unwrap();
+        let text = fs::read_to_string(&file).unwrap();
+        let config: Config = toml::from_str(&text).unwrap();
+        assert_eq!(config.roms.smw.as_deref(), Some(Path::new("/roms/smw.sfc")));
+
+        let kept =
+            "# Mine.\n[tools]\npixi = \"/tools/pixi\"  # pinned\n\n[roms]\nsmw = \"/old.smc\"\n";
+        fs::write(&file, kept).unwrap();
+        set_vanilla_rom_in(&file, Path::new("/new.sfc")).unwrap();
+        let text = fs::read_to_string(&file).unwrap();
+        assert!(
+            text.starts_with("# Mine.\n[tools]\npixi = \"/tools/pixi\"  # pinned\n"),
+            "{text}"
+        );
+        let config: Config = toml::from_str(&text).unwrap();
+        assert_eq!(config.roms.smw.as_deref(), Some(Path::new("/new.sfc")));
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }

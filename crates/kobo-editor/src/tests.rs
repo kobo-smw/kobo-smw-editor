@@ -617,3 +617,46 @@ fn copying_pastes_where_the_mouse_is_and_duplicating_steps_aside() {
     assert_eq!(count(harness.state()), before + 2);
     assert_eq!(object_place(harness.state(), before + 1), Some((65, 11)));
 }
+
+#[test]
+fn closing_a_project_with_edits_asks_first() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "switch");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    assert_eq!(
+        harness.state().start.recent.first(),
+        Some(&project.0.canonicalize().unwrap()),
+        "opening a project remembers it"
+    );
+    look_at(&mut harness, 60, 20);
+    click_tile(&mut harness, 65, 22);
+    harness.key_press(Key::Delete);
+    harness.step();
+
+    harness.state_mut().switch_project(None);
+    harness.run_steps(20);
+    assert!(
+        harness.state().workspace().is_some(),
+        "not before the user says"
+    );
+    harness.get_by_label("Cancel").click();
+    harness.run_steps(5);
+    assert!(harness.state().workspace().is_some());
+
+    harness.state_mut().switch_project(None);
+    harness.run_steps(20);
+    harness.get_by_label("Don't save").click();
+    harness.run_steps(5);
+    assert!(
+        harness.state().workspace().is_none(),
+        "back at the start screen"
+    );
+    let saved = std::fs::read_to_string(project.level_file()).unwrap();
+    assert!(
+        saved.contains("{ obj = 0x14, x = 60, y = 20,"),
+        "nothing was saved"
+    );
+}

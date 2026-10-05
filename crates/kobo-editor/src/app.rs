@@ -145,7 +145,7 @@ enum LeftTab {
 }
 
 /// Where the clean ROM comes from, or why it could not be loaded.
-enum Clean {
+pub(crate) enum Clean {
     Loaded(Arc<Rom>),
     Missing(String),
 }
@@ -166,9 +166,15 @@ pub struct Startup {
 }
 
 pub struct App {
-    clean: Clean,
+    pub(crate) clean: Clean,
     workspace: Option<Workspace>,
-    project_error: Option<String>,
+    pub(crate) project_error: Option<String>,
+    /// The start screen's state, and the recent projects.
+    pub start: crate::start::StartState,
+    /// A project to switch to (or `Some(None)`, the start screen), waiting
+    /// on what to do with unsaved edits.
+    switching: Option<Option<PathBuf>>,
+    ctx: egui::Context,
     open: BTreeMap<u16, OpenLevel>,
     current: Option<u16>,
     previewer: Previewer,
@@ -225,6 +231,9 @@ impl App {
             clean,
             workspace: None,
             project_error: None,
+            start: Default::default(),
+            switching: None,
+            ctx: cc.egui_ctx.clone(),
             open: BTreeMap::new(),
             current: None,
             previewer: Previewer::new(cc.egui_ctx.clone()),
@@ -258,8 +267,14 @@ impl App {
             startup: startup.clone(),
             screenshot_frames: None,
         };
+        if let Some(storage) = cc.storage {
+            app.start.recent = eframe::get_value(storage, RECENT_KEY).unwrap_or_default();
+        }
         if let Some(dir) = &startup.project {
             app.open_project(&cc.egui_ctx, dir);
+            if app.workspace.is_some() {
+                app.start.remember(dir);
+            }
             let level = startup.level.or_else(|| app.first_level());
             if let Some(level) = level {
                 app.open_level(level);
@@ -276,7 +291,7 @@ impl App {
         app
     }
 
-    fn first_level(&self) -> Option<u16> {
+    pub(crate) fn first_level(&self) -> Option<u16> {
         self.workspace.as_ref()?.levels().next()
     }
 
@@ -284,12 +299,35 @@ impl App {
         self.status = Some((message.into(), Instant::now()));
     }
 
-    fn open_project(&mut self, ctx: &egui::Context, dir: &Path) {
+    /// Opens the project `dir`, or goes back to the start screen with
+    /// `None`; with unsaved edits, once the user says what to do with
+    /// them.
+    pub fn switch_project(&mut self, to: Option<PathBuf>) {
+        if self.modified().count() > 0 {
+            self.switching = Some(to);
+        } else {
+            let ctx = self.ctx.clone();
+            crate::start::switch(self, &ctx, to);
+        }
+    }
+
+    /// Back to the start screen, dropping the open levels.
+    pub(crate) fn close_project(&mut self) {
+        self.workspace = None;
+        self.watcher = None;
+        self.open.clear();
+        self.current = None;
+        self.placing = None;
+        self.palette.forget_pictures();
+    }
+
+    pub(crate) fn open_project(&mut self, ctx: &egui::Context, dir: &Path) {
         let Clean::Loaded(clean) = &self.clean else {
             return;
         };
         match Workspace::open(dir, clean.clone()) {
             Ok(workspace) => {
+                self.close_project();
                 self.watcher = Watcher::new(dir, ctx.clone()).ok();
                 self.workspace = Some(workspace);
                 self.project_error = None;
@@ -618,6 +656,9 @@ impl App {
     fn top_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_centered(|ui| {
             ui.label(RichText::new("KOBO").strong().color(theme::ACCENT));
+            if self.workspace.is_some() {
+                crate::start::menu(self, ui);
+            }
             if let Some(workspace) = &self.workspace {
                 let root = &workspace.project().root;
                 let name = root.file_name().map_or_else(
@@ -632,6 +673,9 @@ impl App {
                 if open.document.is_modified() {
                     ui.label(RichText::new("● modified").color(theme::ACCENT).small());
                 }
+            }
+            if self.workspace.is_none() {
+                return;
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let building = self.building.is_some();
@@ -881,33 +925,32 @@ impl App {
         }
     }
 
-    fn welcome(&mut self, ui: &mut egui::Ui) {
-        ui.vertical_centered(|ui| {
-            ui.add_space(ui.available_height() * 0.3);
-            ui.heading(RichText::new("Kobo").color(theme::ACCENT).size(32.0));
-            ui.add_space(8.0);
-            match &self.clean {
-                Clean::Missing(why) => {
-                    ui.label("Kobo builds onto a clean Super Mario World (USA) ROM, which it needs to find first.");
-                    ui.label(RichText::new(why).color(theme::ERROR));
-                    ui.label("Set KOBO_SMW_ROM to its path, or roms.smw in Kobo's config file, and start the editor again.");
+    /// Asks what to do with unsaved edits before switching projects.
+    fn confirm_switch(&mut self, ctx: &egui::Context) {
+        let Some(to) = self.switching.clone() else {
+            return;
+        };
+        let names: Vec<String> = self.modified().map(OpenLevel::file_name).collect();
+        let (mut go, mut cancel) = (false, false);
+        egui::Modal::new(egui::Id::new("confirm-switch")).show(ctx, |ui| {
+            ui.heading("Save your changes?");
+            ui.label(format!("Unsaved: {}", names.join(", ")));
+            ui.horizontal(|ui| {
+                if ui.button("Save").clicked() {
+                    self.save_all();
+                    go = self.modified().count() == 0;
                 }
-                Clean::Loaded(_) => {
-                    if let Some(error) = &self.project_error {
-                        ui.label(RichText::new(error).color(theme::ERROR));
-                    }
-                    if ui.button("Open a project…").clicked()
-                        && let Some(dir) = rfd::FileDialog::new().pick_folder()
-                    {
-                        let ctx = ui.ctx().clone();
-                        self.open_project(&ctx, &dir);
-                        if let Some(level) = self.first_level() {
-                            self.open_level(level);
-                        }
-                    }
-                }
-            }
+                go |= ui.button("Don't save").clicked();
+                cancel = ui.button("Cancel").clicked();
+            });
         });
+        if cancel {
+            self.switching = None;
+        }
+        if go {
+            self.switching = None;
+            crate::start::switch(self, ctx, to);
+        }
     }
 
     /// Adds level `number` to the project as `level`, and opens it.
@@ -1073,10 +1116,18 @@ fn same_file(a: &Path, b: &Path) -> bool {
         }
 }
 
+/// Where the recent projects are kept in the editor's storage.
+const RECENT_KEY: &str = "kobo-recent-projects";
+
 impl eframe::App for App {
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, RECENT_KEY, &self.start.recent);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.take_preview(&ctx);
+        crate::start::poll(self, &ctx);
         self.follow_files();
         self.finish_build();
         self.shortcuts(&ctx);
@@ -1094,7 +1145,7 @@ impl eframe::App for App {
                 self.status_bar(ui, hovered);
             });
         if self.workspace.is_none() {
-            egui::CentralPanel::default().show(ui, |ui| self.welcome(ui));
+            egui::CentralPanel::default().show(ui, |ui| crate::start::show(self, ui));
             self.close_requests(&ctx);
             self.screenshot(&ctx);
             return;
@@ -1136,6 +1187,7 @@ impl eframe::App for App {
                 canvas::show(self, ui);
             });
         self.confirm_adding(&ctx);
+        self.confirm_switch(&ctx);
         self.close_requests(&ctx);
         self.screenshot(&ctx);
     }
