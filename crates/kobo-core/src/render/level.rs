@@ -29,6 +29,11 @@ pub struct RenderOptions {
     pub sprites: Sprites,
     /// Draw the player where the level is entered.
     pub player: bool,
+    /// Layers left out of the picture, by the screen designation's bits
+    /// (`Screen::main`): 1 layer 1, 2 layer 2, 4 layer 3, 16 the sprites
+    /// and the player. Left out as the PPU leaves out a layer neither
+    /// screen has.
+    pub hidden_layers: u8,
 }
 
 impl Default for RenderOptions {
@@ -36,6 +41,7 @@ impl Default for RenderOptions {
         Self {
             sprites: Sprites::Drawn,
             player: true,
+            hidden_layers: 0,
         }
     }
 }
@@ -179,7 +185,15 @@ fn loaded_controlled(
     if let Some(op) = operation {
         op.stage(Stage::Composing)?;
     }
-    let mut image = compose_level(level, &layers, &video.palette());
+    let mut image = if options.hidden_layers == 0 {
+        compose_level(level, &layers, &video.palette())
+    } else {
+        let mut screen = level.scene.screen;
+        screen.main &= !options.hidden_layers;
+        screen.sub &= !options.hidden_layers;
+        let window = level.scene.boss.as_ref().map(|scene| &scene.window);
+        layers.compose(&video.palette(), &screen, window)
+    };
     for UndrawnSprite { x, y, id } in markers {
         draw_sprite_marker(&mut image, x as u32 * 16, y as u32 * 16, id, &video.vram);
     }

@@ -35,6 +35,7 @@ fn an_edit_in_memory_renders_without_a_save() {
     let options = RenderOptions {
         sprites: Sprites::Hidden,
         player: false,
+        hidden_layers: 0,
     };
     let render = |workspace: &Workspace| {
         workspace
@@ -107,6 +108,7 @@ fn a_level_is_added_from_the_clean_rom_or_a_copy() {
     let options = RenderOptions {
         sprites: Sprites::Hidden,
         player: false,
+        hidden_layers: 0,
     };
     let draw = |n| {
         workspace
@@ -272,6 +274,7 @@ fn a_level_that_does_not_build_is_left_out_of_another_ones_picture() {
     let options = RenderOptions {
         sprites: Sprites::Hidden,
         player: false,
+        hidden_layers: 0,
     };
     let preview = workspace
         .preview(0x105, options, &Operation::default())
@@ -332,4 +335,29 @@ fn a_level_taken_out_builds_as_the_games_own() {
         "{manifest}"
     );
     assert!(workspace.remove_level(0x105).is_err());
+}
+
+#[test]
+fn a_hidden_layer_is_left_out_of_the_picture() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let draw = |hidden_layers| {
+        kobo_core::render::render_level(
+            &clean,
+            0x105,
+            RenderOptions {
+                sprites: Sprites::Hidden,
+                player: false,
+                hidden_layers,
+            },
+        )
+        .unwrap()
+    };
+    let whole = draw(0);
+    let without_background = draw(2);
+    assert_eq!(whole.image.width, without_background.image.width);
+    assert_ne!(whole.image.pixels, without_background.image.pixels);
+    // The level's own tiles are the same: only the picture changes.
+    assert_eq!(whole.level.tiles.low, without_background.level.tiles.low);
 }

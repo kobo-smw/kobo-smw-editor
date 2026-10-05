@@ -42,6 +42,7 @@ pub fn line(rom: &Rom, level: u16) -> String {
         RenderOptions {
             sprites: Sprites::Markers,
             player: false,
+            hidden_layers: 0,
         },
     );
     match (drawn, markers) {

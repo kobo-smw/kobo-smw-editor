@@ -30,6 +30,8 @@ pub struct View {
     pub entrances: bool,
     /// Marks of what changed since the last commit (the Changes tab).
     pub changes: bool,
+    /// Layers left out of the picture (`RenderOptions::hidden_layers`).
+    pub hidden_layers: u8,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -48,6 +50,7 @@ impl View {
                 SpriteView::Hidden => Sprites::Hidden,
             },
             player: self.player,
+            hidden_layers: self.hidden_layers,
         }
     }
 }
@@ -287,6 +290,7 @@ impl App {
                 source: startup.source,
                 entrances: true,
                 changes: false,
+                hidden_layers: 0,
             },
             level_filter: String::new(),
             all_levels: false,
@@ -948,13 +952,29 @@ impl App {
                     "Where the player enters: the start, the midway, and each secondary entrance",
                 );
             ui.separator();
-            let before = (self.view.sprites, self.view.player);
+            let before = (self.view.sprites, self.view.player, self.view.hidden_layers);
+            ui.label(RichText::new("Layers").color(theme::MUTED));
+            for (bit, name, about) in [
+                (1u8, "1", "Layer 1: the level's objects"),
+                (2, "2", "Layer 2: the background, or layer 2's objects"),
+                (4, "3", "Layer 3: water, tides, a status-bar backdrop"),
+            ] {
+                let mut shown = self.view.hidden_layers & bit == 0;
+                if ui
+                    .toggle_value(&mut shown, name)
+                    .on_hover_text(about)
+                    .changed()
+                {
+                    self.view.hidden_layers ^= bit;
+                }
+            }
+            ui.separator();
             ui.label(RichText::new("Sprites").color(theme::MUTED));
             ui.selectable_value(&mut self.view.sprites, SpriteView::Drawn, "Drawn");
             ui.selectable_value(&mut self.view.sprites, SpriteView::Markers, "IDs");
             ui.selectable_value(&mut self.view.sprites, SpriteView::Hidden, "Off");
             ui.toggle_value(&mut self.view.player, "Player");
-            if before != (self.view.sprites, self.view.player)
+            if before != (self.view.sprites, self.view.player, self.view.hidden_layers)
                 && let Some(number) = self.current
             {
                 self.request_preview(number);
@@ -1289,7 +1309,14 @@ impl App {
     /// The View menu: what the canvas shows, and the panels.
     fn view_menu(&mut self, ui: &mut egui::Ui) {
         ui.menu_button("View", |ui| {
-            let before = (self.view.sprites, self.view.player);
+            let before = (self.view.sprites, self.view.player, self.view.hidden_layers);
+            for (bit, name) in [(1u8, "Layer 1"), (2, "Layer 2"), (4, "Layer 3")] {
+                let mut shown = self.view.hidden_layers & bit == 0;
+                if ui.checkbox(&mut shown, name).changed() {
+                    self.view.hidden_layers ^= bit;
+                }
+            }
+            ui.separator();
             ui.checkbox(&mut self.view.screens, "Screen boundaries");
             ui.checkbox(&mut self.view.grid, "Grid (G)");
             ui.checkbox(&mut self.view.entrances, "Entrance markers");
@@ -1320,7 +1347,7 @@ impl App {
                 self.commands.shortcuts = true;
                 ui.close();
             }
-            if before != (self.view.sprites, self.view.player) {
+            if before != (self.view.sprites, self.view.player, self.view.hidden_layers) {
                 self.redraw();
             }
         });

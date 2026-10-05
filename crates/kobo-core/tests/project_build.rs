@@ -89,6 +89,7 @@ fn vanilla_imports_and_builds_back() {
             RenderOptions {
                 sprites: render::Sprites::Markers,
                 player: false,
+                hidden_layers: 0,
             },
         ] {
             let a = render::render_level(&clean, number, options).unwrap().image;

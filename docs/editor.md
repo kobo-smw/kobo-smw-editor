@@ -39,6 +39,9 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
     changed with where it was, red removed).
 - **Canvas**: the level, with screen boundaries, the grid (G), markers where the player
   enters (the start, the midway, each secondary entrance), and a minimap below.
+  The view bar and the View menu show or hide layers 1, 2, and 3, the sprites, and the
+  player; a hidden layer is left out as the PPU leaves out a layer neither screen has, so
+  what is behind it shows.
 - **Right**: the inspector. What is selected, or with nothing selected the level: its
   header, the main entrance, Lunar Magic's settings (size, background, spawning, the
   midway entrance), the secondary entrances into it, copying it, starting an empty level,

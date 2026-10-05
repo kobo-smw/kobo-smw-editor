@@ -897,6 +897,7 @@ fn level_png(
             (true, false) => Sprites::Drawn,
         },
         player: with_player,
+        hidden_layers: 0,
     };
     let rendered = match max_instructions {
         Some(limit) => render::render_level_with_control(

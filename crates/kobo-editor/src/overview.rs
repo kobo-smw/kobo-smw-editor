@@ -106,6 +106,7 @@ fn start(overview: &mut Overview, workspace: Workspace, ctx: egui::Context) {
         let options = RenderOptions {
             sprites: Sprites::Hidden,
             player: false,
+            hidden_layers: 0,
         };
         for number in levels {
             if control.check().is_err() {

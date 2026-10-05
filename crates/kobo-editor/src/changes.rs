@@ -75,6 +75,7 @@ impl Head {
         let options = RenderOptions {
             sprites: Sprites::Hidden,
             player: false,
+            hidden_layers: 0,
         };
         std::thread::spawn(move || {
             let loaded = copy

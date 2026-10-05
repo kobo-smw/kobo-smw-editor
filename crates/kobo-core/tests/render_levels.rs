@@ -602,9 +602,17 @@ fn render_level_honours_its_options() {
         (w as u32 * 16, h as u32 * 16)
     );
     let with = |sprites, player| {
-        render_level(&rom, 0x105, RenderOptions { sprites, player })
-            .unwrap()
-            .image
+        render_level(
+            &rom,
+            0x105,
+            RenderOptions {
+                sprites,
+                player,
+                hidden_layers: 0,
+            },
+        )
+        .unwrap()
+        .image
     };
     let bare = with(Sprites::Hidden, false);
     assert_ne!(with(Sprites::Hidden, true), bare, "the player");
@@ -626,6 +634,7 @@ fn dragon_coins_use_the_roms_animated_palette() {
     let options = render::RenderOptions {
         sprites: render::Sprites::Hidden,
         player: false,
+        hidden_layers: 0,
     };
     let rendered = render::render_level(&rom, 0x105, options).unwrap();
     assert!(rendered.diagnostics.is_empty());

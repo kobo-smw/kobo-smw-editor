@@ -217,6 +217,7 @@ pub fn sprite_previews(
         let options = RenderOptions {
             sprites: Sprites::Drawn,
             player: false,
+            hidden_layers: 0,
         };
         let preview = copy.preview(number, options, operation)?;
         let render = preview.render;

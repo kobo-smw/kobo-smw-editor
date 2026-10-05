@@ -147,6 +147,7 @@ fn vanilla_levels_draw_the_same() {
             let options = RenderOptions {
                 sprites: Sprites::Markers,
                 player: false,
+                hidden_layers: 0,
             };
             let a = render::render_level(&base, level, options).unwrap().image;
             let b = render::render_level(&rom, level, options).unwrap().image;
