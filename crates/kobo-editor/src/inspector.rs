@@ -56,6 +56,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let mut copy = false;
     let mut copy_to = app.copy_to;
     let taken: Vec<bool> = (0..0x200).map(|n| app.has_level(n)).collect();
+    // Propose the first free number after this level.
+    if taken[usize::from(copy_to) & 0x1FF] {
+        copy_to = (1..0x200u16)
+            .map(|d| (number + d) & 0x1FF)
+            .find(|&n| !taken[usize::from(n)])
+            .unwrap_or(copy_to);
+    }
 
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])

@@ -24,5 +24,21 @@ allow = [
     "Unicode-3.0",
     # webpki-roots and webpki-root-certs: Mozilla's root certificates, as data.
     "CDLA-Permissive-2.0",
+    # The Boost licence, permissive: clipboard-win and error-code, the
+    # editor's clipboard on Windows.
+    "BSL-1.0",
 ]
 confidence-threshold = 0.9
+
+# Licences allowed for one crate only.
+[[licenses.exceptions]]
+# The editor's file watcher: a public domain dedication.
+crate = "notify"
+allow = ["CC0-1.0"]
+
+[[licenses.exceptions]]
+# egui's built-in fonts, as data: Ubuntu, Hack, Noto Emoji, and its icon
+# font, under the SIL Open Font Licence and the Ubuntu Font Licence, which
+# let them be bundled with software under any licence.
+crate = "epaint_default_fonts"
+allow = ["OFL-1.1", "Ubuntu-font-1.0"]

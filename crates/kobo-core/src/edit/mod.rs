@@ -9,9 +9,11 @@
 //! one undo step, kept as a snapshot of the level and its comments.
 
 mod document;
+mod previews;
 mod workspace;
 
 pub use document::{LevelDocument, Reload};
+pub use previews::object_previews;
 pub use workspace::{Preview, Workspace, WorkspaceError};
 
 use thiserror::Error;

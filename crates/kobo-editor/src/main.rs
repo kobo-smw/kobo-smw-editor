@@ -34,6 +34,9 @@ struct Args {
     /// Show the level file beside the canvas.
     #[arg(long)]
     source: bool,
+    /// Show the palette of things to add rather than the level list.
+    #[arg(long)]
+    palette: bool,
     /// Save a picture of the window once the level is drawn, and quit.
     #[arg(long)]
     screenshot: Option<PathBuf>,
@@ -65,6 +68,7 @@ fn main() -> eframe::Result {
         level: args.level,
         select: args.select,
         source: args.source,
+        palette: args.palette,
         screenshot: args.screenshot,
     };
     eframe::run_native(

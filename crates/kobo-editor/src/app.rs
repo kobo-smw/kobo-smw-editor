@@ -154,6 +154,8 @@ pub struct Startup {
     /// Select these layer 1 objects once the level is open.
     pub select: Vec<usize>,
     pub source: bool,
+    /// Show the palette rather than the level list.
+    pub palette: bool,
     /// Save a picture of the window here once the level's picture is in,
     /// then quit: for documentation and checks without a display.
     pub screenshot: Option<PathBuf>,
@@ -228,7 +230,11 @@ impl App {
             all_levels: false,
             adding: None,
             copy_to: 0,
-            left: LeftTab::Levels,
+            left: if startup.palette {
+                LeftTab::Add
+            } else {
+                LeftTab::Levels
+            },
             palette: PaletteState::default(),
             placing: None,
             status: None,
@@ -386,6 +392,10 @@ impl App {
         }
     }
 
+    pub fn workspace(&self) -> Option<&Workspace> {
+        self.workspace.as_ref()
+    }
+
     pub fn current_number(&self) -> Option<u16> {
         self.current
     }
@@ -499,6 +509,7 @@ impl App {
                 match workspace.reload(&keep) {
                     Ok(()) => {
                         self.project_error = None;
+                        self.palette.forget_pictures();
                         redraw.extend(self.current);
                     }
                     Err(e) => self.project_error = Some(e.to_string()),
@@ -977,7 +988,7 @@ impl App {
         };
         let ready = self
             .current()
-            .is_some_and(|o| o.picture.is_some() && o.up_to_date())
+            .is_some_and(|o| o.picture.is_some() && o.up_to_date() && !self.palette.busy())
             || matches!(self.clean, Clean::Missing(_))
             || self.workspace.is_none();
         match &mut self.screenshot_frames {

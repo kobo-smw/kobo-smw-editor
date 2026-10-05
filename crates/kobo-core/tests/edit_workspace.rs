@@ -119,3 +119,43 @@ fn a_level_is_added_from_the_clean_rom_or_a_copy() {
     let (a, b) = (draw(0x105), draw(0x106));
     assert_eq!((a.low, a.high), (b.low, b.high));
 }
+
+#[test]
+fn objects_are_pictured_as_the_level_draws_them() {
+    use kobo_core::level::objects::Object;
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-previews");
+    fs::write(dir.join("kobo.toml"), "format = 1\n").unwrap();
+    let mut workspace = Workspace::open(&dir, Arc::new(clean))
+        .unwrap()
+        .without_cache();
+    let level = workspace.clean_level(0x105).unwrap();
+    workspace.add_level(0x105, &level).unwrap();
+    let object = |number, settings| Object::Standard {
+        number,
+        x: 0,
+        y: 0,
+        settings,
+    };
+    // A coin, and a ground ledge 3 tiles by 2.
+    let objects = [object(0x05, 0x00), object(0x14, 0x12)];
+    let pictures = kobo_core::edit::object_previews(
+        &workspace,
+        0x105,
+        &level,
+        &objects,
+        [0, 0, 0],
+        &Operation::default(),
+    )
+    .unwrap();
+    let sizes: Vec<_> = pictures
+        .iter()
+        .map(|p| p.as_ref().map(|p| (p.width, p.height)))
+        .collect();
+    assert_eq!(sizes, [Some((16, 16)), Some((48, 32))]);
+    // Drawn, not left as the background.
+    let coin = pictures[0].as_ref().unwrap();
+    assert!(coin.pixels.iter().any(|&p| p != [0, 0, 0]));
+}
