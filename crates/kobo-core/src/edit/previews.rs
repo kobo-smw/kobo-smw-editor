@@ -161,6 +161,106 @@ fn sheet_pictures(
     Ok(pictures)
 }
 
+/// Sprites one sheet holds: one every [`SPRITE_SPACING`] tiles along 32
+/// screens.
+const SPRITES_PER_SHEET: usize = 64;
+/// Tiles between sprites on a sheet, so that one does not reach another.
+const SPRITE_SPACING: u16 = 8;
+/// The row sprites stand on: on the ground the sheet has at row 24.
+const SPRITE_ROW: u16 = 22;
+
+/// The level sprite pictures come from: `base` with flat ground and
+/// `ids` spaced along it, nothing else.
+fn sprite_sheet(base: &Level, ids: &[u8]) -> Level {
+    // Two long ledges cover the 512 columns.
+    let ground = |x| Object::Standard {
+        number: 0x21,
+        x,
+        y: 24,
+        settings: 0xFF,
+    };
+    let objects = [ground(0), ground(256)];
+    let mut level = sheet(base, &objects);
+    // The sheet's objects were laid on its grid; put them back.
+    level.layer1 = objects.to_vec();
+    level.sprites.list = ids
+        .iter()
+        .enumerate()
+        .map(|(i, &id)| crate::source::level::Sprite {
+            id,
+            x: i as u16 * SPRITE_SPACING + 4,
+            y: SPRITE_ROW,
+            extra_bits: 0,
+            extension: Vec::new(),
+        })
+        .collect();
+    level
+}
+
+/// A picture of each of `ids` as level `number` of `workspace` would draw
+/// it on its first frame, with `base`'s settings: its sprite graphics,
+/// palette, and background, cut from a render of them standing apart;
+/// `None` for one that draws nothing (a generator, a scroll command).
+pub fn sprite_previews(
+    workspace: &Workspace,
+    number: u16,
+    base: &Level,
+    ids: &[u8],
+    operation: &Operation,
+) -> Result<Vec<Option<RgbImage>>, WorkspaceError> {
+    use crate::render::{RenderOptions, Sprites};
+    let mut pictures = Vec::with_capacity(ids.len());
+    let mut copy = workspace.clone();
+    for batch in ids.chunks(SPRITES_PER_SHEET) {
+        let level = sprite_sheet(base, batch);
+        copy.set_level(number, &level);
+        let options = RenderOptions {
+            sprites: Sprites::Drawn,
+            player: false,
+        };
+        let preview = copy.preview(number, options, operation)?;
+        let render = preview.render;
+        let sizes = crate::expand::object_sizes(render.level.video.object_select);
+        let captures = render.sprites.map(|s| s.captures).unwrap_or_default();
+        for sprite in &level.sprites.list {
+            let capture = captures.iter().find(|c| {
+                c.id == sprite.id && c.x == i32::from(sprite.x) && c.y == i32::from(sprite.y)
+            });
+            let picture = capture.and_then(|c| {
+                let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+                for object in &c.objects {
+                    let (w, h) = sizes[usize::from(object.large)];
+                    x0 = x0.min(object.x);
+                    y0 = y0.min(object.y);
+                    x1 = x1.max(object.x + w);
+                    y1 = y1.max(object.y + h);
+                }
+                crop(&render.image, x0, y0, x1, y1)
+            });
+            pictures.push(picture);
+        }
+    }
+    Ok(pictures)
+}
+
+/// The part of `image` from (`x0`, `y0`) to (`x1`, `y1`), clipped to it;
+/// `None` if nothing is left.
+fn crop(image: &RgbImage, x0: i32, y0: i32, x1: i32, y1: i32) -> Option<RgbImage> {
+    let (w, h) = (image.width as i32, image.height as i32);
+    let (x0, y0, x1, y1) = (x0.max(0), y0.max(0), x1.min(w), y1.min(h));
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    let mut out = RgbImage::new((x1 - x0) as u32, (y1 - y0) as u32);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            out.pixels[((y - y0) * (x1 - x0) + (x - x0)) as usize] =
+                image.pixels[(y * w + x) as usize];
+        }
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

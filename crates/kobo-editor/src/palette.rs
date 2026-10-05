@@ -2,6 +2,7 @@
 //! puts the canvas in placing mode, where each click places one, until
 //! Escape or a right click.
 
+use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver};
 
 use eframe::egui::{self, RichText};
@@ -34,7 +35,7 @@ impl Placing {
     }
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
 pub enum Kind {
     #[default]
     Objects,
@@ -49,14 +50,18 @@ pub struct PaletteState {
     thumbnails: Thumbnails,
 }
 
-/// The objects' pictures as the open level draws them, made on a worker
-/// thread (`edit::object_previews`) for one level, tileset, and list at a
-/// time.
+/// A list's level, tileset (sprite set for sprites), and kind.
+type ListKey = (u16, u8, Kind);
+/// A picture on the GPU and its size.
+type Thumbnail = (egui::TextureHandle, egui::Vec2);
+
+/// The pictures of what the palette lists as the open level draws them,
+/// made on a worker thread (`edit::object_previews`,
+/// `edit::sprite_previews`), kept by level, tileset (the sprite set for
+/// sprites), and list.
 #[derive(Default)]
 struct Thumbnails {
-    /// What the pictures are of: level, tileset, list.
-    key: Option<(u16, u8, Kind)>,
-    pictures: Vec<Option<(egui::TextureHandle, egui::Vec2)>>,
+    cache: HashMap<ListKey, Vec<Option<Thumbnail>>>,
     pending: Option<Pending>,
     /// Why the last pictures could not be drawn.
     error: Option<String>,
@@ -69,61 +74,48 @@ struct Pending {
 }
 
 impl Thumbnails {
-    /// The picture of entry `i`, asking for the list's when they are not
-    /// for this level and list yet.
-    fn get(
-        &mut self,
-        app_key: (u16, u8, Kind),
-        i: usize,
-    ) -> Option<&(egui::TextureHandle, egui::Vec2)> {
-        if self.key != Some(app_key) {
-            return None;
-        }
-        self.pictures.get(i)?.as_ref()
+    /// The picture of entry `i` of the list `key` names.
+    fn get(&self, key: (u16, u8, Kind), i: usize) -> Option<&(egui::TextureHandle, egui::Vec2)> {
+        self.cache.get(&key)?.get(i)?.as_ref()
     }
 
+    /// Takes pictures that are in, and asks for `key`'s if they are not
+    /// there or on their way.
     fn update(
         &mut self,
         ctx: &egui::Context,
         key: (u16, u8, Kind),
-        start: impl FnOnce() -> Option<(Workspace, Level, Vec<Object>)>,
+        start: impl FnOnce() -> Option<(Workspace, Level, Vec<Placing>)>,
     ) {
         if let Some(pending) = &self.pending
             && let Ok(result) = pending.result.try_recv()
         {
             let pending = self.pending.take().expect("checked");
             self.error = result.as_ref().err().cloned();
-            if let Ok(pictures) = result {
-                self.pictures = pictures
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, picture)| {
-                        let picture = picture?;
-                        let size = [picture.width as usize, picture.height as usize];
-                        let rgb: Vec<u8> = picture.pixels.iter().flatten().copied().collect();
-                        let image = egui::ColorImage::from_rgb(size, &rgb);
-                        let texture = ctx.load_texture(
-                            format!("thumbnail-{i}"),
-                            image,
-                            egui::TextureOptions::NEAREST,
-                        );
-                        Some((texture, egui::vec2(size[0] as f32, size[1] as f32)))
-                    })
-                    .collect();
-            } else {
-                self.pictures.clear();
-            }
-            self.key = Some(pending.key);
+            let pictures = result
+                .unwrap_or_default()
+                .into_iter()
+                .enumerate()
+                .map(|(i, picture)| {
+                    let picture = picture?;
+                    let size = [picture.width as usize, picture.height as usize];
+                    let rgb: Vec<u8> = picture.pixels.iter().flatten().copied().collect();
+                    let image = egui::ColorImage::from_rgb(size, &rgb);
+                    let name = format!("thumbnail-{:?}-{i}", pending.key);
+                    let texture = ctx.load_texture(name, image, egui::TextureOptions::NEAREST);
+                    Some((texture, egui::vec2(size[0] as f32, size[1] as f32)))
+                })
+                .collect();
+            self.cache.insert(pending.key, pictures);
         }
         let asked = self.pending.as_ref().map(|p| p.key);
-        // Sprites have no pictures yet.
-        if key.2 == Kind::Sprites || self.key == Some(key) || asked == Some(key) {
+        if self.cache.contains_key(&key) || asked == Some(key) {
             return;
         }
         if let Some(pending) = self.pending.take() {
             pending.operation.cancel();
         }
-        let Some((workspace, level, objects)) = start() else {
+        let Some((workspace, level, entries)) = start() else {
             return;
         };
         let (send, result) = mpsc::channel();
@@ -136,10 +128,26 @@ impl Thumbnails {
             theme::PANEL_RAISED.b(),
         ];
         std::thread::spawn(move || {
-            let pictures =
+            let objects: Vec<Object> = entries
+                .iter()
+                .filter_map(|p| match p {
+                    Placing::Object(object) => Some(object.clone()),
+                    Placing::Sprite(_) => None,
+                })
+                .collect();
+            let sprites: Vec<u8> = entries
+                .iter()
+                .filter_map(|p| match p {
+                    Placing::Sprite(id) => Some(*id),
+                    Placing::Object(_) => None,
+                })
+                .collect();
+            let pictures = if key.2 == Kind::Sprites {
+                edit::sprite_previews(&workspace, key.0, &level, &sprites, &control)
+            } else {
                 edit::object_previews(&workspace, key.0, &level, &objects, background, &control)
-                    .map_err(|e| e.to_string());
-            let _ = send.send(pictures);
+            };
+            let _ = send.send(pictures.map_err(|e| e.to_string()));
             ctx.request_repaint();
         });
         self.pending = Some(Pending {
@@ -151,12 +159,19 @@ impl Thumbnails {
 
     /// Forgets the pictures, after the project changed.
     pub fn clear(&mut self) {
-        self.key = None;
-        self.pictures.clear();
+        self.cache.clear();
+        if let Some(pending) = self.pending.take() {
+            pending.operation.cancel();
+        }
     }
 }
 
 impl PaletteState {
+    /// Lists the sprites.
+    pub fn show_sprites(&mut self) {
+        self.kind = Kind::Sprites;
+    }
+
     /// Whether thumbnails are being drawn.
     pub fn busy(&self) -> bool {
         self.thumbnails.pending.is_some()
@@ -270,18 +285,21 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let state = &mut app.palette;
     let kind = state.kind;
     let all = entries(kind, tileset);
-    let key = (number, tileset, kind);
+    let set = if kind == Kind::Sprites {
+        level.header.sprite_tileset
+    } else {
+        tileset
+    };
+    let key = (number, set, kind);
     state.thumbnails.update(ui.ctx(), key, || {
-        let objects = all
-            .iter()
-            .filter_map(|(placing, _, _)| match placing {
-                Placing::Object(object) => Some(object.clone()),
-                Placing::Sprite(_) => None,
-            })
-            .collect();
-        Some((workspace?, level, objects))
+        let entries = all.iter().map(|(placing, _, _)| placing.clone()).collect();
+        Some((workspace?, level, entries))
     });
-    let drawing = state.thumbnails.pending.is_some() && kind != Kind::Sprites;
+    let drawing = state
+        .thumbnails
+        .pending
+        .as_ref()
+        .is_some_and(|p| p.key == key);
     if drawing {
         ui.horizontal(|ui| {
             ui.spinner();
@@ -329,9 +347,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         0.0,
                         egui::TextFormat::simple(egui::FontId::proportional(13.0), theme::TEXT),
                     );
-                    let clicked = if kind == Kind::Sprites {
-                        ui.selectable_label(selected, job).clicked()
-                    } else {
+                    let clicked = {
                         ui.horizontal(|ui| {
                             let (rect, image) =
                                 ui.allocate_exact_size(THUMBNAIL, egui::Sense::click());

@@ -202,3 +202,42 @@ fn a_new_entrance_takes_a_free_number_and_builds() {
     assert!(bytes.in_use(format));
     assert_eq!(bytes.destination(id, format), 0x105);
 }
+
+#[test]
+fn sprites_are_pictured_as_the_level_draws_them() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-sprite-previews");
+    fs::write(dir.join("kobo.toml"), "format = 1\n").unwrap();
+    let mut workspace = Workspace::open(&dir, Arc::new(clean))
+        .unwrap()
+        .without_cache();
+    let level = workspace.clean_level(0x105).unwrap();
+    workspace.add_level(0x105, &level).unwrap();
+    // A Goomba, a Rex (the level's sprite set has it), and a generator,
+    // which draws nothing.
+    let started = std::time::Instant::now();
+    let pictures = kobo_core::edit::sprite_previews(
+        &workspace,
+        0x105,
+        &level,
+        &[0x0F, 0xAB, 0xCB],
+        &Operation::default(),
+    )
+    .unwrap();
+    eprintln!("three sprites in {:?}", started.elapsed());
+    let sizes: Vec<_> = pictures
+        .iter()
+        .map(|p| p.as_ref().map(|p| (p.width, p.height)))
+        .collect();
+    assert!(
+        sizes[0].is_some_and(|(w, h)| w >= 16 && h >= 16),
+        "{sizes:?}"
+    );
+    assert!(
+        sizes[1].is_some_and(|(_, h)| h > 16),
+        "a Rex is taller than a tile: {sizes:?}"
+    );
+    assert_eq!(sizes[2], None);
+}

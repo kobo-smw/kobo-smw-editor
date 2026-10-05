@@ -271,7 +271,7 @@ impl App {
             adding: None,
             copy_to: 0,
             left: match (startup.palette, startup.tab.as_deref()) {
-                (true, _) | (_, Some("add")) => LeftTab::Add,
+                (true, _) | (_, Some("add" | "sprites")) => LeftTab::Add,
                 (_, Some("outline")) => LeftTab::Outline,
                 (_, Some("changes")) => LeftTab::Changes,
                 _ => LeftTab::Levels,
@@ -310,6 +310,9 @@ impl App {
                         .collect();
                 }
             }
+        }
+        if startup.tab.as_deref() == Some("sprites") {
+            app.palette.show_sprites();
         }
         if startup.build {
             crate::build::start(&mut app);

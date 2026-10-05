@@ -14,7 +14,7 @@ mod previews;
 mod workspace;
 
 pub use document::{LevelDocument, Reload};
-pub use previews::object_previews;
+pub use previews::{object_previews, sprite_previews};
 pub use workspace::{Preview, Workspace, WorkspaceError};
 
 use thiserror::Error;
