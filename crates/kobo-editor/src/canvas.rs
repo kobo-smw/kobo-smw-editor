@@ -112,6 +112,8 @@ pub enum Drag {
     },
     /// Selecting what a rectangle meets.
     Marquee { from: Pos2, to: Pos2, add: bool },
+    /// A screen exit's label taken to another screen.
+    Exit { index: usize, screen: u8 },
     /// Changing an object's size by its handle, in whole tiles.
     Resize {
         object: ObjectRef,
@@ -673,7 +675,18 @@ fn show_canvas(
                         .contains(origin)
                 });
                 match geometry.item_at(from, sprites_on) {
-                    _ if pill.is_some() => {}
+                    _ if pill.is_some() => {
+                        if let Some(Item::Object(o)) = pill
+                            && let Some(Object::ScreenExit(exit)) =
+                                open.document.level().layer1.get(o.index)
+                        {
+                            open.selection = vec![Item::object(ObjectLayer::One, o.index)];
+                            open.drag = Some(Drag::Exit {
+                                index: o.index,
+                                screen: exit.screen,
+                            });
+                        }
+                    }
                     _ if on_handle.is_some() => {
                         let (object, _) = on_handle.expect("checked");
                         open.drag = Some(Drag::Resize {
@@ -717,6 +730,10 @@ fn show_canvas(
                         let d = (at - *from) / TILE;
                         *delta = (d.x.round() as i32, d.y.round() as i32);
                     }
+                    Some(Drag::Exit { screen, .. }) => {
+                        let along = if vertical { at.y } else { at.x };
+                        *screen = (along / 256.0).floor().clamp(0.0, 31.0) as u8;
+                    }
                     None => {}
                 }
             }
@@ -731,6 +748,25 @@ fn show_canvas(
                             moved,
                             delta,
                         });
+                    }
+                    Some(Drag::Exit { index, screen }) => {
+                        let level = open.document.level();
+                        let taken = exits(level).any(|(i, e)| i != index && e.screen == screen);
+                        if let Some(Object::ScreenExit(exit)) = level.layer1.get(index)
+                            && exit.screen != screen
+                            && !taken
+                        {
+                            let mut moved = *exit;
+                            moved.screen = screen;
+                            context_edit = Some((
+                                "Move screen exit".to_string(),
+                                vec![Edit::ReplaceObject {
+                                    layer: ObjectLayer::One,
+                                    index,
+                                    object: Object::ScreenExit(moved),
+                                }],
+                            ));
+                        }
                     }
                     Some(Drag::Resize { object, delta, .. }) => {
                         if let Some(edit) = resize_edit(open.document.level(), object, delta) {
@@ -1315,6 +1351,37 @@ fn draw(
 
     if view.entrances {
         draw_entries(&painter, canvas, camera, &open.entries);
+    }
+    // A screen exit being taken to another screen: that screen, marked.
+    if let Some(Drag::Exit { index, screen }) = &open.drag {
+        let size = geometry.size();
+        let start = f32::from(*screen) * 256.0;
+        let column = if geometry.loaded.tiles.vertical {
+            Rect::from_min_size(Pos2::new(0.0, start), Vec2::new(size.x, 256.0))
+        } else {
+            Rect::from_min_size(Pos2::new(start, 0.0), Vec2::new(256.0, size.y))
+        };
+        let r = camera.rect_to_screen(canvas, column);
+        painter.rect(
+            r,
+            CornerRadius::ZERO,
+            theme::ACCENT.gamma_multiply(0.12),
+            Stroke::new(2.0, theme::ACCENT),
+            StrokeKind::Inside,
+        );
+        let taken = exits(open.document.level()).any(|(i, e)| i != *index && e.screen == *screen);
+        let text = if taken {
+            format!("Screen {screen:02X} has an exit")
+        } else {
+            format!("To screen {screen:02X}")
+        };
+        painter.text(
+            r.center_top() + Vec2::new(0.0, 48.0),
+            Align2::CENTER_TOP,
+            text,
+            FontId::proportional(14.0),
+            theme::ACCENT,
+        );
     }
     for (x, y, _) in &open.failed_sprites {
         let tile = camera.rect_to_screen(canvas, selection::tile_rect(*x, *y));

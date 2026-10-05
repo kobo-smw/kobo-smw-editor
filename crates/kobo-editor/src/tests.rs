@@ -845,3 +845,50 @@ fn a_map16_tile_is_placed_directly_and_drawn() {
         .owner_at(&loaded.tiles, ObjectLayer::One, 64, 10);
     assert_eq!(owner.map(|o| o.index), Some(objects - 1));
 }
+
+#[test]
+fn a_screen_exit_is_dragged_to_another_screen() {
+    use kobo_core::level::objects::Object;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "exit-drag");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    // Bring screen 7, where level 105's exit is, into view.
+    {
+        let open = harness.state_mut().current_mut().unwrap();
+        let camera = open.camera.as_mut().unwrap();
+        camera.offset.x = 7.0 * 256.0;
+        camera.offset.y = 0.0;
+    }
+    harness.run_steps(2);
+    // The exit's label is a little below the screen's top left.
+    let (from, to) = {
+        let open = harness.state().current().unwrap();
+        let camera = open.camera.unwrap();
+        let top = camera.to_screen(open.canvas, Pos2::new(7.0 * 256.0, 0.0));
+        let label = Pos2::new(top.x + 30.0, top.y.max(open.canvas.top()) + 34.0);
+        let target = camera.to_screen(open.canvas, Pos2::new(9.0 * 256.0 + 40.0, 100.0));
+        (label, target)
+    };
+    harness.hover_at(from);
+    harness.step();
+    press(&mut harness, from, true);
+    harness.step();
+    for i in 1..=10 {
+        harness.hover_at(from + (to - from) * (i as f32 / 10.0));
+        harness.step();
+    }
+    press(&mut harness, to, false);
+    harness.step();
+    let level = harness.state().current().unwrap().document.level().clone();
+    let screens: Vec<u8> = level
+        .layer1
+        .iter()
+        .filter_map(|o| match o {
+            Object::ScreenExit(exit) => Some(exit.screen),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(screens, [9]);
+}
