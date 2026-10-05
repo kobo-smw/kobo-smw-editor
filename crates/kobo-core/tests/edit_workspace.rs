@@ -449,3 +449,19 @@ fn a_search_finds_every_one_of_a_kind() {
     assert!(exits.iter().any(|f| f.level == 0x105));
     assert!(exits.iter().all(|f| f.kind.starts_with("exit")));
 }
+
+#[test]
+fn each_palette_setting_gives_its_colours() {
+    use kobo_core::palette::{PaletteSetting, setting_colors};
+
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let bg = |v| setting_colors(&clean, PaletteSetting::Background, v).unwrap();
+    assert_eq!(bg(0).len(), 12);
+    assert_ne!(bg(0), bg(1));
+    // Level 105's sky, back area colour 2.
+    let back = setting_colors(&clean, PaletteSetting::BackArea, 2).unwrap();
+    assert_eq!(back.len(), 1);
+    assert_eq!(back[0].to_rgb8(), [0x00, 0x63, 0xBD]);
+}

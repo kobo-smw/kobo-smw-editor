@@ -163,6 +163,47 @@ pub fn vanilla_back_area_color(rom: &Rom, back_area: u8) -> Result<Color15, RomE
     )
 }
 
+/// One of a level header's palette settings.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PaletteSetting {
+    Background,
+    Foreground,
+    Sprite,
+    BackArea,
+}
+
+/// The colours one value (0 to 7) of a palette setting gives a level: the
+/// twelve it fills (colours 2 to 7 of two rows: 0 and 1 for the
+/// background, 2 and 3 for the foreground, 14 and 15 for sprites), or the
+/// back area colour.
+pub fn setting_colors(
+    rom: &Rom,
+    setting: PaletteSetting,
+    value: u8,
+) -> Result<Vec<Color15>, RomError> {
+    let mut sel = LevelPaletteSelect::default();
+    let row = match setting {
+        PaletteSetting::BackArea => return Ok(vec![vanilla_back_area_color(rom, value)?]),
+        PaletteSetting::Background => {
+            sel.bg = value;
+            0
+        }
+        PaletteSetting::Foreground => {
+            sel.fg = value;
+            2
+        }
+        PaletteSetting::Sprite => {
+            sel.sprite = value;
+            14
+        }
+    };
+    let palette = vanilla_level_palette(rom, sel)?;
+    Ok((row..row + 2)
+        .flat_map(|r| (2..8).map(move |c| (r, c)))
+        .map(|(r, c)| palette.get(r, c))
+        .collect())
+}
+
 /// The palette a level of `rom` with header `header` loads, as a palette
 /// of its own would hold it: the game's assembly and back area colour, to
 /// start one from.

@@ -73,6 +73,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .workspace()
         .and_then(|w| kobo_core::palette::game_palette(w.clean(), &level.header).ok());
     let mut show_table: Option<&'static str> = None;
+    let strips = app.workspace().map(|w| palette_strips(w.clean()));
     // Propose the first free number after this level.
     if taken[usize::from(copy_to) & 0x1FF] {
         copy_to = (1..0x200u16)
@@ -86,7 +87,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             match selection[..] {
                 [] => {
-                    header(ui, &level, &mut change, |ui| {
+                    header(ui, &level, strips.as_ref(), &mut change, |ui| {
                         crate::backgrounds::row(app, ui);
                     });
                     entrances(ui, &level, free_entrance, &mut change, |ui, change| {
@@ -518,10 +519,86 @@ fn sprite(ui: &mut egui::Ui, level: &Level, index: usize, change: &mut Option<Ch
         });
 }
 
+/// The colours each value of each palette setting gives, in
+/// `PaletteSetting` order: background, foreground, sprite, back area.
+type Strips = [[Vec<egui::Color32>; 8]; 4];
+
+fn palette_strips(rom: &kobo_core::Rom) -> Strips {
+    use kobo_core::palette::{PaletteSetting, setting_colors};
+    let settings = [
+        PaletteSetting::Background,
+        PaletteSetting::Foreground,
+        PaletteSetting::Sprite,
+        PaletteSetting::BackArea,
+    ];
+    settings.map(|setting| {
+        std::array::from_fn(|value| {
+            setting_colors(rom, setting, value as u8)
+                .unwrap_or_default()
+                .iter()
+                .map(|c| {
+                    let [r, g, b] = c.to_rgb8();
+                    egui::Color32::from_rgb(r, g, b)
+                })
+                .collect()
+        })
+    })
+}
+
+/// A row of colours.
+fn strip(ui: &mut egui::Ui, colors: &[egui::Color32]) {
+    let cell = egui::vec2(if colors.len() == 1 { 24.0 } else { 9.0 }, 14.0);
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(cell.x * colors.len() as f32, cell.y),
+        egui::Sense::hover(),
+    );
+    for (i, color) in colors.iter().enumerate() {
+        let at = rect.min + egui::vec2(i as f32 * cell.x, 0.0);
+        ui.painter()
+            .rect_filled(egui::Rect::from_min_size(at, cell), 0, *color);
+    }
+}
+
+/// A palette setting (0 to 7), each value shown with its colours; the
+/// response and the value chosen.
+fn palette_field(
+    ui: &mut egui::Ui,
+    id: &str,
+    value: u8,
+    colors: Option<&[Vec<egui::Color32>; 8]>,
+) -> (Response, u8) {
+    ui.horizontal(|ui| {
+        let mut chosen = value;
+        let mut r = egui::ComboBox::from_id_salt(id)
+            .selected_text(format!("{value}"))
+            .width(44.0)
+            .show_ui(ui, |ui| {
+                for v in 0..8u8 {
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut chosen, v, format!("{v}"));
+                        if let Some(colors) = colors {
+                            strip(ui, &colors[usize::from(v)]);
+                        }
+                    });
+                }
+            })
+            .response;
+        if let Some(colors) = colors {
+            strip(ui, &colors[usize::from(value & 7)]);
+        }
+        if chosen != value {
+            r.mark_changed();
+        }
+        (r, chosen)
+    })
+    .inner
+}
+
 /// The level's header and sprite settings, with `more` rows after them.
 fn header(
     ui: &mut egui::Ui,
     level: &Level,
+    strips: Option<&Strips>,
     change: &mut Option<Change>,
     more: impl FnOnce(&mut egui::Ui),
 ) {
@@ -615,10 +692,11 @@ fn header(
                 ("Sprite palette", h.sprite_palette, 2),
                 ("Back area", h.back_area, 3),
             ] {
-                ui.label(label);
-                let mut v = u16::from(value);
-                let r = number_field(ui, &mut v, 0, 7, false);
-                let v = v as u8;
+                let label_response = ui.label(label);
+                if level.palette.is_some() {
+                    label_response.on_hover_text("The level's own palette takes its place");
+                }
+                let (r, v) = palette_field(ui, label, value, strips.map(|s| &s[field]));
                 let header = match field {
                     0 => PrimaryHeader { bg_palette: v, ..h },
                     1 => PrimaryHeader { fg_palette: v, ..h },
