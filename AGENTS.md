@@ -75,6 +75,9 @@ Early stage: roadmap steps 1 and 2 are complete; step 3, the GUI level editor, i
   - `crates/kobo-editor`: the `kobo-editor` binary, the level editor (egui). Also a thin
     shell: it holds what is on screen, and changes a project only through
     `kobo_core::edit`. Its tests drive the window headlessly (`egui_kittest`).
+    `docs/editor.md` is how to use it; each module of it says what it holds (`canvas`,
+    `inspector`, `palette`, `outline`, `changes`, `build`, `start`, `commands`,
+    `preview` for the worker that draws, `selection` for what is under the mouse).
 - `kobo_core::addr` is the only place that knows how SNES addresses map to file offsets.
   Every ROM read takes a `SnesAddr` and goes through the ROM's `Mapping` (LoROM, SA-1, or
   SA-1 over 4 MiB); the bus follows an SA-1's bank registers (`SuperMmc`) once the game
@@ -391,7 +394,7 @@ describes that module's code rather than the game). Do not grow this file with t
 - `docs/clean-room.md`: why Kobo looks at Lunar Magic only to interoperate with it, what
   evidence that allows, and how Kobo's outputs keep to it.
 - `docs/step-3.md`: the plan for the level editor, its decisions and work order, until
-  step 3 is done.
+  step 3 is done. `docs/editor.md`: the editor, as its users meet it.
 - `docs/review.md`: decisions taken without the maintainer, and settings left refused,
   waiting for a batch review. Add to it rather than stopping to ask.
 - `docs/clean-room-audit.md`: the 2026-10-03 audit of everything Kobo knew of Lunar Magic:
