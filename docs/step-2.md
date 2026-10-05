@@ -712,6 +712,15 @@ on the built ROM.
      imports had left out, import since 2026-10-04 through the ROM's own Map16 routine, as
      Lunar Magic 3.70's export shows them (lunar-magic.md); more of those hacks' levels
      draw as the hacks (apes 5 to 30, Grand Poo World 21 to 44, Learn 2 Kaizo 4 to 72).
+     Run again on 2026-10-05 (`4dbf9ad`), to close step 2: imports, builds, refusals,
+     `kobo diff`, and Lunar Magic's save as on 2026-10-03, hack for hack. `render_hashes`
+     draws 5,915 of the 13,678 built levels as the hack does (5,509 before), and 245 fail
+     to draw from the build (248: three of Invictus's draw now), as before in locked ROMs
+     but for apes `010` and Extended Interactions `012`. Nine levels of seven hacks that
+     drew as the hack now do not: the entrance's first camera and layer 2 offset taken
+     from 3.70 (2026-10-04), which these hacks' older Lunar Magic code (2.41 to 3.51) does
+     otherwise. Moved into a 3.70 ROM (`transfer`), each draws as Kobo's build does, but
+     for one custom sprite the transfer does not carry (Super_Riff_World `0C7`).
   3. **Lunar Magic's added layer 2 scroll rates**: done (2026-10-01), above.
   4. **Refusals that observation did not settle**, each in review.md with how to settle
      it: four layer 3 settings, out-of-order sprite lists, taller-level corners
