@@ -21,22 +21,14 @@ use crate::level::{Layer2Kind, PrimaryHeader, SecondaryHeader};
 use crate::source::SourceError;
 use crate::source::level::{Layer2, Level, Sprite};
 
-/// The object lists a level has.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum ObjectLayer {
-    One,
-    /// Layer 2's objects, in a level mode that has them.
-    Two,
-}
+pub use crate::level::objects::ObjectLayer;
 
-impl ObjectLayer {
-    /// The array its entries are in, as [`Comments`](crate::source::Comments)
-    /// names it.
-    pub fn list(self) -> &'static str {
-        match self {
-            Self::One => "layer1.objects",
-            Self::Two => "layer2.objects",
-        }
+/// The array a layer's objects are in, as
+/// [`Comments`](crate::source::Comments) names it.
+pub fn object_list(layer: ObjectLayer) -> &'static str {
+    match layer {
+        ObjectLayer::One => "layer1.objects",
+        ObjectLayer::Two => "layer2.objects",
     }
 }
 
@@ -214,14 +206,14 @@ impl Edit {
                 let list = objects_mut(level, *layer)?;
                 check_index("object", *index, list.len() + 1)?;
                 list.insert(*index, object.clone());
-                comments.insert_entry(layer.list(), *index);
+                comments.insert_entry(object_list(*layer), *index);
             }
             Edit::RemoveObject { layer, index } => {
                 let list = objects_mut(level, *layer)?;
                 check_index("object", *index, list.len())?;
                 let len = list.len();
                 list.remove(*index);
-                comments.remove_entry(layer.list(), *index, len);
+                comments.remove_entry(object_list(*layer), *index, len);
             }
             Edit::ReplaceObject {
                 layer,
@@ -239,7 +231,7 @@ impl Edit {
                 check_index("object", *to, list.len())?;
                 let object = list.remove(*from);
                 list.insert(*to, object);
-                comments.move_entry(layer.list(), *from, *to);
+                comments.move_entry(object_list(*layer), *from, *to);
             }
             Edit::InsertSprite { index, sprite } => {
                 check_place(level, ObjectLayer::One, Some((sprite.x, sprite.y)))?;

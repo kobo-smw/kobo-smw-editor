@@ -9,5 +9,6 @@ pub mod access;
 mod core65816;
 pub mod sa1;
 pub(crate) mod smw_bus;
+pub mod watch;
 
 pub use core65816::{Bus, Cpu, CpuError, Executed, Flags, Run};

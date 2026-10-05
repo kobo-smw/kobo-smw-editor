@@ -49,6 +49,7 @@ fn scene() -> (LoadedLevel, LayerTiles, Palette) {
     };
     let loaded = LoadedLevel {
         tiles,
+        objects: Default::default(),
         video: Default::default(),
         scene: LevelScene {
             screen: Screen::vanilla(Color15::from_rgb5(0, 31, 0)),

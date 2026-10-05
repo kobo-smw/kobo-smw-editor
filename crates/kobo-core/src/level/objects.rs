@@ -99,6 +99,14 @@ pub enum Jumps {
     Tall,
 }
 
+/// The object lists a level has: layer 1's, and layer 2's in a level mode
+/// that has objects there.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ObjectLayer {
+    One,
+    Two,
+}
+
 /// An object, placed at absolute tile coordinates where it has a place.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Object {
@@ -309,6 +317,9 @@ pub struct ObjectData {
     /// The five bytes before the objects.
     pub header: [u8; 5],
     pub objects: Vec<Object>,
+    /// Where each of `objects` starts in the data. A screen jump's bytes
+    /// lie between the object before it and the one after.
+    pub starts: Vec<usize>,
     /// Bytes read, including the terminator.
     pub len: usize,
 }
@@ -349,6 +360,7 @@ pub fn decode(data: &[u8], layout: Layout, jumps: Jumps) -> Result<ObjectData, O
         .try_into()
         .expect("five bytes");
     let mut objects = Vec::new();
+    let mut starts = Vec::new();
     let mut i = 5;
     // The current screen, and the vertical part a tall jump sets.
     let (mut screen, mut high) = (0u16, 0u16);
@@ -358,6 +370,7 @@ pub fn decode(data: &[u8], layout: Layout, jumps: Jumps) -> Result<ObjectData, O
             return Ok(ObjectData {
                 header,
                 objects,
+                starts,
                 len: i + 1,
             });
         }
@@ -445,7 +458,10 @@ pub fn decode(data: &[u8], layout: Layout, jumps: Jumps) -> Result<ObjectData, O
                 3,
             )
         };
-        objects.extend(object);
+        if let Some(object) = object {
+            objects.push(object);
+            starts.push(i);
+        }
         i += len;
     }
 }

@@ -113,7 +113,8 @@ Early stage: roadmap steps 1 and 2 are complete; step 3, the GUI level editor, i
   have no tiles until it has run; what a pass uploaded for its objects is kept with them
   (`SpriteScene::dynamic`). `routines` holds the ROM addresses. `expand_level` returns a
   `LoadedLevel` of four parts: `tiles` (`LevelTiles`: the grid, Map16 definitions, and layer
-  layouts, which is what the level *is*), `video` (`VideoMemory`: VRAM, CGRAM, `BGnSC`,
+  layouts, which is what the level *is*, with `objects`, the `ObjectMap` of which object
+  drew each tile, from the loader's data reads and writes as `cpu::watch` logs them), `video` (`VideoMemory`: VRAM, CGRAM, `BGnSC`,
   `OBSEL`), `scene` (`LevelScene`: screen setup, camera, layer 3, player, boss arena), and
   `ram`. A pass the CPU core gives up on is recorded as a `Diagnostic`
   (`LoadedLevel::diagnostics`, `SpriteScene::diagnostics`) instead of failing the level;

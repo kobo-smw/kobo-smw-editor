@@ -12,6 +12,8 @@ use crate::video::{LevelScene, VideoMemory};
 pub struct LoadedLevel {
     /// The expanded tile grid and its Map16 definitions.
     pub tiles: LevelTiles,
+    /// Which object drew each tile of the grid.
+    pub objects: super::ObjectMap,
     /// What level preparation uploaded: graphics, tilemaps, and palette.
     pub video: VideoMemory,
     /// How the level is shown on entry: layer positions, screen setup,

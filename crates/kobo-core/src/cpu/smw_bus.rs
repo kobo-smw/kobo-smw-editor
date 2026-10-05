@@ -150,6 +150,9 @@ pub struct SmwBus<'a> {
     vram_watch: Option<usize>,
     /// The A-bus address the DMA in progress is reading, for the report.
     dma_source: Option<u32>,
+    /// When set, the S-CPU's data reads and writes in its ranges are
+    /// logged, in order (`expand::ObjectMap` watches the loader so).
+    pub access_log: Option<super::watch::AccessLog>,
 }
 
 /// `KOBO_VRAM_WATCH`: the VRAM word every write to is reported.
@@ -223,6 +226,7 @@ impl<'a> SmwBus<'a> {
             fetching: false,
             vram_watch: watched_vram_word(),
             dma_source: None,
+            access_log: None,
         }
     }
 
@@ -742,6 +746,11 @@ impl Bus for SmwBus<'_> {
     }
 
     fn read(&mut self, addr: u32) -> u8 {
+        if !self.fetching
+            && let Some(log) = &mut self.access_log
+        {
+            log.read(addr);
+        }
         // Most reads are instruction fetches from the upper half of a
         // bank, which is ROM in every bank that is not RAM on some
         // cartridge.
@@ -769,6 +778,9 @@ impl Bus for SmwBus<'_> {
     }
 
     fn write(&mut self, addr: u32, value: u8) {
+        if let Some(log) = &mut self.access_log {
+            log.write(addr);
+        }
         if let Some(i) = self.sram_index(addr) {
             self.sram[i] = value;
             return;

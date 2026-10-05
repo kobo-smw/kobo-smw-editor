@@ -4,7 +4,7 @@ use super::machine::{Call, Interrupt, Machine};
 use super::tiles::{
     GRID_LEN, LAYER2_TILEMAP_LEN, LevelTiles, SCREEN_COLS, SCREEN_LEN, SCREEN_ROWS,
 };
-use super::{ExpandError, LoadedLevel, boss, layer3, map16, player, routines};
+use super::{ExpandError, LoadedLevel, boss, layer3, map16, object_map, player, routines};
 use crate::level::{self, Layer2Kind, LevelMode};
 use crate::operation::{Operation, Stage};
 use crate::palette::Color15;
@@ -70,7 +70,15 @@ pub(crate) fn expand_controlled(
     if let Some(op) = operation {
         op.stage(Stage::Loading)?;
     }
+    let watch = object_map::ObjectWatch::new(rom, level).map(|(watch, log)| {
+        machine.bus.access_log = Some(log);
+        watch
+    });
     let expanded = load_level(&mut machine)?;
+    let objects = match (watch, machine.bus.access_log.take()) {
+        (Some(watch), Some(log)) => watch.finish(&log),
+        _ => Default::default(),
+    };
     if let Some(op) = operation {
         op.stage(Stage::Preparing)?;
     }
@@ -137,6 +145,7 @@ pub(crate) fn expand_controlled(
     };
     let level = LoadedLevel {
         tiles,
+        objects,
         video: VideoMemory {
             vram: bus.vram,
             vram_written: bus.vram_written,

@@ -29,6 +29,7 @@ mod loaded;
 mod machine;
 mod map16;
 mod oam;
+mod object_map;
 mod player;
 mod routines;
 mod sprite_capture;
@@ -45,6 +46,7 @@ pub use load::{
 pub use loaded::LoadedLevel;
 pub use map16::{FG_PAGES, PAGE_TILES};
 pub use oam::object_sizes;
+pub use object_map::{ObjectMap, ObjectRef};
 pub(crate) use sprite_capture::capture_controlled;
 pub use sprite_capture::{LATE_SPRITE_FRAMES, capture_sprites, capture_sprites_with_control};
 pub use tiles::{
