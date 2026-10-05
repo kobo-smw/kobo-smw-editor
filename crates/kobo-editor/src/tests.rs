@@ -410,7 +410,7 @@ fn levels_are_added_by_copy_or_from_the_games_own() {
     // With nothing selected, the level panel copies the level.
     harness.state_mut().copy_to = 0x106;
     harness.step();
-    harness.get_by_label("Copy").click();
+    harness.get_by_label("Copy this one there").click();
     harness.step();
     wait_for(&mut harness, "the copy", |app| {
         app.current_number() == Some(0x106) && drawn(app)
