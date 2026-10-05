@@ -74,6 +74,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .and_then(|w| kobo_core::palette::game_palette(w.clean(), &level.header).ok());
     let mut show_table: Option<&'static str> = None;
     let strips = app.workspace().map(|w| palette_strips(w.clean()));
+    // What each layer 3 setting does in the level's tileset.
+    let layer3_names = app.workspace().map(|w| {
+        std::array::from_fn(|s| {
+            kobo_core::level::layer3_setting(w.clean(), level.header.object_tileset, s as u8)
+                .unwrap_or("?")
+        })
+    });
     // From the picture of the level as it is, not an older one.
     let screens_used = open
         .geometry
@@ -96,7 +103,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     header(ui, &level, strips.as_ref(), screens_used, &mut change, |ui| {
                         crate::backgrounds::row(app, ui);
                     });
-                    entrances(ui, &level, free_entrance, &mut change, |ui, change| {
+                    entrances(ui, &level, free_entrance, layer3_names, &mut change, |ui, change| {
                         graphics_and_palette(
                             ui,
                             &level,
@@ -1245,6 +1252,7 @@ fn entrances(
     ui: &mut egui::Ui,
     level: &Level,
     free_entrance: Option<u16>,
+    layer3_names: Option<[&'static str; 4]>,
     change: &mut Option<Change>,
     before_secondary: impl FnOnce(&mut egui::Ui, &mut Option<Change>),
 ) {
@@ -1294,18 +1302,13 @@ fn entrances(
                         },
                     );
                     ui.end_row();
-                    let fields: [Field<SecondaryHeader>; 2] = [
-                        ("Layer 2 scroll", e.layer2_scroll, 15, |h, v| {
+                    let fields: [Field<SecondaryHeader>; 1] =
+                        [("Layer 2 scroll", e.layer2_scroll, 15, |h, v| {
                             SecondaryHeader {
                                 layer2_scroll: v,
                                 ..h
                             }
-                        }),
-                        ("Layer 3", e.layer3, 3, |h, v| SecondaryHeader {
-                            layer3: v,
-                            ..h
-                        }),
-                    ];
+                        })];
                     for (label, value, max, with) in fields {
                         ui.label(label);
                         let mut v = u16::from(value);
@@ -1317,6 +1320,15 @@ fn entrances(
                         );
                         ui.end_row();
                     }
+                    ui.label("Layer 3").on_hover_text(
+                        "What the game's table for the level's tileset makes of each setting",
+                    );
+                    let mut layer3 = e.layer3;
+                    let r = choice(ui, "layer3", &mut layer3, 0..=3, |v| {
+                        layer3_names.map(|names| names[usize::from(v & 3)])
+                    });
+                    set(&r, "Change layer 3", SecondaryHeader { layer3, ..e });
+                    ui.end_row();
                     ui.label("No Yoshi intro");
                     let mut skip = e.no_yoshi_intro;
                     let r = ui.checkbox(&mut skip, "");

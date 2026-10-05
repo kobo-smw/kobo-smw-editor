@@ -100,3 +100,18 @@ fn vanilla_scroll_rates_and_positions_follow_the_tileset_table() {
 fn layer3_on_main(loaded: &expand::LoadedLevel) -> bool {
     loaded.ram.u8(ram::MAIN_SCREEN) & 0x04 != 0
 }
+
+#[test]
+fn layer3_settings_are_named_by_the_games_table() {
+    let Some(rom) = common::vanilla() else {
+        return;
+    };
+    let name = |tileset, setting| kobo_core::level::layer3_setting(&rom, tileset, setting).unwrap();
+    assert_eq!(name(0, 0), "None");
+    assert_eq!(name(0, 1), "Tide, rising and falling");
+    assert_eq!(name(0, 2), "Tide, still");
+    assert_eq!(name(0, 3), "Fixed image");
+    // The castle tileset: crushers' image, and its windows scrolling.
+    assert_eq!(name(1, 2), "Fixed image, a sprite moves it");
+    assert_eq!(name(1, 3), "Image scrolling with the level");
+}

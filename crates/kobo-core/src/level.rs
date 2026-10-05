@@ -355,6 +355,29 @@ impl LevelObjects {
     }
 }
 
+/// The game's layer 3 settings, three for each object tileset
+/// (`Layer3TilemapSettings`): what settings 1 to 3 of a level's secondary
+/// header do (docs/smw.md, "Layer 3").
+pub const LAYER3_SETTINGS: SnesAddr = SnesAddr::new(0x009F88);
+
+/// What layer 3 setting `setting` (0 to 3) does in a level of object
+/// tileset `tileset`, by the ROM's table: none, a tide moving or still, or
+/// an image fixed or scrolling with the level.
+pub fn layer3_setting(rom: &Rom, tileset: u8, setting: u8) -> Result<&'static str, RomError> {
+    if setting == 0 {
+        return Ok("None");
+    }
+    let at = u32::from(tileset & 0x0F) * 3 + u32::from((setting - 1) % 3);
+    Ok(match rom.read_u8(LAYER3_SETTINGS.add(at))? {
+        1 => "Tide, rising and falling",
+        2 => "Tide, still",
+        0x80 => "Fixed image, a sprite moves it",
+        0x81 => "Image scrolling with the level",
+        value if value & 0x80 != 0 => "Fixed image",
+        _ => "Tide",
+    })
+}
+
 /// The game's background tilemaps (in bank `$0C`) that `rom`'s levels
 /// use, each with the levels that use it, the most used first. A level
 /// that does not read is left out.
