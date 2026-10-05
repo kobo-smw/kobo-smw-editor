@@ -149,6 +149,8 @@ Since (2026-10-05 and 06, on master):
 - The sprite header (`Edit::SetSpriteSettings`), and layer 2's background chosen from
   pictures of every one of the game's (`level::game_backgrounds`, named in `names.toml`,
   `edit::background_preview`, `Edit::SetLayer2`).
+- A level's graphics list slots and its palette's colours (`Edit::SetGraphics`,
+  `Edit::SetPalette`, `palette::game_palette` to start from).
 - Following a screen exit to where it leads (`Workspace::entrance_level`), back and forward
   between levels, and finding objects and sprites in every level (`edit::find`).
 - Every entrance's position by the game's places or by tile, and its camera at the game's
@@ -157,7 +159,8 @@ Since (2026-10-05 and 06, on master):
 Next:
 
 - Positions in tiles past a vertical level's edge.
-- The graphics list, palette, and ExAnimation, which are step 4's.
+- ExAnimation, and the graphics and palette editors themselves (the tiles and colours a
+  project's files hold), which are step 4's.
 
 ## Running it
 

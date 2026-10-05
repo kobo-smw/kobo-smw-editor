@@ -23,6 +23,10 @@ pub struct SourceState {
     typing: bool,
     /// The selection the pane last scrolled to.
     scrolled_to: Option<Item>,
+    /// A table to scroll to and mark, by its name: `palette`.
+    pub show_table: Option<&'static str>,
+    /// The line of the table marked, until the selection changes.
+    marked: Option<usize>,
 }
 
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
@@ -58,14 +62,28 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui.colored_label(theme::ERROR, error);
         }
 
+        let table = state.show_table.take().and_then(|name| {
+            let header = format!("[{name}");
+            state
+                .buffer
+                .lines()
+                .position(|l| l.trim_start().starts_with(&header))
+        });
+        if table.is_some() {
+            state.marked = table;
+            state.scrolled_to = open.selection.first().copied();
+        } else if open.selection.first().copied() != state.scrolled_to {
+            state.marked = None;
+        }
         let selected = match open.selection[..] {
+            _ if state.marked.is_some() => state.marked,
             [Item::Object(o)] => {
                 edit::entry_line(&state.buffer, edit::object_list(o.layer), o.index)
             }
             [Item::Sprite(i)] => edit::entry_line(&state.buffer, SPRITE_LIST, i),
             _ => None,
         };
-        let scroll = open.selection.first().copied() != state.scrolled_to;
+        let scroll = table.is_some() || open.selection.first().copied() != state.scrolled_to;
         state.scrolled_to = open.selection.first().copied();
 
         // One entry to a line, as the file has them: the pane scrolls

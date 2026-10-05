@@ -163,6 +163,19 @@ pub fn vanilla_back_area_color(rom: &Rom, back_area: u8) -> Result<Color15, RomE
     )
 }
 
+/// The palette a level of `rom` with header `header` loads, as a palette
+/// of its own would hold it: the game's assembly and back area colour, to
+/// start one from.
+pub fn game_palette(
+    rom: &Rom,
+    header: &crate::level::PrimaryHeader,
+) -> Result<CustomPalette, RomError> {
+    Ok(CustomPalette {
+        back_area: vanilla_back_area_color(rom, header.back_area)?,
+        palette: vanilla_level_palette(rom, header.palette_select())?,
+    })
+}
+
 /// Assembles the palette SMW's `LoadPalette` produces for a level.
 ///
 /// Entries the routine does not touch are left at colour 0 (black).

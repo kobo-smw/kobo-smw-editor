@@ -68,6 +68,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         _ => None,
     };
     let mut go_to = false;
+    // The game's palette for the level, to start one of its own from.
+    let game_palette = app
+        .workspace()
+        .and_then(|w| kobo_core::palette::game_palette(w.clean(), &level.header).ok());
+    let mut show_table: Option<&'static str> = None;
     // Propose the first free number after this level.
     if taken[usize::from(copy_to) & 0x1FF] {
         copy_to = (1..0x200u16)
@@ -84,7 +89,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     header(ui, &level, &mut change, |ui| {
                         crate::backgrounds::row(app, ui);
                     });
-                    entrances(ui, &level, free_entrance, &mut change);
+                    entrances(ui, &level, free_entrance, &mut change, |ui, change| {
+                        graphics_and_palette(
+                            ui,
+                            &level,
+                            game_palette.as_ref(),
+                            change,
+                            &mut show_table,
+                        );
+                    });
                     level_action = copy_level(ui, &mut copy_to, &taken);
                 }
                 [Item::Object(o)] => {
@@ -134,6 +147,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         });
 
     app.copy_to = copy_to;
+    if let Some(table) = show_table {
+        app.view.source = true;
+        if let Some(open) = app.current_mut() {
+            open.source.show_table = Some(table);
+        }
+    }
     if go_to && let Some(leads) = exit_leads {
         app.follow_exit(leads);
     }
@@ -1113,12 +1132,14 @@ type Field<T> = (&'static str, u8, u16, fn(T, u8) -> T);
 type Flag = (&'static str, bool, fn(&mut LevelSettings, bool));
 
 /// The main entrance and midway, Lunar Magic's settings the editor
-/// shows, and the secondary entrances that lead into the level.
+/// shows, `before_secondary`'s sections, and the secondary entrances that
+/// lead into the level.
 fn entrances(
     ui: &mut egui::Ui,
     level: &Level,
     free_entrance: Option<u16>,
     change: &mut Option<Change>,
+    before_secondary: impl FnOnce(&mut egui::Ui, &mut Option<Change>),
 ) {
     let e = level.entrance;
     let mut set = |r: &Response, label: &str, entrance: SecondaryHeader| {
@@ -1229,6 +1250,7 @@ fn entrances(
     }
 
     lunar_settings(ui, level, change);
+    before_secondary(ui, change);
 
     section(ui, "Secondary entrances here");
     let add = ui
@@ -1323,6 +1345,212 @@ fn entrances(
                 }
             });
     }
+}
+
+/// Lunar Magic's graphics list and palette for the level, and its
+/// ExAnimation, which only its file edits.
+fn graphics_and_palette(
+    ui: &mut egui::Ui,
+    level: &Level,
+    game: Option<&kobo_core::palette::CustomPalette>,
+    change: &mut Option<Change>,
+    show_table: &mut Option<&'static str>,
+) {
+    use kobo_core::exgfx::{self, GraphicsList};
+    use kobo_core::palette::Color15;
+
+    egui::CollapsingHeader::new(RichText::new("Graphics and palette").strong())
+        .default_open(false)
+        .show(ui, |ui| {
+            ui.label(RichText::new("GRAPHICS").small().color(theme::MUTED));
+            match level.graphics {
+                None => {
+                    ui.label(RichText::new("The tilesets' own files.").color(theme::MUTED));
+                    let r = ui.button("Give the level a list of its own");
+                    if r.clicked() {
+                        *change = Some(Change::new(
+                            &r,
+                            "Add a graphics list",
+                            vec![Edit::SetGraphics(Some(GraphicsList::DEFAULT))],
+                        ));
+                    }
+                }
+                Some(list) => {
+                    let set = |r: &Response, list: GraphicsList| {
+                        Change::new(r, "Change the graphics list", vec![Edit::SetGraphics(Some(list))])
+                    };
+                    let an2 = list.0[exgfx::slot::AN2];
+                    for (bit, text, tip) in [
+                        (exgfx::BYPASS, "Its files replace the tilesets'", "Super GFX bypass: the slots below load in place of the tilesets' files"),
+                        (exgfx::LAYER3_FILES, "Layer 3's files too", "LG1 to LG4 load layer 3's graphics"),
+                        (exgfx::LAYER3_TILEMAP, "Layer 3's tilemap too", "LT3 loads layer 3's tilemap"),
+                    ] {
+                        let mut on = an2 & bit != 0;
+                        let r = ui.checkbox(&mut on, text).on_hover_text(tip);
+                        if r.changed() {
+                            let mut new = list;
+                            new.0[exgfx::slot::AN2] = if on { an2 | bit } else { an2 & !bit };
+                            *change = Some(set(&r, new));
+                        }
+                    }
+                    Grid::new("graphics-slots")
+                        .num_columns(4)
+                        .spacing([10.0, 4.0])
+                        .show(ui, |ui| {
+                            for (i, name) in GraphicsList::SLOTS.iter().enumerate() {
+                                ui.label(RichText::new(*name).monospace());
+                                let word = list.0[i];
+                                let mut file = list.file(i);
+                                let r = ui
+                                    .add(
+                                        DragValue::new(&mut file)
+                                            .range(0..=exgfx::EXGFX_LAST)
+                                            .speed(0.1)
+                                            .hexadecimal(3, false, true),
+                                    )
+                                    .on_hover_text("A GFX file (00-7E), ExGFX (80-FFF), or 7F for none");
+                                if r.changed() {
+                                    let mut new = list;
+                                    new.0[i] = word & 0xF000 | file;
+                                    *change = Some(set(&r, new));
+                                }
+                                if i % 2 == 1 {
+                                    ui.end_row();
+                                }
+                            }
+                        });
+                    ui.horizontal(|ui| {
+                        let r = ui.button("No list: the tilesets' files");
+                        if r.clicked() {
+                            *change = Some(Change::new(&r, "Remove the graphics list", vec![Edit::SetGraphics(None)]));
+                        }
+                        if ui.button("Show in the file").clicked() {
+                            *show_table = Some("graphics");
+                        }
+                    });
+                }
+            }
+
+            ui.add_space(6.0);
+            ui.label(RichText::new("PALETTE").small().color(theme::MUTED));
+            match &level.palette {
+                None => {
+                    ui.label(
+                        RichText::new("The game's, by the header's BG, FG, and sprite palettes.")
+                            .color(theme::MUTED),
+                    );
+                    let r = ui
+                        .add_enabled(game.is_some(), egui::Button::new("Give the level a palette of its own"))
+                        .on_hover_text("Starting from the game's colours for it");
+                    if r.clicked()
+                        && let Some(custom) = game
+                    {
+                        *change = Some(Change::new(
+                            &r,
+                            "Add a palette",
+                            vec![Edit::SetPalette(Some(Box::new(custom.clone())))],
+                        ));
+                    }
+                }
+                Some(custom) => {
+                    let chosen_id = ui.make_persistent_id("palette-chosen");
+                    let mut chosen: Option<usize> = ui.data(|d| d.get_temp(chosen_id)).flatten();
+                    let cell = 12.0;
+                    let (rect, response) = ui.allocate_exact_size(
+                        egui::vec2(cell * 16.0, cell * 16.0),
+                        egui::Sense::click(),
+                    );
+                    let painter = ui.painter_at(rect);
+                    for (i, color) in custom.palette.colors.iter().enumerate() {
+                        let [r, g, b] = color.to_rgb8();
+                        let at = rect.min + egui::vec2((i % 16) as f32 * cell, (i / 16) as f32 * cell);
+                        let r_cell = egui::Rect::from_min_size(at, egui::vec2(cell, cell));
+                        painter.rect_filled(r_cell, 0, egui::Color32::from_rgb(r, g, b));
+                        if chosen == Some(i) {
+                            painter.rect_stroke(r_cell, 0, egui::Stroke::new(2.0, egui::Color32::WHITE), egui::StrokeKind::Inside);
+                        }
+                    }
+                    let index_at = |p: egui::Pos2| {
+                        let d = (p - rect.min) / cell;
+                        (d.x >= 0.0 && d.y >= 0.0 && d.x < 16.0 && d.y < 16.0)
+                            .then(|| d.y as usize * 16 + d.x as usize)
+                    };
+                    if let Some(i) = response.hover_pos().and_then(index_at) {
+                        let [r, g, b] = custom.palette.colors[i].to_rgb8();
+                        response.clone().on_hover_text(format!(
+                            "Row {:X}, colour {:X}: #{r:02X}{g:02X}{b:02X}",
+                            i / 16,
+                            i % 16
+                        ));
+                    }
+                    if response.clicked() {
+                        chosen = response.interact_pointer_pos().and_then(index_at);
+                        ui.data_mut(|d| d.insert_temp(chosen_id, chosen));
+                    }
+                    let pressed_at = ui.input(|i| i.pointer.press_start_time()).unwrap_or_default();
+                    let dragging = ui.input(|i| i.pointer.any_down());
+                    let mut edit_color = |ui: &mut egui::Ui, label: &str, color: Color15, index: Option<usize>| {
+                        ui.label(label);
+                        let [r, g, b] = color.to_rgb8();
+                        let mut c = egui::Color32::from_rgb(r, g, b);
+                        if egui::color_picker::color_picker_color32(ui, &mut c, egui::color_picker::Alpha::Opaque) {
+                            let new = Color15::from_rgb5(c.r() >> 3, c.g() >> 3, c.b() >> 3);
+                            if new != color {
+                                let mut changed = custom.clone();
+                                match index {
+                                    Some(i) => changed.palette.colors[i] = new,
+                                    None => changed.back_area = new,
+                                }
+                                *change = Some(Change {
+                                    widget: egui::Id::new(("palette", index, pressed_at.to_bits())),
+                                    dragging,
+                                    label: "Change a colour".into(),
+                                    edits: vec![Edit::SetPalette(Some(Box::new(changed)))],
+                                    select: None,
+                                });
+                            }
+                        }
+                    };
+                    match chosen {
+                        Some(i) => edit_color(
+                            ui,
+                            &format!("Row {:X}, colour {:X}", i / 16, i % 16),
+                            custom.palette.colors[i],
+                            Some(i),
+                        ),
+                        None => {
+                            ui.label(RichText::new("Click a colour to change it.").small().color(theme::MUTED));
+                            ui.collapsing("Back area colour", |ui| {
+                                edit_color(ui, "", custom.back_area, None);
+                            });
+                        }
+                    }
+                    ui.horizontal(|ui| {
+                        let r = ui.button("Back to the game's");
+                        if r.clicked() {
+                            *change = Some(Change::new(&r, "Remove the palette", vec![Edit::SetPalette(None)]));
+                        }
+                        if ui.button("Show in the file").clicked() {
+                            *show_table = Some("palette");
+                        }
+                    });
+                }
+            }
+
+            ui.add_space(6.0);
+            ui.label(RichText::new("ANIMATION").small().color(theme::MUTED));
+            match &level.animation {
+                None => {
+                    ui.label(RichText::new("No ExAnimation of its own.").color(theme::MUTED));
+                }
+                Some(list) => {
+                    ui.label(format!("ExAnimation in {} slots, edited in the file.", list.count));
+                    if ui.button("Show in the file").clicked() {
+                        *show_table = Some("animation");
+                    }
+                }
+            }
+        });
 }
 
 /// What the level panel's last section asked for.

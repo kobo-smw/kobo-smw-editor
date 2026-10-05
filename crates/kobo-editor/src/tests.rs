@@ -1278,3 +1278,46 @@ fn find_lists_what_every_level_has_and_opens_one() {
     };
     assert_eq!(open.selection, [Item::object(layer, index)]);
 }
+
+#[test]
+fn a_level_takes_a_palette_and_graphics_list_of_its_own() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "palette");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    let before = harness.state().current().unwrap().image.clone();
+    harness.get_by_label("Graphics and palette").click();
+    harness.run_steps(2);
+    harness
+        .get_by_label("Give the level a palette of its own")
+        .click();
+    harness.run_steps(2);
+    harness
+        .get_by_label("Give the level a list of its own")
+        .click();
+    harness.run_steps(2);
+    let level = harness.state().current().unwrap().document.level().clone();
+    let palette = level.palette.expect("a palette of its own");
+    assert_eq!(
+        level.graphics,
+        Some(kobo_core::exgfx::GraphicsList::DEFAULT)
+    );
+    // The game's colours for it, so the level looks as it did.
+    let clean_rom = harness.state().workspace().unwrap().clean().clone();
+    assert_eq!(
+        palette,
+        kobo_core::palette::game_palette(&clean_rom, &level.header).unwrap()
+    );
+    wait_for(&mut harness, "the picture with them", |app| {
+        app.current()
+            .is_some_and(|o| o.shown == o.requested && o.render_error.is_none())
+    });
+    assert_eq!(harness.state().current().unwrap().image, before);
+    // Two steps, each undone on its own.
+    assert_eq!(
+        harness.state().current().unwrap().document.undo_label(),
+        Some("Add a graphics list")
+    );
+}

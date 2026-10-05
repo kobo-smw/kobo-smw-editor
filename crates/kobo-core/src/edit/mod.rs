@@ -21,10 +21,12 @@ pub use workspace::{Preview, Workspace, WorkspaceError};
 use thiserror::Error;
 
 use crate::entrance::LevelSettings;
+use crate::exgfx::GraphicsList;
 use crate::level::objects::ScreenExit;
 use crate::level::objects::{Layout, Object};
 use crate::level::size::LevelSize;
 use crate::level::{Layer2Kind, PrimaryHeader, SecondaryHeader};
+use crate::palette::CustomPalette;
 use crate::source::SourceError;
 use crate::source::level::{Entrance, Layer2, Level, Sprite};
 
@@ -105,6 +107,12 @@ pub enum Edit {
         buoyancy: bool,
         buoyancy_no_layer2: bool,
     },
+    /// Lunar Magic's graphics list for the level, or none: the tilesets'
+    /// files.
+    SetGraphics(Option<GraphicsList>),
+    /// Lunar Magic's palette for the level, or none: the game's, by the
+    /// header's palette settings.
+    SetPalette(Option<Box<CustomPalette>>),
     /// The background layer 2 has, for a level mode that draws one: the
     /// game's, or one of the level's own. Layer 2's objects are edited one
     /// by one instead.
@@ -631,6 +639,8 @@ impl Edit {
                 level.sprites.buoyancy = *buoyancy;
                 level.sprites.buoyancy_no_layer2 = *buoyancy_no_layer2;
             }
+            Edit::SetGraphics(graphics) => level.graphics = *graphics,
+            Edit::SetPalette(palette) => level.palette = palette.as_deref().cloned(),
             Edit::SetLayer2(layer2) => {
                 if matches!(layer2, Layer2::Objects(_))
                     || matches!(level.layer2, Layer2::Objects(_))
