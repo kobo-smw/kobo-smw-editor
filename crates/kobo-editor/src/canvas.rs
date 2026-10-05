@@ -273,10 +273,66 @@ fn label_for(items: &[Item], verb: &str) -> String {
     format!("{verb} {what}")
 }
 
+/// Where an object moves in its list.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Order {
+    /// Drawn last, over everything.
+    Front,
+    Forward,
+    Backward,
+    /// Drawn first, under everything.
+    Back,
+}
+
+/// The edit that moves an object in its list, its label, and the object
+/// where it ends up; `None` where it is already.
+pub fn reorder(level: &Level, o: ObjectRef, order: Order) -> Option<(&'static str, Edit, Item)> {
+    let last = objects(level, o.layer)?.len().checked_sub(1)?;
+    let (to, label) = match order {
+        Order::Front => (last, "Bring object to front"),
+        Order::Forward => ((o.index + 1).min(last), "Bring object forward"),
+        Order::Backward => (o.index.saturating_sub(1), "Send object backward"),
+        Order::Back => (0, "Send object to back"),
+    };
+    (to != o.index).then_some((
+        label,
+        Edit::ReorderObject {
+            layer: o.layer,
+            from: o.index,
+            to,
+        },
+        Item::object(o.layer, to),
+    ))
+}
+
 /// The keys that act on the selection, when no text field has them.
 pub fn keys(app: &mut App, ctx: &egui::Context) {
     let Some(open) = app.current() else { return };
     let selection = open.selection.clone();
+    let order = ctx.input_mut(|i| {
+        let command = egui::Modifiers::COMMAND;
+        let shift = egui::Modifiers::COMMAND | egui::Modifiers::SHIFT;
+        let mut key = |m, k| i.consume_shortcut(&egui::KeyboardShortcut::new(m, k));
+        if key(shift, Key::CloseBracket) {
+            Some(Order::Front)
+        } else if key(shift, Key::OpenBracket) {
+            Some(Order::Back)
+        } else if key(command, Key::CloseBracket) {
+            Some(Order::Forward)
+        } else if key(command, Key::OpenBracket) {
+            Some(Order::Backward)
+        } else {
+            None
+        }
+    });
+    if let (Some(order), [Item::Object(o)]) = (order, &selection[..])
+        && let Some(open) = app.current()
+        && let Some((label, edit, item)) = reorder(open.document.level(), *o, order)
+        && app.apply(label, vec![edit])
+        && let Some(open) = app.current_mut()
+    {
+        open.selection = vec![item];
+    }
     let (delete, escape, all, nudge) = ctx.input_mut(|i| {
         let step = if i.modifiers.shift { 16 } else { 1 };
         let mut nudge = (0, 0);
@@ -369,6 +425,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
     let mut stop_placing = false;
     let mut finished: Option<Finished> = None;
     let mut context_edit: Option<(String, Vec<Edit>)> = None;
+    let mut clip: Option<(crate::clipboard::Action, Option<(u16, u16)>)> = None;
+    let can_paste = !app.clipboard.is_empty();
     let mut hover = None;
     {
         let open = app.open_mut(number)?;
@@ -411,7 +469,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
                 .iter()
                 .filter_map(|&item| geometry.bounds(item))
                 .reduce(|a, b| a.union(b));
-            if let Some(bounds) = bounds {
+            // Only what is out of view is brought into it.
+            let seen = Rect::from_min_size(camera.offset.to_pos2(), canvas.size() / camera.zoom);
+            if let Some(bounds) = bounds
+                && !seen.contains_rect(bounds)
+            {
                 camera.centre_on(bounds, canvas.size());
             }
         }
@@ -448,6 +510,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
         };
         if response.secondary_clicked() {
             open.menu_at = pointer;
+            // The menu acts on what was right-clicked.
+            if let Some(item) = hovered_item
+                && !open.selection.contains(&item)
+                && placing.is_none()
+            {
+                open.selection = vec![item];
+            }
         }
 
         // Placing from the palette: each click puts one down.
@@ -579,6 +648,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
         // A menu on what was right-clicked.
         if placing.is_none() {
             response.context_menu(|ui| {
+                clip = clipboard_menu(ui, open, can_paste);
                 context_menu(ui, open, number, &mut context_edit);
             });
         }
@@ -688,6 +758,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
     }
     if let Some((label, edits)) = context_edit {
         app.apply(&label, edits);
+    }
+    if let Some((action, at)) = clip {
+        let ctx = ui.ctx().clone();
+        crate::clipboard::run(app, &ctx, action, None, at);
     }
     if stop_placing {
         app.placing = None;
@@ -803,6 +877,36 @@ fn geometry_ref(open: &OpenLevel) -> &Geometry {
     open.geometry.as_ref().expect("checked above")
 }
 
+/// The menu's clipboard part: what it asked for, and where a paste goes
+/// (the tile the menu was opened on).
+fn clipboard_menu(
+    ui: &mut egui::Ui,
+    open: &OpenLevel,
+    can_paste: bool,
+) -> Option<(crate::clipboard::Action, Option<(u16, u16)>)> {
+    use crate::clipboard::Action;
+    let selected = !open.selection.is_empty();
+    let at = open
+        .menu_at
+        .filter(|p| p.x >= 0.0 && p.y >= 0.0)
+        .map(|p| ((p.x / TILE) as u16, (p.y / TILE) as u16));
+    let mut chosen = None;
+    for (text, keys, action, enabled) in [
+        ("Cut", "Ctrl+X", Action::Cut, selected),
+        ("Copy", "Ctrl+C", Action::Copy, selected),
+        ("Paste here", "Ctrl+V", Action::Paste, can_paste),
+        ("Duplicate", "Ctrl+D", Action::Duplicate, selected),
+    ] {
+        let button = egui::Button::new(text).shortcut_text(keys);
+        if ui.add_enabled(enabled, button).clicked() {
+            chosen = Some((action, at));
+            ui.close();
+        }
+    }
+    ui.separator();
+    chosen
+}
+
 fn context_menu(
     ui: &mut egui::Ui,
     open: &mut OpenLevel,
@@ -855,33 +959,22 @@ fn context_menu(
         ui.close();
     }
     if let [Item::Object(o)] = selection[..] {
-        let last = objects(open.document.level(), o.layer).map_or(0, |l| l.len().saturating_sub(1));
         ui.separator();
-        let mut reorder = |label: &str, to: usize| {
-            *edit = Some((
-                label.to_string(),
-                vec![Edit::ReorderObject {
-                    layer: o.layer,
-                    from: o.index,
-                    to,
-                }],
-            ));
-        };
-        if ui
-            .add_enabled(o.index < last, egui::Button::new("Bring to front"))
-            .clicked()
-        {
-            reorder("Bring object to front", last);
-            open.selection = vec![Item::object(o.layer, last)];
-            ui.close();
-        }
-        if ui
-            .add_enabled(o.index > 0, egui::Button::new("Send to back"))
-            .clicked()
-        {
-            reorder("Send object to back", 0);
-            open.selection = vec![Item::object(o.layer, 0)];
-            ui.close();
+        for (text, keys, order) in [
+            ("Bring to front", "Ctrl+Shift+]", Order::Front),
+            ("Bring forward", "Ctrl+]", Order::Forward),
+            ("Send backward", "Ctrl+[", Order::Backward),
+            ("Send to back", "Ctrl+Shift+[", Order::Back),
+        ] {
+            let change = reorder(open.document.level(), o, order);
+            let button = egui::Button::new(text).shortcut_text(keys);
+            if ui.add_enabled(change.is_some(), button).clicked()
+                && let Some((label, reordering, item)) = change
+            {
+                *edit = Some((label.to_string(), vec![reordering]));
+                open.selection = vec![item];
+                ui.close();
+            }
         }
     }
 }

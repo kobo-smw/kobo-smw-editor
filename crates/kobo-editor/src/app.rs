@@ -16,7 +16,7 @@ use crate::picture::Picture;
 use crate::preview::{Previewer, Rendered};
 use crate::selection::{Geometry, Item};
 use crate::watch::Watcher;
-use crate::{inspector, palette, source, theme};
+use crate::{inspector, outline, palette, source, theme};
 
 /// How the canvas shows a level.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -81,6 +81,8 @@ pub struct OpenLevel {
     pub pending: Option<Pending>,
     /// Bring the selection into view on the next frame.
     pub focus: bool,
+    /// The selection the outline last scrolled to.
+    pub outline_scrolled_to: Option<Item>,
     /// The file changed on disk while the document had unsaved edits:
     /// the file's text, until the user chooses.
     pub conflict: Option<String>,
@@ -108,6 +110,7 @@ impl OpenLevel {
             drag: None,
             pending: None,
             focus: false,
+            outline_scrolled_to: None,
             conflict: None,
             disk_error: None,
             source: source::SourceState::default(),
@@ -138,6 +141,7 @@ impl OpenLevel {
 enum LeftTab {
     Levels,
     Add,
+    Outline,
 }
 
 /// Where the clean ROM comes from, or why it could not be loaded.
@@ -178,11 +182,15 @@ pub struct App {
     /// Where the level panel's copy goes.
     pub copy_to: u16,
     left: LeftTab,
+    /// What the outline is narrowed to.
+    pub outline_filter: String,
     pub palette: PaletteState,
     /// What a click on the canvas places, while choosing from the palette.
     pub placing: Option<Placing>,
     /// The layer the palette's objects go on.
     pub place_layer: edit::ObjectLayer,
+    /// What was copied, to paste in any level.
+    pub clipboard: crate::clipboard::Clipboard,
     /// A message for the status bar, and when it was given.
     status: Option<(String, Instant)>,
     /// The inspector widget whose change is being made, so that dragging
@@ -237,9 +245,11 @@ impl App {
             } else {
                 LeftTab::Levels
             },
+            outline_filter: String::new(),
             palette: PaletteState::default(),
             placing: None,
             place_layer: edit::ObjectLayer::One,
+            clipboard: Default::default(),
             status: None,
             editing: None,
             confirm_close: false,
@@ -270,7 +280,7 @@ impl App {
         self.workspace.as_ref()?.levels().next()
     }
 
-    fn say(&mut self, message: impl Into<String>) {
+    pub fn say(&mut self, message: impl Into<String>) {
         self.status = Some((message.into(), Instant::now()));
     }
 
@@ -601,6 +611,7 @@ impl App {
         }
         if !typing {
             canvas::keys(self, ctx);
+            crate::clipboard::keys(self, ctx);
         }
     }
 
@@ -1096,11 +1107,13 @@ impl eframe::App for App {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.left, LeftTab::Levels, "Levels");
                     ui.selectable_value(&mut self.left, LeftTab::Add, "Add");
+                    ui.selectable_value(&mut self.left, LeftTab::Outline, "Outline");
                 });
                 ui.separator();
                 match self.left {
                     LeftTab::Levels => self.level_list(ui),
                     LeftTab::Add => palette::show(self, ui),
+                    LeftTab::Outline => outline::show(self, ui),
                 }
             });
         egui::Panel::right("inspector")

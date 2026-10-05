@@ -538,3 +538,82 @@ fn entrances_are_added_with_a_free_number_and_removed() {
         .entrances;
     assert_eq!(*entrances, before);
 }
+
+#[test]
+fn the_outline_selects_what_the_canvas_cannot_and_keys_reorder() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "outline");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.get_by_label("Outline").click();
+    harness.state_mut().outline_filter = "exit".to_string();
+    harness.run_steps(3);
+    // Level 105's screen exit has no place on the canvas.
+    harness
+        .get_by_label_contains("screen 07 → level 1CB")
+        .click();
+    harness.step();
+    let exit = harness
+        .state()
+        .current()
+        .unwrap()
+        .document
+        .level()
+        .layer1
+        .len()
+        - 1;
+    let selection = harness.state().current().unwrap().selection.clone();
+    assert_eq!(selection, [Item::object(ObjectLayer::One, exit)]);
+
+    // Ctrl+[ sends it one back in the list, and the selection follows.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::OpenBracket);
+    harness.step();
+    let open = harness.state().current().unwrap();
+    assert_eq!(open.selection, [Item::object(ObjectLayer::One, exit - 1)]);
+    assert!(matches!(
+        open.document.level().layer1[exit - 1],
+        kobo_core::level::objects::Object::ScreenExit(_)
+    ));
+    assert_eq!(open.document.undo_label(), Some("Send object backward"));
+}
+
+#[test]
+fn copying_pastes_where_the_mouse_is_and_duplicating_steps_aside() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "clipboard");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    look_at(&mut harness, 60, 20);
+    click_tile(&mut harness, 65, 22);
+    let count = |app: &App| app.current().unwrap().document.level().layer1.len();
+    let before = count(harness.state());
+
+    harness.event(egui::Event::Copy);
+    harness.step();
+    assert_eq!(harness.state().status(), Some("Copied 1 object"));
+    let marker = "Kobo: 1 object".to_string();
+
+    // Paste with the mouse at tile (64, 10): the copy's top left goes there.
+    let at = tile_on_screen(harness.state(), 64, 10);
+    harness.hover_at(at);
+    harness.step();
+    harness.event(egui::Event::Paste(marker));
+    harness.step();
+    let open = harness.state().current().unwrap();
+    assert_eq!(count(harness.state()), before + 1);
+    assert_eq!(object_place(harness.state(), before), Some((64, 10)));
+    assert_eq!(open.selection, [Item::object(ObjectLayer::One, before)]);
+    assert_eq!(open.document.undo_label(), Some("Paste 1 object"));
+
+    // Text copied elsewhere is not pasted as objects.
+    harness.event(egui::Event::Paste("hello".to_string()));
+    harness.step();
+    assert_eq!(count(harness.state()), before + 1);
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::D);
+    harness.step();
+    assert_eq!(count(harness.state()), before + 2);
+    assert_eq!(object_place(harness.state(), before + 1), Some((65, 11)));
+}
