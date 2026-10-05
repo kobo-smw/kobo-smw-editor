@@ -93,7 +93,7 @@ fn harness_for(project: &Path, level: u16) -> Harness<'static, App> {
         ..Default::default()
     };
     Harness::builder()
-        .with_size([1600.0, 940.0])
+        .with_size([1600.0, 1400.0])
         .build_eframe(move |cc| App::new(cc, startup))
 }
 
@@ -491,4 +491,50 @@ fn layer_2_objects_are_selected_and_placed_where_layer_2_shows() {
     let after = layer2(harness.state());
     assert_eq!(after.len(), before + 1);
     assert_eq!(edit::object_position(&after[before]), Some((3, 19)));
+}
+
+#[test]
+fn entrances_are_added_with_a_free_number_and_removed() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "entrances");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    let before = harness
+        .state()
+        .current()
+        .unwrap()
+        .document
+        .level()
+        .entrances
+        .clone();
+
+    harness.get_by_label("Add an entrance").click();
+    harness.step();
+    let after = harness
+        .state()
+        .current()
+        .unwrap()
+        .document
+        .level()
+        .entrances
+        .clone();
+    assert_eq!(after.len(), before.len() + 1);
+    let new = after.last().unwrap().id;
+    assert!(before.iter().all(|e| e.id != new) && new >> 8 == 1);
+    wait_for(&mut harness, "the picture with it", drawn);
+
+    harness.get_by_label(&format!("Entrance {new:03X}")).click();
+    harness.run_steps(10);
+    harness.get_by_label("Remove this entrance").click();
+    harness.step();
+    let entrances = &harness
+        .state()
+        .current()
+        .unwrap()
+        .document
+        .level()
+        .entrances;
+    assert_eq!(*entrances, before);
 }

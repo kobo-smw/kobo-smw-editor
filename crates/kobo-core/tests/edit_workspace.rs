@@ -159,3 +159,46 @@ fn objects_are_pictured_as_the_level_draws_them() {
     let coin = pictures[0].as_ref().unwrap();
     assert!(coin.pixels.iter().any(|&p| p != [0, 0, 0]));
 }
+
+#[test]
+fn a_new_entrance_takes_a_free_number_and_builds() {
+    use kobo_core::source::level::Entrance;
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-entrance");
+    fs::write(dir.join("kobo.toml"), "format = 1\n").unwrap();
+    let mut workspace = Workspace::open(&dir, Arc::new(clean))
+        .unwrap()
+        .without_cache();
+    let level = workspace.clean_level(0x105).unwrap();
+    workspace.add_level(0x105, &level).unwrap();
+
+    let id = workspace.free_entrance(0x105).unwrap();
+    assert_eq!(id >> 8, 1, "in the level's half");
+    assert!(level.entrances.iter().all(|e| e.id != id));
+    let entrance = Entrance {
+        id,
+        screen: 3,
+        x: 2,
+        y: 9,
+        action: 0,
+        fg_position: 2,
+        bg_position: 2,
+        settings: Default::default(),
+    };
+    let mut document = LevelDocument::open(dir.join("levels/105.toml")).unwrap();
+    let insert = Edit::InsertEntrance {
+        index: document.level().entrances.len(),
+        entrance,
+    };
+    document.apply("Add entrance", &[insert]).unwrap();
+    workspace.set_level(0x105, document.level());
+    assert_ne!(workspace.free_entrance(0x105), Some(id), "taken now");
+
+    let rom = workspace.build().unwrap();
+    let format = kobo_core::level::LevelFormat::of(&rom);
+    let bytes = kobo_core::level::read_entrances(&rom).unwrap()[usize::from(id)];
+    assert!(bytes.in_use(format));
+    assert_eq!(bytes.destination(id, format), 0x105);
+}

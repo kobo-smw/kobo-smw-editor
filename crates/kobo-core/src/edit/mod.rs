@@ -36,6 +36,9 @@ pub fn object_list(layer: ObjectLayer) -> &'static str {
     }
 }
 
+/// The array a level's secondary entrances are in.
+pub const ENTRANCE_LIST: &str = "entrances.list";
+
 /// The array a level's sprites are in.
 pub const SPRITE_LIST: &str = "sprites.list";
 
@@ -93,6 +96,15 @@ pub enum Edit {
     ReplaceEntrance {
         index: usize,
         entrance: Entrance,
+    },
+    /// Adds a secondary entrance into the level; its number must be one
+    /// no other level has ([`Workspace::free_entrance`]).
+    InsertEntrance {
+        index: usize,
+        entrance: Entrance,
+    },
+    RemoveEntrance {
+        index: usize,
     },
 }
 
@@ -493,6 +505,19 @@ impl Edit {
                 let list = &mut level.entrances;
                 check_index("entrance", *index, list.len())?;
                 list[*index] = *entrance;
+            }
+            Edit::InsertEntrance { index, entrance } => {
+                let list = &mut level.entrances;
+                check_index("entrance", *index, list.len() + 1)?;
+                list.insert(*index, *entrance);
+                comments.insert_entry(ENTRANCE_LIST, *index);
+            }
+            Edit::RemoveEntrance { index } => {
+                let list = &mut level.entrances;
+                check_index("entrance", *index, list.len())?;
+                let len = list.len();
+                list.remove(*index);
+                comments.remove_entry(ENTRANCE_LIST, *index, len);
             }
         }
         Ok(())

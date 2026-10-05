@@ -56,6 +56,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let mut copy = false;
     let mut copy_to = app.copy_to;
     let taken: Vec<bool> = (0..0x200).map(|n| app.has_level(n)).collect();
+    let free_entrance = app.workspace().and_then(|w| w.free_entrance(number));
     // Propose the first free number after this level.
     if taken[usize::from(copy_to) & 0x1FF] {
         copy_to = (1..0x200u16)
@@ -70,7 +71,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             match selection[..] {
                 [] => {
                     header(ui, &level, &mut change);
-                    entrances(ui, &level, &mut change);
+                    entrances(ui, &level, free_entrance, &mut change);
                     copy = copy_level(ui, &mut copy_to, &taken);
                 }
                 [Item::Object(o)] => object(ui, &level, number, o, &mut change),
@@ -645,129 +646,164 @@ type Flag = (&'static str, bool, fn(&mut LevelSettings, bool));
 
 /// The main entrance and midway, Lunar Magic's settings the editor
 /// shows, and the secondary entrances that lead into the level.
-fn entrances(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>) {
-    section(ui, "Main entrance");
+fn entrances(
+    ui: &mut egui::Ui,
+    level: &Level,
+    free_entrance: Option<u16>,
+    change: &mut Option<Change>,
+) {
     let e = level.entrance;
     let mut set = |r: &Response, label: &str, entrance: SecondaryHeader| {
         if r.changed() {
             *change = Some(Change::new(r, label, vec![Edit::SetEntrance(entrance)]));
         }
     };
-    Grid::new("entrance")
-        .num_columns(2)
-        .spacing([12.0, 6.0])
+    egui::CollapsingHeader::new(RichText::new("Main entrance").strong())
+        .default_open(false)
         .show(ui, |ui| {
-            let fields: [Field<SecondaryHeader>; 9] = [
-                ("Screen", e.entrance_screen, 0x1F, |h, v| SecondaryHeader {
-                    entrance_screen: v,
-                    ..h
-                }),
-                ("X", e.entrance_x, 7, |h, v| SecondaryHeader {
-                    entrance_x: v,
-                    ..h
-                }),
-                ("Y", e.entrance_y, 15, |h, v| SecondaryHeader {
-                    entrance_y: v,
-                    ..h
-                }),
-                ("Action", e.entrance_action, 7, |h, v| SecondaryHeader {
-                    entrance_action: v,
-                    ..h
-                }),
-                ("Midway screen", e.midway_screen, 15, |h, v| {
-                    SecondaryHeader {
-                        midway_screen: v,
-                        ..h
+            Grid::new("entrance")
+                .num_columns(2)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    let fields: [Field<SecondaryHeader>; 9] = [
+                        ("Screen", e.entrance_screen, 0x1F, |h, v| SecondaryHeader {
+                            entrance_screen: v,
+                            ..h
+                        }),
+                        ("X", e.entrance_x, 7, |h, v| SecondaryHeader {
+                            entrance_x: v,
+                            ..h
+                        }),
+                        ("Y", e.entrance_y, 15, |h, v| SecondaryHeader {
+                            entrance_y: v,
+                            ..h
+                        }),
+                        ("Action", e.entrance_action, 7, |h, v| SecondaryHeader {
+                            entrance_action: v,
+                            ..h
+                        }),
+                        ("Midway screen", e.midway_screen, 15, |h, v| {
+                            SecondaryHeader {
+                                midway_screen: v,
+                                ..h
+                            }
+                        }),
+                        ("FG position", e.fg_position, 3, |h, v| SecondaryHeader {
+                            fg_position: v,
+                            ..h
+                        }),
+                        ("BG position", e.bg_position, 3, |h, v| SecondaryHeader {
+                            bg_position: v,
+                            ..h
+                        }),
+                        ("Layer 2 scroll", e.layer2_scroll, 15, |h, v| {
+                            SecondaryHeader {
+                                layer2_scroll: v,
+                                ..h
+                            }
+                        }),
+                        ("Layer 3", e.layer3, 3, |h, v| SecondaryHeader {
+                            layer3: v,
+                            ..h
+                        }),
+                    ];
+                    for (label, value, max, with) in fields {
+                        ui.label(label);
+                        let mut v = u16::from(value);
+                        let r = number_field(ui, &mut v, 0, max, false);
+                        set(
+                            &r,
+                            &format!("Change entrance {}", label.to_lowercase()),
+                            with(e, v as u8),
+                        );
+                        ui.end_row();
                     }
-                }),
-                ("FG position", e.fg_position, 3, |h, v| SecondaryHeader {
-                    fg_position: v,
-                    ..h
-                }),
-                ("BG position", e.bg_position, 3, |h, v| SecondaryHeader {
-                    bg_position: v,
-                    ..h
-                }),
-                ("Layer 2 scroll", e.layer2_scroll, 15, |h, v| {
-                    SecondaryHeader {
-                        layer2_scroll: v,
-                        ..h
-                    }
-                }),
-                ("Layer 3", e.layer3, 3, |h, v| SecondaryHeader {
-                    layer3: v,
-                    ..h
-                }),
-            ];
-            for (label, value, max, with) in fields {
-                ui.label(label);
-                let mut v = u16::from(value);
-                let r = number_field(ui, &mut v, 0, max, false);
-                set(
-                    &r,
-                    &format!("Change entrance {}", label.to_lowercase()),
-                    with(e, v as u8),
-                );
-                ui.end_row();
-            }
-            ui.label("No Yoshi intro");
-            let mut skip = e.no_yoshi_intro;
-            let r = ui.checkbox(&mut skip, "");
-            set(
-                &r,
-                "Change entrance",
-                SecondaryHeader {
-                    no_yoshi_intro: skip,
-                    ..e
-                },
-            );
-            ui.end_row();
-            ui.label("Vertical position");
-            let mut vertical = e.vertical_position;
-            let r = ui.checkbox(&mut vertical, "");
-            set(
-                &r,
-                "Change entrance",
-                SecondaryHeader {
-                    vertical_position: vertical,
-                    ..e
-                },
-            );
-            ui.end_row();
-        });
-
-    section(ui, "Level settings");
-    let settings = &level.settings;
-    Grid::new("settings")
-        .num_columns(2)
-        .spacing([12.0, 6.0])
-        .show(ui, |ui| {
-            let flags: [Flag; 3] = [
-                ("Slippery", settings.slippery, |s, v| s.slippery = v),
-                ("Water", settings.water, |s, v| s.water = v),
-                ("Face left", settings.face_left, |s, v| s.face_left = v),
-            ];
-            for (label, value, with) in flags {
-                ui.label(label);
-                let mut v = value;
-                let r = ui.checkbox(&mut v, "");
-                if r.changed() {
-                    let mut changed = *settings;
-                    with(&mut changed, v);
-                    *change = Some(Change::new(
+                    ui.label("No Yoshi intro");
+                    let mut skip = e.no_yoshi_intro;
+                    let r = ui.checkbox(&mut skip, "");
+                    set(
                         &r,
-                        format!("Change {}", label.to_lowercase()),
-                        vec![Edit::SetSettings(changed)],
-                    ));
-                }
-                ui.end_row();
-            }
+                        "Change entrance",
+                        SecondaryHeader {
+                            no_yoshi_intro: skip,
+                            ..e
+                        },
+                    );
+                    ui.end_row();
+                    ui.label("Vertical position");
+                    let mut vertical = e.vertical_position;
+                    let r = ui.checkbox(&mut vertical, "");
+                    set(
+                        &r,
+                        "Change entrance",
+                        SecondaryHeader {
+                            vertical_position: vertical,
+                            ..e
+                        },
+                    );
+                    ui.end_row();
+                });
         });
 
-    if level.entrances.is_empty() {
-        return;
-    }
+    let settings = &level.settings;
+    egui::CollapsingHeader::new(RichText::new("Level settings").strong())
+        .default_open(false)
+        .show(ui, |ui| {
+            Grid::new("settings")
+                .num_columns(2)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    let flags: [Flag; 3] = [
+                        ("Slippery", settings.slippery, |s, v| s.slippery = v),
+                        ("Water", settings.water, |s, v| s.water = v),
+                        ("Face left", settings.face_left, |s, v| s.face_left = v),
+                    ];
+                    for (label, value, with) in flags {
+                        ui.label(label);
+                        let mut v = value;
+                        let r = ui.checkbox(&mut v, "");
+                        if r.changed() {
+                            let mut changed = *settings;
+                            with(&mut changed, v);
+                            *change = Some(Change::new(
+                                &r,
+                                format!("Change {}", label.to_lowercase()),
+                                vec![Edit::SetSettings(changed)],
+                            ));
+                        }
+                        ui.end_row();
+                    }
+                });
+        });
+
     section(ui, "Secondary entrances here");
+    let add = ui
+        .add_enabled(
+            free_entrance.is_some(),
+            egui::Button::new("Add an entrance"),
+        )
+        .on_hover_text("A secondary entrance into this level, for a screen exit to lead to")
+        .on_disabled_hover_text("Every entrance number in this level's half is taken.");
+    if add.clicked()
+        && let Some(id) = free_entrance
+    {
+        let entrance = Entrance {
+            id,
+            screen: 0,
+            x: 0,
+            y: 0,
+            action: 0,
+            fg_position: level.entrance.fg_position,
+            bg_position: level.entrance.bg_position,
+            settings: Default::default(),
+        };
+        let index = level.entrances.len();
+        *change = Some(Change::new(
+            &add,
+            format!("Add entrance {id:03X}"),
+            vec![Edit::InsertEntrance { index, entrance }],
+        ));
+    }
     for (index, entrance) in level.entrances.iter().enumerate() {
         let title = format!("Entrance {:03X}", entrance.id);
         egui::CollapsingHeader::new(title)
@@ -806,6 +842,14 @@ fn entrances(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>) {
                             ui.end_row();
                         }
                     });
+                let remove = ui.button("Remove this entrance");
+                if remove.clicked() {
+                    *change = Some(Change::new(
+                        &remove,
+                        format!("Remove entrance {:03X}", entrance.id),
+                        vec![Edit::RemoveEntrance { index }],
+                    ));
+                }
             });
     }
 }

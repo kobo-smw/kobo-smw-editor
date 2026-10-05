@@ -105,6 +105,29 @@ impl Workspace {
             .map(|(_, level)| level)
     }
 
+    /// A secondary entrance number for a new entrance into level `level`:
+    /// one the clean ROM's tables do not use, nor any level of the
+    /// project, and in the game's format (Kobo's builds write entrances
+    /// so up to `1FF`) one whose bit 8 is the level's, which the number
+    /// gives. `None` when the level's half of the 512 is full.
+    pub fn free_entrance(&self, level: u16) -> Option<u16> {
+        let clean = crate::level::read_entrances(&self.clean).ok()?;
+        let format = crate::level::LevelFormat::of(&self.clean);
+        let taken: std::collections::BTreeSet<u16> = self
+            .project
+            .levels
+            .iter()
+            .flat_map(|(_, l)| l.entrances.iter().map(|e| e.id))
+            .collect();
+        let bank = level & 0x100;
+        (bank..bank + 0x100).find(|&id| {
+            !taken.contains(&id)
+                && clean
+                    .get(usize::from(id))
+                    .is_some_and(|bytes| !bytes.in_use(format))
+        })
+    }
+
     /// A level as the clean ROM has it, which is what a level the project
     /// does not list builds as.
     pub fn clean_level(&self, number: u16) -> Result<Level, WorkspaceError> {
