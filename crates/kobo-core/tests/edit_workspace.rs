@@ -405,3 +405,37 @@ fn the_games_backgrounds_are_listed_and_pictured() {
     // Only the copy had the other background: the level is as it was.
     assert_eq!(workspace.level(0x105), Some(&level));
 }
+
+#[test]
+fn a_search_finds_every_one_of_a_kind() {
+    use kobo_core::edit::find::{self, Entry};
+
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-find");
+    fs::write(dir.join("kobo.toml"), "format = 1\n").unwrap();
+    let mut workspace = Workspace::open(&dir, Arc::new(clean))
+        .unwrap()
+        .without_cache();
+    for number in [0x105, 0x106] {
+        let level = workspace.clean_level(number).unwrap();
+        workspace.add_level(number, &level).unwrap();
+    }
+    let level = workspace.level(0x105).unwrap().clone();
+    let id = level.sprites.list[0].id;
+    let query = find::query_for(&level, Entry::Sprite(0)).unwrap();
+    assert_eq!(query, format!("sprite {id:02X}"));
+    let found = find::find(&workspace, &query);
+    assert!(!found.is_empty());
+    for f in &found {
+        let Entry::Sprite(i) = f.entry else {
+            panic!("{query} found {f:?}");
+        };
+        assert_eq!(workspace.level(f.level).unwrap().sprites.list[i].id, id);
+    }
+    // Every screen exit, of both levels.
+    let exits = find::find(&workspace, "exit");
+    assert!(exits.iter().any(|f| f.level == 0x105));
+    assert!(exits.iter().all(|f| f.kind.starts_with("exit")));
+}

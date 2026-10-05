@@ -91,6 +91,25 @@ fn matches(found: &Found, words: &[String]) -> bool {
     })
 }
 
+/// A search that finds every entry of the same kind as `entry` of
+/// `level`: the same object or sprite number, or any screen exit.
+pub fn query_for(level: &Level, entry: Entry) -> Option<String> {
+    match entry {
+        Entry::Object(layer, index) => {
+            let list: &[Object] = match (layer, &level.layer2) {
+                (ObjectLayer::One, _) => &level.layer1,
+                (ObjectLayer::Two, Layer2::Objects(list)) => list,
+                _ => return None,
+            };
+            Some(match list.get(index)? {
+                Object::ScreenExit(_) => "exit".to_string(),
+                object => object_words(object, level.header.object_tileset).1,
+            })
+        }
+        Entry::Sprite(index) => Some(format!("sprite {:02X}", level.sprites.list.get(index)?.id)),
+    }
+}
+
 /// The entries of every level of `workspace` that `query` finds, in level
 /// order and each level's drawing order. An empty query finds nothing.
 pub fn find(workspace: &Workspace, query: &str) -> Vec<Found> {

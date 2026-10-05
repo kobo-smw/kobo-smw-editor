@@ -525,6 +525,7 @@ fn show_canvas(
     let mut stop_placing = false;
     let mut finished: Option<Finished> = None;
     let mut context_edit: Option<(String, Vec<Edit>)> = None;
+    let mut find_query: Option<String> = None;
     // A screen exit's label double-clicked: go where it leads.
     let mut follow: Option<kobo_core::level::objects::ScreenExit> = None;
     let mut clip: Option<(crate::clipboard::Action, Option<(u16, u16)>)> = None;
@@ -860,7 +861,7 @@ fn show_canvas(
         if placing.is_none() {
             response.context_menu(|ui| {
                 clip = clipboard_menu(ui, open, can_paste);
-                context_menu(ui, open, number, &mut context_edit);
+                context_menu(ui, open, number, &mut context_edit, &mut find_query);
             });
         }
 
@@ -1042,6 +1043,10 @@ fn show_canvas(
     {
         app.follow_exit(leads);
     }
+    if let Some(query) = find_query {
+        app.find.query = query;
+        app.left = crate::app::LeftTab::Find;
+    }
     if let Some((action, at)) = clip {
         let ctx = ui.ctx().clone();
         crate::clipboard::run(app, &ctx, action, None, at);
@@ -1204,6 +1209,7 @@ fn context_menu(
     open: &mut OpenLevel,
     number: u16,
     edit: &mut Option<(String, Vec<Edit>)>,
+    find: &mut Option<String>,
 ) {
     // A screen exit for the screen the menu was opened on, if it has none.
     if let Some(at) = open.menu_at {
@@ -1245,6 +1251,21 @@ fn context_menu(
         return;
     }
     let selection = open.selection.clone();
+    if let [item] = selection[..] {
+        let entry = match item {
+            Item::Object(o) => kobo_core::edit::find::Entry::Object(o.layer, o.index),
+            Item::Sprite(i) => kobo_core::edit::find::Entry::Sprite(i),
+        };
+        if let Some(query) = kobo_core::edit::find::query_for(open.document.level(), entry)
+            && ui
+                .button("Find every one in the project")
+                .on_hover_text(format!("Find: {query}"))
+                .clicked()
+        {
+            *find = Some(query);
+            ui.close();
+        }
+    }
     if ui.button("Delete").clicked() {
         *edit = Some((label_for(&selection, "Delete"), delete_edits(&selection)));
         open.selection.clear();

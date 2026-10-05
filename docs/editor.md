@@ -39,7 +39,8 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
     changed with where it was, red removed).
   - *Find* (Ctrl+Shift+F): every object and sprite of every level in the project that a
     search names, by name or number (`goomba`, `sprite 0F`, `extended 41`, `exit`), by
-    level; choosing one opens its level with it selected.
+    level; choosing one opens its level with it selected. The canvas's menu finds every
+    one like what is selected.
 - **Canvas**: the level, with screen boundaries, the grid (G), markers where the player
   enters (the start, the midway, each secondary entrance), and a minimap below.
   The view bar and the View menu show or hide layers 1, 2, and 3, the sprites, and the
