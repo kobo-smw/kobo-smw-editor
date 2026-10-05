@@ -258,6 +258,24 @@ fn object(
                     settings,
                     ..
                 } => {
+                    ui.label("Object");
+                    let tileset = level.header.object_tileset;
+                    let (r, picked) = named_picker(ui, "object", *n, 0x01..=0x3F, |n| {
+                        // 22-2D are not the game's (docs/smw.md).
+                        if (0x22..=0x2D).contains(&n) {
+                            Some("Unused")
+                        } else {
+                            names::standard_object(n, tileset)
+                        }
+                    });
+                    if let Some(number) = picked {
+                        let mut changed = object.clone();
+                        if let Object::Standard { number: m, .. } = &mut changed {
+                            *m = number;
+                        }
+                        *change = Some(Change::new(&r, "Change object", vec![replace(changed)]));
+                    }
+                    ui.end_row();
                     for field in edit::setting_fields(*n, *settings) {
                         let mut value = field.value;
                         ui.label(capitalised(field.name));
@@ -284,12 +302,13 @@ fn object(
                     }
                 }
                 Object::Extended { number: n, x, y } => {
-                    let mut value = u16::from(*n);
-                    ui.label("Number");
-                    let r = number_field(ui, &mut value, 0x04, 0xFF, true);
-                    if r.changed() {
+                    ui.label("Object");
+                    let (r, picked) = named_picker(ui, "extended", *n, 0x04..=0xFF, |n| {
+                        Some(names::extended_object(n))
+                    });
+                    if let Some(number) = picked {
                         let changed = Object::Extended {
-                            number: value as u8,
+                            number,
                             x: *x,
                             y: *y,
                         };
@@ -378,12 +397,13 @@ fn sprite(ui: &mut egui::Ui, level: &Level, index: usize, change: &mut Option<Ch
         .num_columns(2)
         .spacing([12.0, 6.0])
         .show(ui, |ui| {
-            let mut id = u16::from(sprite.id);
-            ui.label("Number");
-            let r = number_field(ui, &mut id, 0, 0xFF, true);
-            if r.changed() {
+            ui.label("Sprite");
+            let (r, picked) = named_picker(ui, "sprite", sprite.id, 0..=0xFF, |n| {
+                Some(names::sprite(n))
+            });
+            if let Some(id) = picked {
                 let changed = Sprite {
-                    id: id as u8,
+                    id,
                     ..sprite.clone()
                 };
                 *change = Some(Change::new(&r, "Change sprite", vec![replace(changed)]));
@@ -644,6 +664,68 @@ fn header(
         ))
         .color(theme::MUTED),
     );
+}
+
+/// A number chosen by name: a button with the number and its name, which
+/// opens a list of every one, found by typing. Returns the button and the
+/// number chosen, if one was.
+fn named_picker(
+    ui: &mut egui::Ui,
+    id: &str,
+    value: u8,
+    range: std::ops::RangeInclusive<u8>,
+    name: impl Fn(u8) -> Option<&'static str>,
+) -> (Response, Option<u8>) {
+    let text = |v: u8| match name(v) {
+        Some(n) => format!("{v:02X}  {n}"),
+        None => format!("{v:02X}"),
+    };
+    let button = ui.add(
+        egui::Button::new(text(value))
+            .truncate()
+            .min_size(egui::vec2(200.0, 0.0)),
+    );
+    let filter_id = ui.make_persistent_id(("picker-filter", id));
+    let mut picked = None;
+    egui::Popup::from_toggle_button_response(&button)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .show(|ui| {
+            ui.set_min_width(280.0);
+            let mut filter: String = ui.data_mut(|d| d.get_temp(filter_id).unwrap_or_default());
+            let field = ui.add(
+                egui::TextEdit::singleline(&mut filter)
+                    .hint_text("Find by name or number")
+                    .desired_width(f32::INFINITY),
+            );
+            if !field.has_focus() && filter.is_empty() {
+                field.request_focus();
+            }
+            ui.data_mut(|d| d.insert_temp(filter_id, filter.clone()));
+            let filter = filter.trim().to_lowercase();
+            egui::ScrollArea::vertical()
+                .max_height(320.0)
+                .show(ui, |ui| {
+                    for v in range {
+                        let label = text(v);
+                        let unused = name(v) == Some("Unused");
+                        if !filter.is_empty() && !label.to_lowercase().contains(&filter)
+                            || unused && v != value
+                        {
+                            continue;
+                        }
+                        let r = ui.selectable_label(v == value, label);
+                        if v == value && filter.is_empty() && button.clicked() {
+                            r.scroll_to_me(Some(egui::Align::Center));
+                        }
+                        if r.clicked() {
+                            picked = Some(v);
+                            ui.data_mut(|d| d.remove_temp::<String>(filter_id));
+                            ui.close();
+                        }
+                    }
+                });
+        });
+    (button, picked.filter(|&v| v != value))
 }
 
 /// A drop-down of numbered settings with their names.

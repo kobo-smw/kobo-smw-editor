@@ -72,6 +72,8 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
   inspector sets how each places the player (the game's places or by tile) and the camera
   (the game's positions, or rows from the player).
 - **Right click**: the menu for what is under the mouse.
+- **Change what it is**: the inspector's object or sprite button lists every one by name;
+  typing finds one. The place and size stay.
 
 Undo (Ctrl+Z) and redo (Ctrl+Shift+Z) work per level; the Edit menu undoes back several
 steps at once. Ctrl+S saves every changed level.

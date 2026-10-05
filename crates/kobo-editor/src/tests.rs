@@ -1111,3 +1111,47 @@ fn the_main_entrance_takes_a_camera_from_the_player() {
         Some("Change the main entrance")
     );
 }
+
+#[test]
+fn a_sprite_is_changed_to_another_by_name() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "picker");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().current_mut().unwrap().selection = vec![Item::Sprite(0)];
+    harness.run_steps(2);
+    let before = harness
+        .state()
+        .current()
+        .unwrap()
+        .document
+        .level()
+        .sprites
+        .list[0]
+        .clone();
+    let name = format!("{:02X}  {}", before.id, kobo_core::names::sprite(before.id));
+    harness.get_by_label(&name).click();
+    harness.run_steps(2);
+    // The popup's search field has the focus.
+    harness
+        .get_all_by_role(egui::accesskit::Role::TextInput)
+        .find(|n| n.is_focused())
+        .expect("the search field has the focus")
+        .type_text("buzzy");
+    harness.run_steps(2);
+    harness.get_by_label_contains("Buzzy Beetle").click();
+    harness.run_steps(2);
+    let after = harness
+        .state()
+        .current()
+        .unwrap()
+        .document
+        .level()
+        .sprites
+        .list[0]
+        .clone();
+    assert_eq!(after.id, 0x11);
+    assert_eq!((after.x, after.y), (before.x, before.y));
+}
