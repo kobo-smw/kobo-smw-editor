@@ -42,6 +42,9 @@ enum Command {
     Shortcuts,
     CloseProject,
     Overview,
+    /// Shows or hides a layer, by its screen designation bit.
+    Layer(u8),
+    Background,
 }
 
 /// Every command there is now: its name, its keys, and what it does.
@@ -99,6 +102,9 @@ fn commands(app: &App) -> Vec<(String, &'static str, Command)> {
             Command::Sprites(SpriteView::Hidden),
         ),
         ("Show or hide the player".into(), "", Command::Player),
+        ("Show or hide layer 1".into(), "", Command::Layer(1)),
+        ("Show or hide layer 2".into(), "", Command::Layer(2)),
+        ("Show or hide layer 3".into(), "", Command::Layer(4)),
         ("Zoom in".into(), "Ctrl+wheel", Command::ZoomIn),
         ("Zoom out".into(), "Ctrl+wheel", Command::ZoomOut),
         ("Zoom to fit the level".into(), "", Command::Fit),
@@ -118,6 +124,13 @@ fn commands(app: &App) -> Vec<(String, &'static str, Command)> {
         }
     }
     if let Some(open) = app.current() {
+        if crate::backgrounds::applies(open.document.level()) {
+            list.push((
+                "Choose the level's background".into(),
+                "",
+                Command::Background,
+            ));
+        }
         let tileset = open.document.level().header.object_tileset;
         for n in (0x01..=0x3Fu8).filter(|n| !(0x22..=0x2D).contains(n)) {
             if let Some(name) = names::standard_object(n, tileset).filter(|n| *n != "Unused") {
@@ -195,6 +208,11 @@ fn run(app: &mut App, command: Command) {
             view.sprites = sprites;
             app.redraw();
         }
+        Command::Layer(bit) => {
+            view.hidden_layers ^= bit;
+            app.redraw();
+        }
+        Command::Background => app.backgrounds.open = true,
         Command::Player => {
             view.player = !view.player;
             app.redraw();

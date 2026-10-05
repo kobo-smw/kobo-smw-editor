@@ -145,6 +145,7 @@ struct Source {
     exanimation_types: BTreeMap<String, String>,
     exanimation_triggers: BTreeMap<String, String>,
     layer3_scroll: BTreeMap<String, String>,
+    backgrounds: BTreeMap<String, String>,
 }
 
 struct Names {
@@ -159,6 +160,8 @@ struct Names {
     exanimation_types: Table,
     exanimation_triggers: Table,
     layer3_scroll: Table,
+    /// The game's backgrounds, by address.
+    backgrounds: BTreeMap<u32, String>,
 }
 
 static NAMES: LazyLock<Names> = LazyLock::new(|| {
@@ -188,6 +191,16 @@ static NAMES: LazyLock<Names> = LazyLock::new(|| {
         exanimation_types: Table::parse("exanimation_types", source.exanimation_types),
         exanimation_triggers: Table::parse("exanimation_triggers", source.exanimation_triggers),
         layer3_scroll: Table::parse("layer3_scroll", source.layer3_scroll),
+        backgrounds: source
+            .backgrounds
+            .into_iter()
+            .map(|(key, name)| {
+                let valid =
+                    key.len() == 6 && key.bytes().all(|b| matches!(b, b'0'..=b'9' | b'A'..=b'F'));
+                assert!(valid, "names.toml [backgrounds]: {key:?} is not an address");
+                (u32::from_str_radix(&key, 16).expect("checked hex"), name)
+            })
+            .collect(),
     }
 });
 
@@ -243,6 +256,12 @@ pub fn sprite_tileset(tileset: u8) -> Option<&'static str> {
 /// table maps it.
 pub fn music(setting: u8) -> Option<&'static str> {
     NAMES.music.get(setting)
+}
+
+/// One of the game's backgrounds (`level::game_backgrounds`), by its
+/// address.
+pub fn game_background(address: crate::addr::SnesAddr) -> Option<&'static str> {
+    NAMES.backgrounds.get(&address.raw()).map(String::as_str)
 }
 
 /// An ExAnimation slot's type (`01`-`1B`).
@@ -377,6 +396,9 @@ mod tests {
         for mode in 0..0x20 {
             check_name("level mode", mode, LevelMode(mode).name().unwrap());
         }
+        for name in NAMES.backgrounds.values() {
+            check_name("background", 0, name);
+        }
     }
 
     #[test]
@@ -393,19 +415,23 @@ mod tests {
             "level modes",
             (0..0x20).map(|m| LevelMode(m).name().unwrap()),
         );
+        check_distinct(
+            "backgrounds",
+            NAMES.backgrounds.values().map(String::as_str),
+        );
     }
 
     #[test]
     fn file_lists_ids_in_order() {
         let mut section = "";
-        let mut last: Option<u8> = None;
+        let mut last: Option<u32> = None;
         for line in SOURCE.lines() {
             if line.starts_with('[') {
                 (section, last) = (line, None);
             } else if line.starts_with('#') {
                 continue;
             } else if let Some((key, _)) = line.split_once(" = ") {
-                let id = u8::from_str_radix(key, 16).unwrap();
+                let id = u32::from_str_radix(key, 16).unwrap();
                 assert!(last < Some(id), "{section}: {key} is out of order");
                 last = Some(id);
             }

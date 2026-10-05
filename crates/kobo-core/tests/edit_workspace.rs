@@ -361,3 +361,47 @@ fn a_hidden_layer_is_left_out_of_the_picture() {
     // The level's own tiles are the same: only the picture changes.
     assert_eq!(whole.level.tiles.low, without_background.level.tiles.low);
 }
+
+#[test]
+fn the_games_backgrounds_are_listed_and_pictured() {
+    use kobo_core::addr::SnesAddr;
+    use kobo_core::source::level::Layer2;
+
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let backgrounds = kobo_core::level::game_backgrounds(&clean);
+    assert_eq!(backgrounds.len(), 17);
+    assert_eq!(backgrounds[0].0, SnesAddr::new(0x0C_D900));
+    assert!(backgrounds[0].1.contains(&0x105));
+    for (addr, _) in &backgrounds {
+        assert!(
+            kobo_core::names::game_background(*addr).is_some(),
+            "{addr} has no name"
+        );
+    }
+
+    let dir = TempDir::new("edit-background-previews");
+    fs::write(dir.join("kobo.toml"), "format = 1\n").unwrap();
+    let mut workspace = Workspace::open(&dir, Arc::new(clean))
+        .unwrap()
+        .without_cache();
+    let level = workspace.clean_level(0x105).unwrap();
+    workspace.add_level(0x105, &level).unwrap();
+    let picture = |addr: SnesAddr| {
+        kobo_core::edit::background_preview(
+            &workspace,
+            0x105,
+            &level,
+            &Layer2::VanillaBackground(addr),
+            &Operation::default(),
+        )
+        .unwrap()
+    };
+    let hills = picture(backgrounds[0].0);
+    let other = picture(backgrounds[1].0);
+    assert_eq!((hills.width, other.width), (512, 512));
+    assert_ne!(hills.pixels, other.pixels);
+    // Only the copy had the other background: the level is as it was.
+    assert_eq!(workspace.level(0x105), Some(&level));
+}

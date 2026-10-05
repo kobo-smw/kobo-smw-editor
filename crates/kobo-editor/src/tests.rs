@@ -1052,3 +1052,34 @@ fn entrances_move_by_the_settings_that_place_them() {
         [Edit::SetEntrance(header), Edit::SetSettings(settings)]
     );
 }
+
+#[test]
+fn a_background_is_chosen_from_pictures_of_them_all() {
+    use egui_kittest::kittest::Queryable;
+    use kobo_core::source::level::Layer2;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "backgrounds");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().backgrounds.open = true;
+    harness.run_steps(2);
+    wait_for(&mut harness, "every background's picture", |app| {
+        !app.backgrounds.busy()
+    });
+    harness.get_by_label("Use Big clouds (0CDD44)").click();
+    harness.run_steps(2);
+    let level = harness.state().current().unwrap().document.level().clone();
+    assert_eq!(
+        level.layer2,
+        Layer2::VanillaBackground(kobo_core::addr::SnesAddr::new(0x0C_DD44))
+    );
+    // One undo step takes it back.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    let level = harness.state().current().unwrap().document.level().clone();
+    assert_eq!(
+        level.layer2,
+        Layer2::VanillaBackground(kobo_core::addr::SnesAddr::new(0x0C_D900))
+    );
+}

@@ -146,6 +146,9 @@ Since (2026-10-05 and 06, on master):
 - Screen exits dragged to another screen; entrances dragged, the midway and those placed by
   tile (`entrance::tile_place`) too; layers 1, 2, and 3 shown or hidden
   (`RenderOptions::hidden_layers`).
+- The sprite header (`Edit::SetSpriteSettings`), and layer 2's background chosen from
+  pictures of every one of the game's (`level::game_backgrounds`, named in `names.toml`,
+  `edit::background_preview`, `Edit::SetLayer2`).
 
 Next:
 

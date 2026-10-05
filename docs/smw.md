@@ -416,6 +416,13 @@ are SMWDisX's.
   `SpriteScene::diagnostics` with the CPU error. Rendering stacks by Mode 1 priority:
   layer 2 low (5), layer 1 low (6), layer 2 high (8), layer 1 high (9), objects 2/4/7/10.
 
+- The sprite header's top bits (copied to `$190E`): with bit 7 (buoyancy) each sprite
+  looks at the tile it is in for water and lava (`CODE_019211`, into `$164A`); with bit 6
+  as well, sprites skip their contact with layer 2, which `CODE_019140` checks in a second
+  pass (`$185E` set) in a level whose screen mode has layer 2 contact (`BIT $190E : BVS` in
+  `CODE_01925B`). The editor calls them "swim and sink" and "but not on
+  layer 2".
+
 - Slots. The loader searches down from a maximum the sprite memory setting (`$1692`) picks
   (`SpriteSlotMax`, with reserved ranges for one or two sprite numbers per setting) to the
   first free slot, so a sprite's slot depends on which sprites are alive when its column loads,

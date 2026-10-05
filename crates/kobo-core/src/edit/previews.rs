@@ -244,6 +244,41 @@ pub fn sprite_previews(
     Ok(pictures)
 }
 
+/// Layers a background's picture leaves out: all but layer 2.
+const ALL_BUT_LAYER2: u8 = 1 | 4 | 16;
+
+/// A picture of layer 2 as level `number` of `workspace` would draw it with
+/// `base`'s settings and `layer2` for it: two screens of the level with
+/// nothing else in it, and nothing else drawn.
+pub fn background_preview(
+    workspace: &Workspace,
+    number: u16,
+    base: &Level,
+    layer2: &Layer2,
+    operation: &Operation,
+) -> Result<RgbImage, WorkspaceError> {
+    use crate::render::{RenderOptions, Sprites};
+    let mut level = Level {
+        layer1: Vec::new(),
+        layer2: layer2.clone(),
+        sprites: crate::source::level::Sprites {
+            list: Vec::new(),
+            ..base.sprites.clone()
+        },
+        ..base.clone()
+    };
+    level.header.screens = 2;
+    level.entrance.entrance_screen = 0;
+    let mut copy = workspace.clone();
+    copy.set_level(number, &level);
+    let options = RenderOptions {
+        sprites: Sprites::Hidden,
+        player: false,
+        hidden_layers: ALL_BUT_LAYER2,
+    };
+    Ok(copy.preview(number, options, operation)?.render.image)
+}
+
 /// The part of `image` from (`x0`, `y0`) to (`x1`, `y1`), clipped to it;
 /// `None` if nothing is left.
 fn crop(image: &RgbImage, x0: i32, y0: i32, x1: i32, y1: i32) -> Option<RgbImage> {

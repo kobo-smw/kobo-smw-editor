@@ -355,6 +355,31 @@ impl LevelObjects {
     }
 }
 
+/// The game's background tilemaps (in bank `$0C`) that `rom`'s levels
+/// use, each with the levels that use it, the most used first. A level
+/// that does not read is left out.
+pub fn game_backgrounds(rom: &Rom) -> Vec<(SnesAddr, Vec<u16>)> {
+    let mut found: Vec<(SnesAddr, Vec<u16>)> = Vec::new();
+    for level in 0..LEVEL_COUNT {
+        let Ok(LevelObjects {
+            layer2: Layer2::Background(addr),
+            ..
+        }) = read_objects(rom, level)
+        else {
+            continue;
+        };
+        if addr.bank() != 0x0C {
+            continue;
+        }
+        match found.iter_mut().find(|(a, _)| *a == addr) {
+            Some((_, levels)) => levels.push(level),
+            None => found.push((addr, vec![level])),
+        }
+    }
+    found.sort_by_key(|(addr, levels)| (std::cmp::Reverse(levels.len()), addr.raw()));
+    found
+}
+
 /// Reads a level's layer 1 and layer 2 object data. The level mode says
 /// what layer 2 is, as it does for the game's loader.
 pub fn read_objects(rom: &Rom, level: u16) -> Result<LevelObjects, LevelError> {

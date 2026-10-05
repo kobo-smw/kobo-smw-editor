@@ -76,7 +76,7 @@ Early stage: roadmap steps 1 and 2 are complete; step 3, the GUI level editor, i
     shell: it holds what is on screen, and changes a project only through
     `kobo_core::edit`. Its tests drive the window headlessly (`egui_kittest`).
     `docs/editor.md` is how to use it; each module of it says what it holds (`canvas`,
-    `inspector`, `palette`, `outline`, `changes`, `build`, `start`, `commands`,
+    `inspector`, `palette`, `outline`, `changes`, `build`, `start`, `commands`, `backgrounds`,
     `preview` for the worker that draws, `selection` for what is under the mouse).
 - `kobo_core::addr` is the only place that knows how SNES addresses map to file offsets.
   Every ROM read takes a `SnesAddr` and goes through the ROM's `Mapping` (LoROM, SA-1, or
@@ -185,7 +185,7 @@ Early stage: roadmap steps 1 and 2 are complete; step 3, the GUI level editor, i
   before an entry moving with it; `Workspace` is the project in memory, built and a
   level rendered from it (`preview`). The editor makes no change any other way.
 - `kobo_core::names` holds the names Kobo writes after ids (objects by object set, extended
-  objects, sprites, tilesets, music) as data in `names.toml`; `LevelMode::name` names level
+  objects, sprites, tilesets, music, the game's backgrounds) as data in `names.toml`; `LevelMode::name` names level
   modes. Take names from there; do not write lists of them elsewhere.
 - `kobo_core::mwl` reads and writes MWL files: `MwlFile` is the container, byte for byte,
   and `Mwl` the level decoded through the codecs above. `kobo_core::map16_file` reads
@@ -264,7 +264,7 @@ cargo run -- palette png --level 105 out.png # 16x16 swatch of the palette the l
 cargo run -- map16 png --level 105 out.png   # the level's Map16 tiles in colour (--layer 2: BG)
 cargo run -- level png 105 out.png           # render a level by running the ROM's own loader
 cargo run -- level png 105 out.png --markers # ID boxes instead of sprite graphics (--no-sprites: none)
-cargo run -- level png 105 out.png --no-player # leave Mario out of the entrance
+cargo run -- level png 105 out.png --no-player # leave Mario out of the entrance (--hide 1,3: layer 2 alone)
 cargo run -- level tiles|dump 105 [dir]      # the expanded Map16 grid as hex, or raw planes
 cargo run -- level sprites|map16|wram|reads  # sprite list, resolved Map16, RAM dump, read trace
 cargo run -- mwl info level.mwl [-r rom]     # an MWL file's sections (-r: its ROM's PIXI sprite sizes)

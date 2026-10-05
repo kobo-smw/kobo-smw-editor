@@ -300,6 +300,10 @@ enum LevelCommand {
         /// Leave out the player at the level's entrance.
         #[arg(long)]
         no_player: bool,
+        /// Leave out background layers (1, 2, or 3), as the PPU leaves out a
+        /// layer neither screen has: `--hide 1,3` draws layer 2 alone.
+        #[arg(long, value_delimiter = ',', value_parser = clap::value_parser!(u8).range(1..=3))]
+        hide: Vec<u8>,
         /// Maximum total CPU instructions across loading and all sprite passes.
         #[arg(long)]
         max_instructions: Option<u64>,
@@ -543,15 +547,22 @@ fn main() -> Result<()> {
                 out,
                 no_sprites,
                 no_player,
+                hide,
                 max_instructions,
                 markers,
             } => level_png(
                 &rom.load()?,
                 &level,
                 &out,
-                !no_sprites,
-                !no_player,
-                markers,
+                RenderOptions {
+                    sprites: match (no_sprites, markers) {
+                        (true, _) => Sprites::Hidden,
+                        (false, true) => Sprites::Markers,
+                        (false, false) => Sprites::Drawn,
+                    },
+                    player: !no_player,
+                    hidden_layers: hide.iter().fold(0, |bits, layer| bits | 1 << (layer - 1)),
+                },
                 max_instructions,
             ),
             LevelCommand::Sprites { rom, level } => level_sprites(&rom.load()?, &level),
@@ -884,21 +895,10 @@ fn level_png(
     rom: &Rom,
     level: &str,
     out: &PathBuf,
-    with_sprites: bool,
-    with_player: bool,
-    markers: bool,
+    options: RenderOptions,
     max_instructions: Option<u64>,
 ) -> Result<()> {
     let level = parse_level(level)?;
-    let options = RenderOptions {
-        sprites: match (with_sprites, markers) {
-            (false, _) => Sprites::Hidden,
-            (true, true) => Sprites::Markers,
-            (true, false) => Sprites::Drawn,
-        },
-        player: with_player,
-        hidden_layers: 0,
-    };
     let rendered = match max_instructions {
         Some(limit) => render::render_level_with_control(
             rom,

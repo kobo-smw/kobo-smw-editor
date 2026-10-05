@@ -245,6 +245,7 @@ pub struct App {
     allow_close: bool,
     /// The build window and the build in progress.
     pub build: crate::build::BuildState,
+    pub backgrounds: crate::backgrounds::Backgrounds,
     startup: Startup,
     screenshot_frames: Option<u32>,
     /// The window's title as last set.
@@ -316,6 +317,7 @@ impl App {
             confirm_close: false,
             allow_close: false,
             build: Default::default(),
+            backgrounds: Default::default(),
             startup: startup.clone(),
             screenshot_frames: None,
             shown_title: String::new(),
@@ -346,6 +348,7 @@ impl App {
             }
         }
         app.overview.open = startup.tab.as_deref() == Some("overview");
+        app.backgrounds.open = startup.tab.as_deref() == Some("backgrounds");
         match startup.tab.as_deref() {
             Some("sprites") => app.palette.show(crate::palette::Kind::Sprites),
             Some("map16") => app.palette.show(crate::palette::Kind::Map16),
@@ -1552,6 +1555,7 @@ impl App {
                 && o.shown == o.requested
                 && !self.palette.busy()
                 && !self.build.busy()
+                && !self.backgrounds.busy()
                 && !(self.overview.open && self.overview.busy())
         }) || matches!(self.clean, Clean::Missing(_))
             || self.workspace.is_none();
@@ -1697,6 +1701,7 @@ impl eframe::App for App {
                 canvas::show(self, ui);
             });
         crate::build::window(self, &ctx);
+        crate::backgrounds::window(self, &ctx);
         crate::commands::window(self, &ctx);
         self.confirm_adding(&ctx);
         self.confirm_removing(&ctx);

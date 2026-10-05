@@ -1,7 +1,8 @@
 # Names Kobo writes after the numbers the game uses: trailing comments in
 # project files, and labels in the editor. Read by `kobo_core::names`.
 #
-# One `ID = "Name"` per line, the id as two upper-case hex digits, in order.
+# One `ID = "Name"` per line, the id as two upper-case hex digits (six for
+# an address), in order.
 # Every number a table covers has a line; "Unused" marks a number the game
 # does nothing sensible with. Names are ASCII, one line, at most 44
 # characters, and distinct within a table except "Unused". Level mode names
@@ -907,3 +908,25 @@ FF = "Unused"
 1D = "Unused"
 1E = "Unused"
 1F = "Unused"
+
+# The game's background tilemaps in bank $0C, by address: what each shows,
+# drawn in a level that uses it (`level::game_backgrounds`). A level's
+# tileset and palette colour them, so the names say what they picture.
+[backgrounds]
+0CD900 = "Round hills"
+0CDAB9 = "Seaweed"
+0CDC71 = "Night sky, green hills"
+0CDD44 = "Big clouds"
+0CDE54 = "Green hills"
+0CDF59 = "Rocks"
+0CE103 = "Castle pillars"
+0CE472 = "Mountains"
+0CE674 = "Diamond pattern"
+0CE684 = "Starry night"
+0CE7C0 = "Crystal hills"
+0CE8EE = "Plain"
+0CE8FE = "Cave"
+0CEC82 = "Bushes"
+0CEF80 = "Ghost house windows"
+0CF175 = "Underground ledges"
+0CF45A = "Dark stone"

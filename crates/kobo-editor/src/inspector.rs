@@ -70,7 +70,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             match selection[..] {
                 [] => {
-                    header(ui, &level, &mut change);
+                    header(ui, &level, &mut change, |ui| {
+                        crate::backgrounds::row(app, ui);
+                    });
                     entrances(ui, &level, free_entrance, &mut change);
                     level_action = copy_level(ui, &mut copy_to, &taken);
                 }
@@ -444,7 +446,13 @@ fn sprite(ui: &mut egui::Ui, level: &Level, index: usize, change: &mut Option<Ch
         });
 }
 
-fn header(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>) {
+/// The level's header and sprite settings, with `more` rows after them.
+fn header(
+    ui: &mut egui::Ui,
+    level: &Level,
+    change: &mut Option<Change>,
+    more: impl FnOnce(&mut egui::Ui),
+) {
     heading(ui, "Level", "nothing selected: the level's settings");
     let h = level.header;
     let mut set = |r: &Response, label: &str, header: PrimaryHeader| {
@@ -452,6 +460,7 @@ fn header(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>) {
             *change = Some(Change::new(r, label, vec![Edit::SetHeader(header)]));
         }
     };
+    let mut sprite_change = None;
     Grid::new("header")
         .num_columns(2)
         .spacing([12.0, 6.0])
@@ -583,7 +592,49 @@ fn header(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>) {
                 },
             );
             ui.end_row();
+
+            let s = &level.sprites;
+            let (mut memory, mut buoyancy, mut no_layer2) =
+                (u16::from(s.memory), s.buoyancy, s.buoyancy_no_layer2);
+            let mut sprites_changed = |r: &Response, label: &str, (m, b, n): (u16, bool, bool)| {
+                if r.changed() {
+                    sprite_change = Some(Change::new(
+                        r,
+                        label,
+                        vec![Edit::SetSpriteSettings {
+                            memory: m as u8,
+                            buoyancy: b,
+                            buoyancy_no_layer2: n,
+                        }],
+                    ));
+                }
+            };
+            ui.label("Sprite memory").on_hover_text(
+                "Which slots the level's sprites take, and how many can be alive at once",
+            );
+            let r = number_field(ui, &mut memory, 0, 31, true);
+            sprites_changed(&r, "Change sprite memory", (memory, buoyancy, no_layer2));
+            ui.end_row();
+            ui.label("Sprites in water");
+            let r = ui
+                .checkbox(&mut buoyancy, "swim and sink")
+                .on_hover_text("Sprites feel the water and lava tiles they are in (buoyancy)");
+            sprites_changed(&r, "Change buoyancy", (memory, buoyancy, no_layer2));
+            ui.end_row();
+            ui.label("");
+            let r = ui
+                .add_enabled(
+                    buoyancy,
+                    egui::Checkbox::new(&mut no_layer2, "but not on layer 2"),
+                )
+                .on_hover_text("With buoyancy, sprites leave layer 2's tiles alone");
+            sprites_changed(&r, "Change buoyancy", (memory, buoyancy, no_layer2));
+            ui.end_row();
+            more(ui);
         });
+    if sprite_change.is_some() {
+        *change = sprite_change;
+    }
     ui.add_space(6.0);
     ui.label(
         RichText::new(format!(
@@ -1149,7 +1200,8 @@ fn lunar_settings(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>)
                     ui.end_row();
 
                     // Where the background starts.
-                    ui.label("Background");
+                    ui.label("Background starts")
+                        .on_hover_text("Where layer 2 starts, up and down, when the level is entered");
                     ui.horizontal(|ui| {
                         let kind = match settings.background {
                             Background::Height(_) => 0,

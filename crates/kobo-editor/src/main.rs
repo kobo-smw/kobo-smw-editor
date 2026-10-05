@@ -2,6 +2,7 @@
 //! everything it shows and every change it makes (docs/step-3.md).
 
 mod app;
+mod backgrounds;
 mod build;
 mod canvas;
 mod changes;

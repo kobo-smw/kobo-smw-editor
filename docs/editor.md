@@ -43,7 +43,8 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
   player; a hidden layer is left out as the PPU leaves out a layer neither screen has, so
   what is behind it shows.
 - **Right**: the inspector. What is selected, or with nothing selected the level: its
-  header, the main entrance, Lunar Magic's settings (size, background, spawning, the
+  header, the sprite settings, the background (a click shows every one of the game's as
+  the level would draw it, to choose from), the main entrance, Lunar Magic's settings (size, background, spawning, the
   midway entrance), the secondary entrances into it, copying it, starting an empty level,
   or taking it out of the project; and diagnostics.
 - **Source** (top bar): the level's file beside the canvas, the selection's line marked.
@@ -93,6 +94,6 @@ leaves it out, as the game's own, and says so above the canvas.
 ## Running without a display
 
 `--screenshot out.png` saves the window once the level is drawn and quits, with `--tab`
-(`levels`, `add`, `sprites`, `map16`, `outline`, `changes`, `overview`), `--select`, and
+(`levels`, `add`, `sprites`, `map16`, `outline`, `changes`, `overview`, `backgrounds`), `--select`, and
 `--build` to set it up; under `xvfb-run -a` it needs no display. docs/step-3.md has what
 the development server needs for it.

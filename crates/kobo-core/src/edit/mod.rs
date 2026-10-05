@@ -14,7 +14,7 @@ mod previews;
 mod workspace;
 
 pub use document::{LevelDocument, Reload};
-pub use previews::{object_previews, sprite_previews};
+pub use previews::{background_preview, object_previews, sprite_previews};
 pub use workspace::{Preview, Workspace, WorkspaceError};
 
 use thiserror::Error;
@@ -96,6 +96,18 @@ pub enum Edit {
     SetSize(LevelSize),
     /// Lunar Magic's settings for the level and its entrances.
     SetSettings(LevelSettings),
+    /// The sprite header: the sprite memory setting (0 to 31) and whether
+    /// sprites feel water and lava (`buoyancy`), and with it leave layer 2
+    /// alone.
+    SetSpriteSettings {
+        memory: u8,
+        buoyancy: bool,
+        buoyancy_no_layer2: bool,
+    },
+    /// The background layer 2 has, for a level mode that draws one: the
+    /// game's, or one of the level's own. Layer 2's objects are edited one
+    /// by one instead.
+    SetLayer2(Layer2),
     /// Changes one of the secondary entrances that lead into the level.
     ReplaceEntrance {
         index: usize,
@@ -122,6 +134,8 @@ pub enum EditError {
     },
     #[error("the level has no layer 2 objects")]
     NoLayer2,
+    #[error("layer 2 has objects, which are edited one by one")]
+    Layer2Objects,
     #[error("({x}, {y}) is outside the level, which is {width} by {height} tiles")]
     Outside {
         x: u16,
@@ -607,6 +621,23 @@ impl Edit {
             Edit::SetEntrance(entrance) => level.entrance = *entrance,
             Edit::SetSize(size) => level.size = *size,
             Edit::SetSettings(settings) => level.settings = *settings,
+            Edit::SetSpriteSettings {
+                memory,
+                buoyancy,
+                buoyancy_no_layer2,
+            } => {
+                level.sprites.memory = memory & 0x1F;
+                level.sprites.buoyancy = *buoyancy;
+                level.sprites.buoyancy_no_layer2 = *buoyancy_no_layer2;
+            }
+            Edit::SetLayer2(layer2) => {
+                if matches!(layer2, Layer2::Objects(_))
+                    || matches!(level.layer2, Layer2::Objects(_))
+                {
+                    return Err(EditError::Layer2Objects);
+                }
+                level.layer2 = layer2.clone();
+            }
             Edit::ReplaceEntrance { index, entrance } => {
                 let list = &mut level.entrances;
                 check_index("entrance", *index, list.len())?;
