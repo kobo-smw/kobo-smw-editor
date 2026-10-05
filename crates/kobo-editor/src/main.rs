@@ -4,6 +4,7 @@
 mod app;
 mod canvas;
 mod inspector;
+mod palette;
 mod picture;
 mod preview;
 mod selection;

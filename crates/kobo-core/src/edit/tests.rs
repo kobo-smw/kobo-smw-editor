@@ -343,3 +343,66 @@ fn amending_keeps_one_undo_step() {
     assert_eq!(document.text(), LEVEL);
     assert!(!document.undo());
 }
+
+fn sprite(id: u8, x: u16, y: u16) -> Sprite {
+    Sprite {
+        id,
+        x,
+        y,
+        extra_bits: 0,
+        extension: Vec::new(),
+    }
+}
+
+/// A two-screen level with a sprite on each screen, in the loader's order.
+fn sprites_document() -> LevelDocument {
+    let text = LEVEL.replace(
+        "    { id = 0x0F, x = 20, y = 23 },  # Goomba\n",
+        "    { id = 0x0F, x = 5, y = 23 },  # Goomba\n    # The second.\n    { id = 0x0F, x = 20, y = 23 },  # Goomba\n",
+    );
+    LevelDocument::from_text("105.toml", text).unwrap()
+}
+
+#[test]
+fn a_new_sprite_goes_where_the_loader_reaches_it() {
+    let document = sprites_document();
+    let (edit, index) = insert_sprite(document.level(), sprite(0xAB, 10, 20));
+    assert_eq!(index, 1, "after screen 0's sprite, before screen 1's");
+    assert_eq!(
+        edit,
+        Edit::InsertSprite {
+            index: 1,
+            sprite: sprite(0xAB, 10, 20)
+        }
+    );
+    let (_, index) = insert_sprite(document.level(), sprite(0xAB, 31, 20));
+    assert_eq!(index, 2);
+    let (_, index) = insert_sprite(document.level(), sprite(0xAB, 0, 20));
+    assert_eq!(index, 1, "after the others on its screen");
+}
+
+#[test]
+fn a_sprite_moved_to_another_screen_moves_in_the_list() {
+    let mut document = sprites_document();
+    // The first sprite to screen 1, past the second.
+    let moves = [(0, sprite(0x0F, 25, 23))];
+    let (edits, at) = move_sprites(document.level(), &moves).unwrap();
+    assert_eq!(at, [1]);
+    document.apply("Move sprite", &edits).unwrap();
+    let list = &document.level().sprites.list;
+    assert_eq!((list[0].x, list[1].x), (20, 25));
+    // The comment before the second sprite stayed with it.
+    assert_eq!(
+        document.comments().before("sprites.list[0]"),
+        ["# The second."]
+    );
+
+    // Moving both together keeps the order and says where each went.
+    let moves = [(0, sprite(0x0F, 3, 23)), (1, sprite(0x0F, 2, 23))];
+    let (edits, at) = move_sprites(document.level(), &moves).unwrap();
+    document.apply("Move sprites", &edits).unwrap();
+    let list = &document.level().sprites.list;
+    assert_eq!(at.iter().map(|&i| list[i].x).collect::<Vec<_>>(), [3, 2]);
+    // Neither had to move in the list to keep it in screen order.
+    assert_eq!(edits.len(), 2);
+}

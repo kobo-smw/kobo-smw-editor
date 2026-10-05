@@ -11,11 +11,12 @@ use kobo_core::render::{RenderOptions, Sprites};
 use kobo_core::{Rom, config};
 
 use crate::canvas::{self, Camera, Drag};
+use crate::palette::{PaletteState, Placing};
 use crate::picture::Picture;
 use crate::preview::{Previewer, Rendered};
 use crate::selection::{Geometry, Item};
 use crate::watch::Watcher;
-use crate::{inspector, source, theme};
+use crate::{inspector, palette, source, theme};
 
 /// How the canvas shows a level.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -129,6 +130,13 @@ impl OpenLevel {
     }
 }
 
+/// What the left panel shows.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LeftTab {
+    Levels,
+    Add,
+}
+
 /// Where the clean ROM comes from, or why it could not be loaded.
 enum Clean {
     Loaded(Arc<Rom>),
@@ -158,6 +166,10 @@ pub struct App {
     watcher: Option<Watcher>,
     pub view: View,
     level_filter: String,
+    left: LeftTab,
+    pub palette: PaletteState,
+    /// What a click on the canvas places, while choosing from the palette.
+    pub placing: Option<Placing>,
     /// A message for the status bar, and when it was given.
     status: Option<(String, Instant)>,
     /// The inspector widget whose change is being made, so that dragging
@@ -204,6 +216,9 @@ impl App {
                 source: startup.source,
             },
             level_filter: String::new(),
+            left: LeftTab::Levels,
+            palette: PaletteState::default(),
+            placing: None,
             status: None,
             editing: None,
             confirm_close: false,
@@ -949,11 +964,18 @@ impl eframe::App for App {
         }
         egui::Panel::left("levels")
             .resizable(true)
-            .default_size(150.0)
+            .default_size(220.0)
             .frame(theme::side_frame())
             .show(ui, |ui| {
-                ui.label(RichText::new("LEVELS").small().color(theme::MUTED));
-                self.level_list(ui);
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.left, LeftTab::Levels, "Levels");
+                    ui.selectable_value(&mut self.left, LeftTab::Add, "Add");
+                });
+                ui.separator();
+                match self.left {
+                    LeftTab::Levels => self.level_list(ui),
+                    LeftTab::Add => palette::show(self, ui),
+                }
             });
         egui::Panel::right("inspector")
             .resizable(true)

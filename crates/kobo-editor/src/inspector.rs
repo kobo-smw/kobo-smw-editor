@@ -20,6 +20,8 @@ struct Change {
     dragging: bool,
     label: String,
     edits: Vec<Edit>,
+    /// What to select after, when the change gives it a new number.
+    select: Option<Item>,
 }
 
 impl Change {
@@ -29,7 +31,13 @@ impl Change {
             dragging: response.dragged() && !response.drag_started(),
             label: label.into(),
             edits,
+            select: None,
         }
+    }
+
+    fn selecting(mut self, item: Item) -> Self {
+        self.select = Some(item);
+        self
     }
 }
 
@@ -86,10 +94,20 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         }
     }
     if let Some(change) = change {
-        if change.dragging && app.editing == Some(change.widget) {
+        let applied = if change.dragging && app.editing == Some(change.widget) {
             app.amend(change.edits);
+            true
         } else if app.apply(&change.label, change.edits) {
             app.editing = Some(change.widget);
+            true
+        } else {
+            false
+        };
+        if applied
+            && let Some(item) = change.select
+            && let Some(open) = app.current_mut()
+        {
+            open.selection = vec![item];
         }
     }
 }
@@ -271,24 +289,33 @@ fn sprite(ui: &mut egui::Ui, level: &Level, index: usize, change: &mut Option<Ch
             }
             ui.end_row();
             let (mut x, mut y) = (sprite.x, sprite.y);
+            // A move to another screen moves the sprite in the list too.
+            let moved = |r: &Response, changed: Sprite| {
+                let (edits, at) = edit::move_sprites(level, &[(index, changed)]).ok()?;
+                Some(Change::new(r, "Move sprite", edits).selecting(Item::Sprite(at[0])))
+            };
             ui.label("X");
             let r = number(ui, &mut x, 0, width.saturating_sub(1), false);
             if r.changed() {
-                let changed = Sprite {
-                    x,
-                    ..sprite.clone()
-                };
-                *change = Some(Change::new(&r, "Move sprite", vec![replace(changed)]));
+                *change = moved(
+                    &r,
+                    Sprite {
+                        x,
+                        ..sprite.clone()
+                    },
+                );
             }
             ui.end_row();
             ui.label("Y");
             let r = number(ui, &mut y, 0, height.saturating_sub(1), false);
             if r.changed() {
-                let changed = Sprite {
-                    y,
-                    ..sprite.clone()
-                };
-                *change = Some(Change::new(&r, "Move sprite", vec![replace(changed)]));
+                *change = moved(
+                    &r,
+                    Sprite {
+                        y,
+                        ..sprite.clone()
+                    },
+                );
             }
             ui.end_row();
             let mut bits = u16::from(sprite.extra_bits);

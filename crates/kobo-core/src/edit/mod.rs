@@ -74,6 +74,13 @@ pub enum Edit {
         index: usize,
         sprite: Sprite,
     },
+    /// Moves a sprite within the list. The game's loader stops at the
+    /// first sprite past the screen it loads, so the list must stay in
+    /// screen order; [`move_sprites`] and [`insert_sprite`] keep it so.
+    ReorderSprite {
+        from: usize,
+        to: usize,
+    },
     SetHeader(PrimaryHeader),
     SetEntrance(SecondaryHeader),
 }
@@ -103,6 +110,81 @@ pub enum EditError {
         #[source]
         source: std::io::Error,
     },
+}
+
+/// The screen the game's sprite loader files a sprite under: its column
+/// of screens in a horizontal level, its row of them in a vertical one.
+pub fn sprite_screen(level: &Level, sprite: &Sprite) -> u16 {
+    if level.header.level_mode.layer1_vertical() {
+        sprite.y / 16
+    } else {
+        sprite.x / 16
+    }
+}
+
+/// Where a sprite goes in `list` (which does not hold it) for the
+/// loader to reach it: after the last sprite on its screen or an earlier
+/// one. Sprites the user has put out of that order stay as they are.
+fn sprite_slot(level: &Level, list: &[Sprite], sprite: &Sprite) -> usize {
+    let screen = sprite_screen(level, sprite);
+    list.iter()
+        .rposition(|other| sprite_screen(level, other) <= screen)
+        .map_or(0, |i| i + 1)
+}
+
+/// The edit that adds `sprite` where the loader reaches it, and the index
+/// it will have.
+pub fn insert_sprite(level: &Level, sprite: Sprite) -> (Edit, usize) {
+    let index = sprite_slot(level, &level.sprites.list, &sprite);
+    (Edit::InsertSprite { index, sprite }, index)
+}
+
+/// The edits that change sprites (each `(index, sprite)` replacing the
+/// entry at `index`), moving each one whose screen changes to where the
+/// loader reaches it; and the index each ends up at, in the same order.
+pub fn move_sprites(
+    level: &Level,
+    moves: &[(usize, Sprite)],
+) -> Result<(Vec<Edit>, Vec<usize>), EditError> {
+    let mut scratch = level.clone();
+    let mut comments = crate::source::Comments::default();
+    let mut edits = Vec::new();
+    // Where each moved sprite is now, as earlier moves shift the list.
+    let mut at: Vec<usize> = moves.iter().map(|(i, _)| *i).collect();
+    for (n, (_, sprite)) in moves.iter().enumerate() {
+        let index = at[n];
+        let replace = Edit::ReplaceSprite {
+            index,
+            sprite: sprite.clone(),
+        };
+        replace.apply(&mut scratch, &mut comments)?;
+        edits.push(replace);
+        let list = &scratch.sprites.list;
+        let unmoved = sprite_screen(level, &level.sprites.list[moves[n].0]);
+        if sprite_screen(&scratch, sprite) == unmoved {
+            continue;
+        }
+        let mut rest = list.clone();
+        rest.remove(index);
+        let to = sprite_slot(&scratch, &rest, sprite);
+        if to != index {
+            let reorder = Edit::ReorderSprite { from: index, to };
+            reorder.apply(&mut scratch, &mut comments)?;
+            edits.push(reorder);
+            for other in &mut at {
+                *other = if *other == index {
+                    to
+                } else if index < to && (index + 1..=to).contains(other) {
+                    *other - 1
+                } else if to < index && (to..index).contains(other) {
+                    *other + 1
+                } else {
+                    *other
+                };
+            }
+        }
+    }
+    Ok((edits, at))
 }
 
 /// The line of `text`, a level file in Kobo's format, that holds entry
@@ -328,6 +410,14 @@ impl Edit {
                 let list = &mut level.sprites.list;
                 check_index("sprite", *index, list.len())?;
                 list[*index] = sprite.clone();
+            }
+            Edit::ReorderSprite { from, to } => {
+                let list = &mut level.sprites.list;
+                check_index("sprite", *from, list.len())?;
+                check_index("sprite", *to, list.len())?;
+                let sprite = list.remove(*from);
+                list.insert(*to, sprite);
+                comments.move_entry(SPRITE_LIST, *from, *to);
             }
             Edit::SetHeader(header) => level.header = *header,
             Edit::SetEntrance(entrance) => level.entrance = *entrance,

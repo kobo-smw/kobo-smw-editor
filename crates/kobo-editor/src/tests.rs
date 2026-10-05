@@ -278,3 +278,66 @@ fn an_edit_on_disk_is_followed() {
     assert_eq!(open.document.undo_label(), Some("Change on disk"));
     wait_for(&mut harness, "the picture of it", drawn);
 }
+
+#[test]
+fn placing_puts_objects_last_and_sprites_in_screen_order() {
+    use crate::palette::Placing;
+    use kobo_core::level::objects::Object;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "place");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    look_at(&mut harness, 60, 20);
+
+    let objects = harness
+        .state()
+        .current()
+        .unwrap()
+        .document
+        .level()
+        .layer1
+        .len();
+    let coins = Object::Standard {
+        number: 0x05,
+        x: 0,
+        y: 0,
+        settings: 0,
+    };
+    harness.state_mut().placing = Some(Placing::Object(coins));
+    click_tile(&mut harness, 66, 15);
+    let open = harness.state().current().unwrap();
+    let level = open.document.level();
+    assert_eq!(level.layer1.len(), objects + 1);
+    assert_eq!(
+        edit::object_position(&level.layer1[objects]),
+        Some((66, 15))
+    );
+    assert_eq!(open.selection, [Item::object(ObjectLayer::One, objects)]);
+
+    // A Goomba on screen 4, among the Rexes of screens 3 to 5.
+    harness.state_mut().placing = Some(Placing::Sprite(0x0F));
+    click_tile(&mut harness, 70, 18);
+    let open = harness.state().current().unwrap();
+    let list = &open.document.level().sprites.list;
+    let Some(&[Item::Sprite(index)]) = Some(&open.selection[..]) else {
+        panic!("the new sprite is selected: {:?}", open.selection);
+    };
+    assert_eq!(
+        (list[index].id, list[index].x, list[index].y),
+        (0x0F, 70, 18)
+    );
+    let screens: Vec<u16> = list.iter().map(|s| s.x / 16).collect();
+    assert!(
+        screens.is_sorted(),
+        "the list stays in screen order: {screens:?}"
+    );
+    assert!(
+        harness.state().placing.is_some(),
+        "placing goes on until Esc"
+    );
+    harness.key_press(Key::Escape);
+    harness.step();
+    assert!(harness.state().placing.is_none());
+    wait_for(&mut harness, "the picture with both", drawn);
+}

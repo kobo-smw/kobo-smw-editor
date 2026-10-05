@@ -6,9 +6,10 @@ use eframe::egui::{
     Stroke, StrokeKind, Vec2,
 };
 use kobo_core::edit::{self, Edit, ObjectLayer};
-use kobo_core::source::level::Level;
+use kobo_core::source::level::{Level, Sprite};
 
 use crate::app::{App, OpenLevel, Pending, SpriteView};
+use crate::palette::Placing;
 use crate::selection::{self, Geometry, Item, objects};
 use crate::theme;
 
@@ -128,29 +129,48 @@ pub fn last_hover(ctx: &egui::Context) -> Option<Hover> {
         .flatten()
 }
 
-/// The edits that move `items` by `delta` tiles.
-pub fn move_edits(level: &Level, items: &[Item], (dx, dy): (i32, i32)) -> Vec<Edit> {
+/// The edits that move `items` by `delta` tiles, and the items as they
+/// will be: a sprite moved to another screen moves in the list too, to
+/// stay where the game's loader reaches it.
+pub fn move_edits(level: &Level, items: &[Item], (dx, dy): (i32, i32)) -> (Vec<Edit>, Vec<Item>) {
     let shift = |v: u16, d: i32| (i32::from(v) + d).clamp(0, i32::from(u16::MAX)) as u16;
-    items
-        .iter()
-        .filter_map(|&item| match item {
+    let mut edits = Vec::new();
+    let mut sprites = Vec::new();
+    for &item in items {
+        match item {
             Item::Object(o) => {
-                let object = objects(level, o.layer)?.get(o.index)?;
-                let (x, y) = edit::object_position(object)?;
-                Some(Edit::ReplaceObject {
+                let Some(object) = objects(level, o.layer).and_then(|l| l.get(o.index)) else {
+                    continue;
+                };
+                let Some((x, y)) = edit::object_position(object) else {
+                    continue;
+                };
+                edits.push(Edit::ReplaceObject {
                     layer: o.layer,
                     index: o.index,
                     object: edit::object_at(object, shift(x, dx), shift(y, dy)),
-                })
+                });
             }
             Item::Sprite(i) => {
-                let mut sprite = level.sprites.list.get(i)?.clone();
-                sprite.x = shift(sprite.x, dx);
-                sprite.y = shift(sprite.y, dy);
-                Some(Edit::ReplaceSprite { index: i, sprite })
+                if let Some(sprite) = level.sprites.list.get(i) {
+                    let mut sprite = sprite.clone();
+                    sprite.x = shift(sprite.x, dx);
+                    sprite.y = shift(sprite.y, dy);
+                    sprites.push((i, sprite));
+                }
             }
-        })
-        .collect()
+        }
+    }
+    let mut moved: Vec<Item> = items
+        .iter()
+        .copied()
+        .filter(|i| matches!(i, Item::Object(_)))
+        .collect();
+    if let Ok((sprite_edits, at)) = edit::move_sprites(level, &sprites) {
+        edits.extend(sprite_edits);
+        moved.extend(at.into_iter().map(Item::Sprite));
+    }
+    (edits, moved)
 }
 
 /// The edits that delete `items`: later entries first, so the indices of
@@ -225,9 +245,13 @@ pub fn keys(app: &mut App, ctx: &egui::Context) {
             open.selection.clear();
         }
     }
-    if escape && let Some(open) = app.current_mut() {
-        open.selection.clear();
-        open.drag = None;
+    if escape {
+        if app.placing.is_some() {
+            app.placing = None;
+        } else if let Some(open) = app.current_mut() {
+            open.selection.clear();
+            open.drag = None;
+        }
     }
     if all && let Some(open) = app.current_mut() {
         let level = open.document.level();
@@ -239,8 +263,12 @@ pub fn keys(app: &mut App, ctx: &egui::Context) {
     }
     if nudge != (0, 0) && !selection.is_empty() {
         let Some(open) = app.current() else { return };
-        let edits = move_edits(open.document.level(), &selection, nudge);
-        app.apply(&label_for(&selection, "Move"), edits);
+        let (edits, moved) = move_edits(open.document.level(), &selection, nudge);
+        if app.apply(&label_for(&selection, "Move"), edits)
+            && let Some(open) = app.current_mut()
+        {
+            open.selection = moved;
+        }
     }
 }
 
@@ -248,7 +276,10 @@ pub fn keys(app: &mut App, ctx: &egui::Context) {
 struct Finished {
     label: String,
     edits: Vec<Edit>,
+    /// What moved, as the picture on screen knows it.
     items: Vec<Item>,
+    /// The same, as the document will have them.
+    moved: Vec<Item>,
     delta: (i32, i32),
 }
 
@@ -269,6 +300,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
         return None;
     };
     let sprites_on = view.sprites != SpriteView::Hidden;
+    let placing = app.placing.clone();
+    let mut place_at: Option<(u16, u16)> = None;
+    let mut stop_placing = false;
     let mut finished: Option<Finished> = None;
     let mut context_edit: Option<(String, Vec<Edit>)> = None;
     let mut hover = None;
@@ -344,9 +378,23 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
         let pointer = response.hover_pos().map(|p| camera.to_level(canvas, p));
         let hovered_item = pointer.and_then(|p| geometry.item_at(p, sprites_on));
 
+        // Placing from the palette: each click puts one down.
+        if placing.is_some() && !space {
+            if response.clicked_by(PointerButton::Primary)
+                && let Some(at) = pointer
+                && at.x >= 0.0
+                && at.y >= 0.0
+            {
+                place_at = Some(((at.x / TILE) as u16, (at.y / TILE) as u16));
+            }
+            if response.clicked_by(PointerButton::Secondary) {
+                stop_placing = true;
+            }
+        }
+
         // Selecting and moving with the primary button.
         let shift = ui.input(|i| i.modifiers.shift);
-        if !space {
+        if !space && placing.is_none() {
             if response.clicked_by(PointerButton::Primary) {
                 match hovered_item {
                     Some(item) if shift => {
@@ -403,11 +451,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
             if response.drag_stopped() {
                 match open.drag.take() {
                     Some(Drag::Move { items, delta, .. }) if delta != (0, 0) => {
-                        let edits = move_edits(open.document.level(), &items, delta);
+                        let (edits, moved) = move_edits(open.document.level(), &items, delta);
                         finished = Some(Finished {
                             label: label_for(&items, "Move"),
                             edits,
                             items,
+                            moved,
                             delta,
                         });
                     }
@@ -429,10 +478,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
         }
 
         // A menu on what was right-clicked.
-        response.context_menu(|ui| {
-            context_menu(ui, open, &mut context_edit);
-        });
+        if placing.is_none() {
+            response.context_menu(|ui| {
+                context_menu(ui, open, &mut context_edit);
+            });
+        }
 
+        let hovered_item = hovered_item.filter(|_| placing.is_none());
         draw(
             &painter,
             canvas,
@@ -442,6 +494,24 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
             view,
             hovered_item,
         );
+        if let (Some(placing), Some(at)) = (&placing, pointer) {
+            let tile =
+                selection::tile_rect((at.x / TILE).floor() as i32, (at.y / TILE).floor() as i32);
+            let r = camera.rect_to_screen(canvas, tile);
+            painter.rect(
+                r,
+                CornerRadius::same(2),
+                theme::ACCENT.gamma_multiply(0.3),
+                Stroke::new(2.0, theme::ACCENT),
+                StrokeKind::Outside,
+            );
+            let name = placing.name(open.document.level().header.object_tileset);
+            let galley = painter.layout_no_wrap(name, FontId::monospace(11.0), theme::ON_SELECTION);
+            let at = r.left_top() - Vec2::new(0.0, 20.0);
+            let label = Rect::from_min_size(at, galley.size()).expand2(Vec2::new(5.0, 2.0));
+            painter.rect_filled(label, CornerRadius::same(3), theme::ACCENT);
+            painter.galley(at, galley, theme::ON_SELECTION);
+        }
 
         if let Some(at) = pointer {
             let (x, y) = ((at.x / TILE).floor() as i32, (at.y / TILE).floor() as i32);
@@ -470,11 +540,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
         label,
         edits,
         items,
+        moved,
         delta,
     }) = finished
         && app.apply(&label, edits)
         && let Some(open) = app.open_mut(number)
     {
+        open.selection = moved;
         open.pending = Some(Pending {
             items,
             delta,
@@ -484,7 +556,54 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
     if let Some((label, edits)) = context_edit {
         app.apply(&label, edits);
     }
+    if stop_placing {
+        app.placing = None;
+    }
+    if let (Some(placing), Some((x, y))) = (placing, place_at) {
+        place(app, number, &placing, x, y);
+    }
     hover
+}
+
+/// Puts what the palette chose at tile (`x`, `y`): an object last in
+/// layer 1's list, so it draws over the rest; a sprite where the loader
+/// reaches it.
+fn place(app: &mut App, number: u16, placing: &Placing, x: u16, y: u16) {
+    let Some(open) = app.open_mut(number) else {
+        return;
+    };
+    let level = open.document.level();
+    let (label, edits, item) = match placing {
+        Placing::Object(template) => {
+            let index = level.layer1.len();
+            let edit = Edit::InsertObject {
+                layer: ObjectLayer::One,
+                index,
+                object: edit::object_at(template, x, y),
+            };
+            (
+                "Add object",
+                vec![edit],
+                Item::object(ObjectLayer::One, index),
+            )
+        }
+        Placing::Sprite(id) => {
+            let sprite = Sprite {
+                id: *id,
+                x,
+                y,
+                extra_bits: 0,
+                extension: Vec::new(),
+            };
+            let (edit, index) = edit::insert_sprite(level, sprite);
+            ("Add sprite", vec![edit], Item::Sprite(index))
+        }
+    };
+    if app.apply(label, edits)
+        && let Some(open) = app.open_mut(number)
+    {
+        open.selection = vec![item];
+    }
 }
 
 fn geometry_ref(open: &OpenLevel) -> &Geometry {
@@ -637,7 +756,9 @@ fn draw(
 
     // The selection: each tile an object drew, and its box.
     for &item in &open.selection {
-        if moving.is_some_and(|(items, _)| items.contains(&item)) {
+        // A finished move's items have their new numbers already, which
+        // the old picture does not know; its outlines are drawn below.
+        if open.pending.is_some() || moving.is_some_and(|(items, _)| items.contains(&item)) {
             continue;
         }
         outline(&painter, canvas, camera, geometry, item, (0, 0), true);
