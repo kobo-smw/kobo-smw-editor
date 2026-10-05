@@ -42,6 +42,8 @@ enum Command {
     Shortcuts,
     CloseProject,
     Overview,
+    /// Back to the level before, or with `true` forward again.
+    Back(bool),
     /// Shows or hides a layer, by its screen designation bit.
     Layer(u8),
     Background,
@@ -54,6 +56,16 @@ fn commands(app: &App) -> Vec<(String, &'static str, Command)> {
         ("Undo".into(), "Ctrl+Z", Command::Undo),
         ("Redo".into(), "Ctrl+Shift+Z", Command::Redo),
         ("Build the project".into(), "Ctrl+B", Command::Build),
+        (
+            "Back to the level shown before".into(),
+            "Alt+Left",
+            Command::Back(false),
+        ),
+        (
+            "Forward to the next level".into(),
+            "Alt+Right",
+            Command::Back(true),
+        ),
         (
             "Show the level list".into(),
             "",
@@ -213,6 +225,7 @@ fn run(app: &mut App, command: Command) {
             app.redraw();
         }
         Command::Background => app.backgrounds.open = true,
+        Command::Back(forward) => app.go_back(forward),
         Command::Player => {
             view.player = !view.player;
             app.redraw();
@@ -387,6 +400,11 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                         ("Wheel, middle drag, Space+drag", "Scroll and pan"),
                         ("Ctrl+wheel", "Zoom"),
                         ("Right click", "The menu for what is under the mouse"),
+                        ("Double-click an exit", "Go to the level it leads to"),
+                        (
+                            "Alt+Left, Alt+Right",
+                            "Back to the level before, forward again",
+                        ),
                         ("F1", "These"),
                     ] {
                         ui.label(RichText::new(keys).monospace().color(theme::ACCENT));

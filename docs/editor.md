@@ -76,6 +76,9 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
 - **Change what it is**: the inspector's object or sprite button lists every one by name;
   typing finds one. The place and size stay.
 
+The arrows beside the project's name (Alt+Left and Alt+Right, or the mouse's back and
+forward buttons) go back to the level shown before and forward again.
+
 Undo (Ctrl+Z) and redo (Ctrl+Shift+Z) work per level; the Edit menu undoes back several
 steps at once. Ctrl+S saves every changed level.
 

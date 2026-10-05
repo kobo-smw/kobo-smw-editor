@@ -1199,3 +1199,37 @@ fn a_screen_exit_goes_to_the_level_it_leads_to() {
             .is_some_and(|o| o.look_at.is_none() && o.camera.is_some())
     });
 }
+
+#[test]
+fn back_and_forward_go_between_the_levels_shown() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "history");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    let level = harness
+        .state()
+        .workspace()
+        .unwrap()
+        .clean_level(0x106)
+        .unwrap();
+    harness.state_mut().add_level(0x106, &level);
+    harness.run_steps(2);
+    assert_eq!(harness.state().current_number(), Some(0x106));
+    harness.key_press_modifiers(Modifiers::ALT, Key::ArrowLeft);
+    harness.step();
+    assert_eq!(harness.state().current_number(), Some(0x105));
+    assert!(!harness.state().can_go_back(false));
+    harness.key_press_modifiers(Modifiers::ALT, Key::ArrowRight);
+    harness.step();
+    assert_eq!(harness.state().current_number(), Some(0x106));
+    // Nothing selected moved: the arrows were taken for going back.
+    assert!(
+        harness
+            .state()
+            .current()
+            .unwrap()
+            .document
+            .undo_label()
+            .is_none()
+    );
+}

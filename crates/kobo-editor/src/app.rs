@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Align, Color32, Key, KeyboardShortcut, Layout, Modifiers, RichText};
+use eframe::egui::{
+    self, Align, Color32, Key, KeyboardShortcut, Layout, Modifiers, PointerButton, RichText,
+};
 use kobo_core::edit::{self, Edit, LevelDocument, Reload, Workspace};
 use kobo_core::render::{RenderOptions, Sprites};
 use kobo_core::{Rom, config};
@@ -217,6 +219,9 @@ pub struct App {
     all_levels: bool,
     /// A level the user asked to add from the game's own, to confirm.
     pub(crate) adding: Option<u16>,
+    /// The levels shown before this one, and after it once gone back.
+    history: Vec<u16>,
+    future: Vec<u16>,
     /// An entrance to bring into view when its level is opened next.
     pub(crate) look_at: Option<(u16, crate::preview::EntryKind)>,
     /// A level the user asked to take out of the project, to confirm.
@@ -301,6 +306,8 @@ impl App {
             level_filter: String::new(),
             all_levels: false,
             adding: None,
+            history: Vec::new(),
+            future: Vec::new(),
             look_at: None,
             removing: None,
             copy_to: 0,
@@ -415,7 +422,51 @@ impl App {
         }
     }
 
+    /// Shows level `number`, which the Back command then leaves for the
+    /// one shown before.
     pub fn open_level(&mut self, number: u16) {
+        let before = self.current;
+        self.show_level(number);
+        if let Some(before) = before
+            && self.current != Some(before)
+        {
+            self.history.push(before);
+            if self.history.len() > HISTORY {
+                self.history.remove(0);
+            }
+            self.future.clear();
+        }
+    }
+
+    /// Goes back to the level shown before this one, or with `forward`
+    /// on again.
+    pub fn go_back(&mut self, forward: bool) {
+        let level = if forward {
+            self.future.pop()
+        } else {
+            self.history.pop()
+        };
+        let Some(level) = level else {
+            return;
+        };
+        let before = self.current;
+        self.show_level(level);
+        if let Some(before) = before
+            && self.current == Some(level)
+        {
+            if forward {
+                self.history.push(before);
+            } else {
+                self.future.push(before);
+            }
+        }
+    }
+
+    pub fn can_go_back(&self, forward: bool) -> bool {
+        !if forward { &self.future } else { &self.history }.is_empty()
+    }
+
+    fn show_level(&mut self, number: u16) {
         let Some(workspace) = &mut self.workspace else {
             return;
         };
@@ -903,6 +954,18 @@ impl App {
         if build {
             crate::build::start(self);
         }
+        let (back, forward) = ctx.input_mut(|i| {
+            // Taken before the canvas, which moves the selection by arrows.
+            let mut alt = |key| !typing && i.consume_key(Modifiers::ALT, key);
+            let (left, right) = (alt(Key::ArrowLeft), alt(Key::ArrowRight));
+            (
+                left || i.pointer.button_pressed(PointerButton::Extra1),
+                right || i.pointer.button_pressed(PointerButton::Extra2),
+            )
+        });
+        if back || forward {
+            self.go_back(forward);
+        }
         if !typing {
             canvas::keys(self, ctx);
             crate::clipboard::keys(self, ctx);
@@ -924,6 +987,19 @@ impl App {
                     |n| n.to_string_lossy().into(),
                 );
                 ui.label(RichText::new(name).strong());
+            }
+            if self.workspace.is_some() {
+                for (forward, arrow, tip) in [
+                    (false, "←", "Back to the level shown before (Alt+Left)"),
+                    (true, "→", "Forward again (Alt+Right)"),
+                ] {
+                    let button = ui
+                        .add_enabled(self.can_go_back(forward), egui::Button::new(arrow).small())
+                        .on_hover_text(tip);
+                    if button.clicked() {
+                        self.go_back(forward);
+                    }
+                }
             }
             if let Some(open) = self.current() {
                 ui.label(RichText::new("/").color(theme::MUTED));
@@ -1674,6 +1750,8 @@ fn same_file(a: &Path, b: &Path) -> bool {
 
 /// How many levels keep their pictures while others are shown.
 const KEPT_PICTURES: usize = 4;
+/// Levels the Back command remembers.
+const HISTORY: usize = 100;
 
 /// Where the recent projects are kept in the editor's storage.
 const RECENT_KEY: &str = "kobo-recent-projects";
