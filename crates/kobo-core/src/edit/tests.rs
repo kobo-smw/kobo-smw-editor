@@ -541,3 +541,23 @@ fn direct_map16_objects_say_their_tile_and_size() {
     .unwrap();
     assert_eq!(back.objects, [low]);
 }
+
+#[test]
+fn sprites_past_a_later_screens_are_found_and_sorted() {
+    let mut document = sprites_document();
+    // Screen 1's sprite first, then screen 0's: the loader never reaches
+    // the second.
+    let reorder = Edit::ReorderSprite { from: 1, to: 0 };
+    document.apply("Reorder", &[reorder]).unwrap();
+    assert_eq!(unreached_sprites(document.level()), [1]);
+    let edits = sort_sprites(document.level());
+    document.apply("Sort", &edits).unwrap();
+    assert!(unreached_sprites(document.level()).is_empty());
+    let list = &document.level().sprites.list;
+    assert_eq!((list[0].x, list[1].x), (5, 20));
+    // The comment before screen 1's sprite went with it.
+    assert_eq!(
+        document.comments().before("sprites.list[1]"),
+        ["# The second."]
+    );
+}

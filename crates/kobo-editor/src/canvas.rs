@@ -1437,6 +1437,27 @@ fn draw(
             theme::ACCENT,
         );
     }
+    // Sprites the game's loader never reaches, marked where they are.
+    for i in edit::unreached_sprites(open.document.level()) {
+        if let Some(bounds) = geometry.bounds(Item::Sprite(i)) {
+            let r = camera.rect_to_screen(canvas, bounds);
+            painter.rect_stroke(
+                r,
+                CornerRadius::same(2),
+                Stroke::new(2.0, theme::WARNING),
+                StrokeKind::Outside,
+            );
+            let badge = Pos2::new(r.right(), r.top());
+            painter.circle_filled(badge, 7.0, theme::WARNING);
+            painter.text(
+                badge,
+                Align2::CENTER_CENTER,
+                "!",
+                FontId::monospace(11.0),
+                Color32::BLACK,
+            );
+        }
+    }
     for (x, y, _) in &open.failed_sprites {
         let tile = camera.rect_to_screen(canvas, selection::tile_rect(*x, *y));
         painter.rect_stroke(

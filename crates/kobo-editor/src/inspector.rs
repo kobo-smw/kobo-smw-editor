@@ -90,7 +90,26 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             }
             ui.add_space(12.0);
             section(ui, "Diagnostics");
-            if diagnostics.is_empty() {
+            let unreached = edit::unreached_sprites(&level);
+            if !unreached.is_empty() {
+                let n = unreached.len();
+                let text = if n == 1 {
+                    "1 sprite comes after a sprite on a later screen, and the game never loads it.".to_string()
+                } else {
+                    format!("{n} sprites come after sprites on later screens, and the game never loads them.")
+                };
+                ui.label(RichText::new(text).color(theme::WARNING));
+                if ui.button("Put the sprites in screen order").clicked() {
+                    change = Some(Change {
+                        widget: egui::Id::new("sort-sprites"),
+                        dragging: false,
+                        label: "Put the sprites in screen order".into(),
+                        edits: edit::sort_sprites(&level),
+                        select: None,
+                    });
+                }
+            }
+            if diagnostics.is_empty() && unreached.is_empty() {
                 ui.label(RichText::new("None: the level loaded and drew in full.").color(theme::MUTED));
             } else {
                 for line in &diagnostics {

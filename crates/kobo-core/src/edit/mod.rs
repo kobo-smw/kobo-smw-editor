@@ -279,6 +279,43 @@ fn sprite_slot(level: &Level, list: &[Sprite], sprite: &Sprite) -> usize {
         .map_or(0, |i| i + 1)
 }
 
+/// The sprites the game's loader never reaches: each one after a sprite on
+/// a later screen, where the loader stops (docs/smw.md).
+pub fn unreached_sprites(level: &Level) -> Vec<usize> {
+    let mut furthest = 0;
+    let mut unreached = Vec::new();
+    for (i, sprite) in level.sprites.list.iter().enumerate() {
+        let screen = sprite_screen(level, sprite);
+        if screen < furthest {
+            unreached.push(i);
+        }
+        furthest = furthest.max(screen);
+    }
+    unreached
+}
+
+/// The edits that put the sprite list in screen order, keeping the order
+/// within each screen, so that the loader reaches every sprite.
+pub fn sort_sprites(level: &Level) -> Vec<Edit> {
+    let mut order: Vec<usize> = (0..level.sprites.list.len()).collect();
+    order.sort_by_key(|&i| sprite_screen(level, &level.sprites.list[i]));
+    // Where each original entry is now, as the moves shift the list.
+    let mut list: Vec<usize> = (0..level.sprites.list.len()).collect();
+    let mut edits = Vec::new();
+    for (to, &wanted) in order.iter().enumerate() {
+        let from = list
+            .iter()
+            .position(|&i| i == wanted)
+            .expect("every entry is in the list");
+        if from != to {
+            let entry = list.remove(from);
+            list.insert(to, entry);
+            edits.push(Edit::ReorderSprite { from, to });
+        }
+    }
+    edits
+}
+
 /// The edit that adds `sprite` where the loader reaches it, and the index
 /// it will have.
 pub fn insert_sprite(level: &Level, sprite: Sprite) -> (Edit, usize) {
