@@ -1080,6 +1080,28 @@ impl App {
                 self.undo(true);
                 ui.close();
             }
+            let history: Vec<String> = self
+                .current()
+                .map(|o| {
+                    o.document
+                        .undo_labels()
+                        .take(20)
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default();
+            ui.add_enabled_ui(!history.is_empty(), |ui| {
+                ui.menu_button("Undo back to…", |ui| {
+                    for (steps, label) in history.iter().enumerate() {
+                        if ui.button(label).clicked() {
+                            for _ in 0..=steps {
+                                self.undo(false);
+                            }
+                            ui.close();
+                        }
+                    }
+                });
+            });
             ui.separator();
             let selected = self.current().is_some_and(|o| !o.selection.is_empty());
             let ctx = ui.ctx().clone();

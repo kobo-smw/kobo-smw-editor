@@ -2,8 +2,8 @@
 //! keys that select and move things.
 
 use eframe::egui::{
-    self, Align2, Color32, CornerRadius, FontId, Key, PointerButton, Pos2, Rect, Sense, Shape,
-    Stroke, StrokeKind, Vec2,
+    self, Align2, Color32, CornerRadius, FontId, Key, PointerButton, Pos2, Rect, RichText, Sense,
+    Shape, Stroke, StrokeKind, Vec2,
 };
 use kobo_core::edit::{self, Edit, ObjectLayer};
 use kobo_core::expand::ObjectRef;
@@ -816,6 +816,37 @@ fn show_canvas(
             painter.galley(at, galley, theme::ON_SELECTION);
         }
 
+        // What is under the mouse, named beside it, while nothing is being
+        // dragged or placed.
+        if let Some(item) = hovered_item
+            && open.drag.is_none()
+            && placing.is_none()
+        {
+            let level = open.document.level();
+            let name = selection::describe(level, item);
+            let place = match item {
+                Item::Object(o) => objects(level, o.layer)
+                    .and_then(|l| l.get(o.index))
+                    .and_then(edit::object_position),
+                Item::Sprite(i) => level.sprites.list.get(i).map(|s| (s.x, s.y)),
+            };
+            let what = match item {
+                Item::Object(o) if o.layer == ObjectLayer::Two => {
+                    format!("layer 2 object {}", o.index)
+                }
+                Item::Object(o) => format!("object {}", o.index),
+                Item::Sprite(i) => format!("sprite {i}"),
+            };
+            response.clone().on_hover_ui_at_pointer(|ui| {
+                ui.label(RichText::new(name).strong());
+                let at = place.map_or_else(String::new, |(x, y)| format!(" at ({x}, {y})"));
+                ui.label(
+                    RichText::new(format!("{what}{at}"))
+                        .small()
+                        .color(theme::MUTED),
+                );
+            });
+        }
         if let Some(at) = pointer {
             let (x, y) = ((at.x / TILE).floor() as i32, (at.y / TILE).floor() as i32);
             let geometry = geometry_ref(open);

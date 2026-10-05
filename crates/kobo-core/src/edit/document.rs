@@ -171,6 +171,11 @@ impl LevelDocument {
         self.undo.last().map(|s| s.label.as_str())
     }
 
+    /// Every step that can be undone, newest first.
+    pub fn undo_labels(&self) -> impl Iterator<Item = &str> {
+        self.undo.iter().rev().map(|s| s.label.as_str())
+    }
+
     /// The label of the step [`LevelDocument::redo`] would redo.
     pub fn redo_label(&self) -> Option<&str> {
         self.redo.last().map(|s| s.label.as_str())

@@ -440,6 +440,24 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
             });
         }
         ui.separator();
+        let file = app.current().map(|o| o.document.path().to_path_buf());
+        if ui
+            .add_enabled(file.is_some(), egui::Button::new("Open the level file elsewhere"))
+            .on_hover_text("In the editor your system opens it with; the editor here follows what is saved there")
+            .clicked()
+        {
+            ui.close();
+            if let Some(file) = file {
+                reveal(app, &file);
+            }
+        }
+        if ui.button("Show the project folder").clicked() {
+            ui.close();
+            if let Some(root) = app.workspace().map(|w| w.project().root.clone()) {
+                reveal(app, &root);
+            }
+        }
+        ui.separator();
         if ui.button("Keyboard shortcuts").clicked() {
             ui.close();
             app.commands.shortcuts = true;
@@ -449,6 +467,20 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
             app.switch_project(None);
         }
     });
+}
+
+/// Opens a file or folder with what the system opens it with.
+fn reveal(app: &mut App, path: &Path) {
+    let program = if cfg!(target_os = "windows") {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    if let Err(e) = std::process::Command::new(program).arg(path).spawn() {
+        app.say(format!("Could not open {}: {e}", path.display()));
+    }
 }
 
 /// Opens the project `dir`, or goes back to the start screen, once any
