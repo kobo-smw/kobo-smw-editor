@@ -183,7 +183,7 @@ fn sa1_projects_build_onto_sa1_pack() {
         assert!(a.image.pixels == b.image.pixels, "level {level:03X}");
     }
     // The SA-1 build installs Kobo's patches, which change three pictures
-    // (tests/install.rs).
+    // as Lunar Magic's code does (tests/install.rs).
     common::every_level_draws_the_same(
         &base,
         &built,

@@ -55,3 +55,22 @@ fn passes_the_cpu_gives_up_on_are_reported() {
         }
     )));
 }
+
+/// Kaizo Mario, saved by Lunar Magic 1.62: its column upload resolves tiles
+/// through Lunar Magic's pointer routine, which reads the entries the game
+/// re-points for every column, so a vertical pipe's colour depends on its
+/// column as in vanilla (checked against Mesen in level `0C6`, docs/smw.md).
+#[test]
+fn a_lunar_magic_roms_pipes_take_their_columns_colours() {
+    let Some((_, rom)) = common::corpus_hack(common::hacks::KAIZO_MARIO) else {
+        return;
+    };
+    let loaded = expand::expand_level(&rom, 0x0C6).unwrap();
+    let tiles = &loaded.tiles;
+    assert!(tiles.pipe_map16.is_some());
+    let pipe = *expand::PIPE_TILES.start();
+    let variants: std::collections::HashSet<_> = (0..4)
+        .map(|v| tiles.map16_at(pipe, v * 8, 0).copied())
+        .collect();
+    assert!(variants.len() > 1, "every column's pipe drawn alike");
+}

@@ -451,8 +451,8 @@ folders make a full run about an hour; leave them out for a quicker one.
   vanilla ROM as well, `tool_stages.rs` imports
   every level of the SA-1 base and builds it back as an SA-1 project, which must read back
   the same and render four levels the same. With the checks of every level on, all 512 must
-  draw the same, but `012`, `0F8`, and `101`, which Kobo's patches change (the SA-1 build
-  installs them).
+  draw the same, but `012`, `0F8`, and `101`, which Kobo's patches change as Lunar Magic
+  3.70's code does (the SA-1 build installs them; lunar-magic-install.md).
   `sa1_projects_store_gfx_as_lz3` builds an empty SA-1 project with `[rom] lz3`: SA-1
   Pack's routine must read every GFX file back as the clean ROM's, and three levels load
   the same VRAM and draw the same as in the LC_LZ2 build; with the checks of every level on,
@@ -498,7 +498,7 @@ or `entrances`, several joined by `+`. The probes below then compare the two ROM
   game's, pages past 1 from tables written where Lunar Magic's layout points, and a few
   levels drawn as vanilla. With the checks of every level on, all 512 levels must draw as
   without the patches, on the vanilla ROM and the SA-1 base, but `012`, `0F8`, and `101`,
-  three pictures the patches change (lunar-magic-install.md; review.md).
+  three pictures the patches change as Lunar Magic 3.70's code does (lunar-magic-install.md).
 - **Lunar Magic's layout on SA-1**: with SA-1 Pack configured (`common::sa1_base`;
   `KOBO_REQUIRE_SA1PACK=1` makes its absence a failure), the tests of Kobo's patches run
   on both bases: `tests/install.rs` installs the patches on the 1 MiB vanilla ROM and on

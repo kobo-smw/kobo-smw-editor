@@ -130,8 +130,9 @@ pub struct LevelTiles {
     /// position: the game re-points them for every column (row in vertical
     /// levels) it uploads, choosing variant `(column / 8) % 4` from
     /// `MAP16AppTable`, so a pipe's colour depends on where it stands.
-    /// `None` for Lunar Magic ROMs, whose upload resolves tiles through
-    /// Lunar Magic's own pointer routine and ignores the re-pointing.
+    /// Lunar Magic ROMs keep it: their upload resolves tiles through Lunar
+    /// Magic's pointer routine, which reads the re-pointed entries. `None`
+    /// only for a level made up without a ROM.
     pub pipe_map16: Option<[[Map16Tile; PIPE_TILE_COUNT]; PIPE_VARIANTS]>,
     /// BG Map16 definitions, indexed by the raw background tile number.
     /// Vanilla has 0x200 definitions; Lunar Magic backgrounds can use

@@ -162,8 +162,9 @@ fn vanilla_levels_draw_the_same() {
             let b = render::render_level(&rom, level, options).unwrap().image;
             assert!(a.pixels == b.pixels, "level {level:03X} with sprites");
         }
-        // The three pictures the patches change, on either mapping
-        // (docs/lunar-magic-install.md, "SA-1"; docs/review.md).
+        // The three pictures the patches change, on either mapping, as
+        // Lunar Magic 3.70's code does: the vanilla ROM saved by Lunar Magic
+        // draws them as the patches do (docs/lunar-magic-install.md).
         common::every_level_draws_the_same(
             &base,
             &rom,

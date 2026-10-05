@@ -1953,7 +1953,11 @@ beyond the addresses:
   same way there.
 - Checked: all 512 levels of the SA-1 reference ROM draw with the twelve base patches
   as without them, or as the LoROM build does where the patches change a picture there
-  (`012`, `0F8`, `101`); `tests/install.rs`, the build tests, and the Lunar Magic save
+  (`012`, `0F8`, `101`). Those three are Lunar Magic 3.70's: the vanilla ROM saved once by
+  Lunar Magic draws them as the build does, and not as vanilla (`012`'s first camera and
+  `0F8`'s layer 2 offset are 3.70's, "The sites a save keeps with the marker"), and in
+  Mesen the save's `0F8` and the build's agree but for the differences listed under
+  "Graphics" (2026-10-05); `tests/install.rs`, the build tests, and the Lunar Magic save
   checks run on both; Kobo's loader against Lunar Magic's SA-1 loader in 324 seeded
   scenarios, and Kobo's ExAnimation against Lunar Magic's SA-1 code in 316
   (docs/testing.md).

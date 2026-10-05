@@ -147,3 +147,18 @@ cargo run --release -- level png 105 /tmp/kobo-level-105.png -r /path/to/hack.sf
 The export verification checked PNG headers and dimensions, preview presence, all
 512 results per hack, and gallery links. These checks establish output completeness,
 not correctness of the rendered game state.
+
+## The checks of every level (2026-10-05)
+
+Their first run found the three pictures Kobo's patches change, `012`, `0F8`, and `101`.
+The vanilla ROM saved once by Lunar Magic draws `012` and `101` as Kobo's build does, so
+they are 3.70's behaviour, which Kobo's code reproduces. `0F8` drew differently in all
+three: the build and the save agreed but for the pipes, grey in the build and green in
+the save, and in Mesen both are grey (the frames agree but for the differences
+lunar-magic-install.md lists under "Graphics"). The renderer drew a Lunar Magic ROM's
+vertical pipes all in the last column's colours, on the inference that Lunar Magic's
+pointer routine skips the game's per-column re-pointing. Mesen frames of 28 levels of
+seven hacks saved by Lunar Magic 1.62 to 3.10 (`video_oracle`) each match as well or
+better with the per-column colours (Kaizo Mario `00A` 93.7% to 97.3%, `0C6` 96.1% to
+99.0%, 100 Rooms `045` 90.1% to 92.8%), so every ROM takes them now (docs/smw.md). The
+known-gaps entries about Kaizo Mario's and the Romhack Races baserom's pipes were this.

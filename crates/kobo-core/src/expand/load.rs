@@ -98,7 +98,6 @@ pub(crate) fn expand_controlled(
             player::capture_player(&mut machine, &mut diagnostics),
         )
     };
-    let lunar_magic = rom.lunar_magic_version().is_some();
     let (bg_map16, bg_map16_at, layer2_screen_len) = match &expanded.layer2_tilemap {
         Some(planes) => {
             let (tiles, at, len) = map16::read_bg_map16(&mut machine, planes)?;
@@ -107,7 +106,10 @@ pub(crate) fn expand_controlled(
         None => (Vec::new(), None, SCREEN_LEN),
     };
     let (map16, map16_sources) = map16::lookup_map16(&mut machine, map16::routine_in_use(rom))?;
-    let pipe_map16 = (!lunar_magic).then(|| map16::read_pipe_map16(&mut machine.bus));
+    // A Lunar Magic ROM's column upload keeps the game's per-column pipe
+    // definitions too (every version from 1.62 to 3.70 against Mesen,
+    // docs/smw.md), so its pipes take them as vanilla's do.
+    let pipe_map16 = Some(map16::read_pipe_map16(&mut machine.bus));
     if let Some(op) = operation {
         op.check()?;
     }

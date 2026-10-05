@@ -260,6 +260,10 @@ pub mod hacks {
         "Grand Poo World 2",
         "390583d5faa0cc02e0c4f414f7638228661b2dc9",
     );
+    pub const KAIZO_MARIO: (&str, &str) = (
+        "Kaizo Mario (English)",
+        "706ca2641347d7112c9ced31c906360e0403981d",
+    );
     pub const INVICTUS: (&str, &str) = ("Invictus 1.0", "6dd24c31b5d8c568aab0de6d68855f609cbe8f08");
 }
 

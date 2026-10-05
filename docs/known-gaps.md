@@ -83,15 +83,6 @@ What a rendered level does not reproduce, and what the tooling does not handle.
   unaffected, since the ROM's own decompression runs for them. LC_LZ2 and LC_LZ3 have
   encoders (`compress::lz2::compress`, `compress::lz3::compress`); the LC_LZ3 one does not
   use its reversed and backwards copies (commands 5 and 6).
-- A build of a hack saved by Lunar Magic 1.6x draws the vertical pipes as Lunar Magic 3.70's
-  install does, each screen's in its colour set (`MAP16AppTable`), where the hack's own
-  code, which a 3.70 save keeps, may draw them all in one: Kaizo Mario's level `105` has
-  green pipes and its build grey and yellow ones, from the same colour tables (2026-10-04).
-  Kobo writes 3.70's layout, so this is left as it is. The same goes for a ROM whose
-  install is 3.63's, Callisto's initial patch's: the Romhack Races baserom's own build
-  draws every vertical pipe green, 93 levels among them its levels `112` and `13B`, and
-  the template's build draws them in their colour sets (2026-10-04, in Kobo's renderer;
-  not checked in an emulator).
 - A project cannot hold Lunar Magic's shared palettes: the game's colour tables from
   `$00B0A0` (`BackAreaColors` to `OWSpecialColors`, 1009 colours, Lunar Magic's
   `-ExportSharedPalette`), which Lunar Magic edits in place. A ROM import reports a change

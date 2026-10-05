@@ -260,8 +260,13 @@ are SMWDisX's.
   holds the table's final state. Lunar Magic ROMs replace the pointer-table lookup in the
   column upload (`$058A65`: `TAY : LDA $0FBE,Y` becomes `JSL $06F540`; an address-only
   diff shows the change starting there in every LoROM corpus ROM) with the pointer routine
-  for every tile number, so the re-pointing has no effect there (inferred from the hook)
-  and `expand` resolves all tiles through `$06F540` in those ROMs.
+  for every tile number, and `expand` resolves all tiles through `$06F540` in those ROMs.
+  The re-pointing still decides the pipes' colours there, the routine reading the `$0FBE`
+  entries for pages 0 and 1: in Mesen, levels with pipes in view draw them by column in
+  hacks saved by Lunar Magic 1.62, 2.30, 2.32, 2.41, 2.52, 3.03, and 3.10 and in the
+  vanilla ROM saved by 3.70 (2026-10-05), and `map16_at` applies the variants to every
+  ROM. (Until then it took the hook to skip the re-pointing, and drew all of a Lunar
+  Magic ROM's pipes in the last column's colours.)
 - Vertical levels with a background (mode `$0A`) keep layer 2 horizontal (`$5B` bit 1
   clear): `CODE_058955` dispatches to the same column upload as mode `$00`, so the two
   screens sit side by side across the level's 32-tile width, 27 rows tall, in a 64x64

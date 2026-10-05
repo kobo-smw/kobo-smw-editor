@@ -14,13 +14,6 @@ settle it.
 
 ## Open
 
-- **Three pictures Kobo's patches change (2026-10-05).** With the checks of every level on,
-  Kobo's base patches on the vanilla ROM and on the SA-1 base, and an SA-1 build (which
-  installs them), draw every level as without them but `012` and `0F8` (drawn and as
-  markers) and `101` (drawn). lunar-magic-install.md records the three ("where the patches
-  change a picture there") without why. They are the listed exceptions of
-  `tests/install.rs`'s and `tests/tool_stages.rs`'s full checks, which fail once one draws
-  the same again. Settled by finding what differs in each and recording it, or fixing it.
 - **kobo-core optimised in dev builds (2026-10-05).** `[profile.dev.package.kobo-core]
   opt-level = 2` makes a plain `cargo test` run the ROM-backed tests as fast as release
   (render_levels: 20 s to 3 s) while keeping debug assertions and overflow checks, which a
