@@ -115,3 +115,16 @@ fn layer3_settings_are_named_by_the_games_table() {
     assert_eq!(name(1, 2), "Fixed image, a sprite moves it");
     assert_eq!(name(1, 3), "Image scrolling with the level");
 }
+
+#[test]
+fn layer2_scroll_settings_are_named_by_the_games_tables() {
+    let Some(rom) = common::vanilla() else {
+        return;
+    };
+    let name = |setting| kobo_core::level::layer2_scroll(&rom, setting).unwrap();
+    assert_eq!(name(0), "Half speed across, a 32nd up and down");
+    assert_eq!(name(2), "With layer 1");
+    assert_eq!(name(3), "Fixed");
+    assert_eq!(name(5), "Half speed");
+    assert_eq!(name(15), "Fixed");
+}

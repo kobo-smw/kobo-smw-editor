@@ -335,6 +335,11 @@ are SMWDisX's.
   them and continues them unstretched across the level, so parallax layers keep the entry
   screen's phase; an axis layer 3 does not scroll on repeats per screen horizontally and
   stays in the entry band vertically.
+- Layer 2 scroll: the secondary header's setting (`$05F000` bits 7-4) indexes two tables,
+  `DATA_05D720` for `$1413` and `DATA_05D710` for `$1414`; `UpdateScreenPosition` moves
+  layer 2 by `$1413` across (0 not at all, 1 with layer 1, 2 at half) and by `$1414` up
+  and down (the same, and 3 at a 32nd). Settings 8 to 15 hold 0 in both: fixed
+  (`level::layer2_scroll`).
 - Layer 3: the secondary header byte at `$05F200` (bits 7-6, `$1BE3` after loading) picks
   one of three settings per object tileset from `Layer3TilemapSettings` (`$009F88`, applied
   by `CODE_009FB8` in game mode `$12`): `1`/`2` are tides (up-and-down at `$24 = $70`,

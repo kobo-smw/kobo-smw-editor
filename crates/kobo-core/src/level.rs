@@ -378,6 +378,37 @@ pub fn layer3_setting(rom: &Rom, tileset: u8, setting: u8) -> Result<&'static st
     })
 }
 
+/// The game's layer 2 scroll rates for each of the secondary header's 16
+/// settings: horizontal (`DATA_05D720`, into `$1413`) and vertical
+/// (`DATA_05D710`, into `$1414`). `UpdateScreenPosition` moves layer 2 by
+/// them: 0 not at all, 1 with layer 1, 2 at half its speed, and vertically 3
+/// at a 32nd.
+pub const LAYER2_SCROLL_X: SnesAddr = SnesAddr::new(0x05D720);
+pub const LAYER2_SCROLL_Y: SnesAddr = SnesAddr::new(0x05D710);
+
+/// How layer 2 scroll setting `setting` (0 to 15) moves layer 2, by the
+/// ROM's tables.
+pub fn layer2_scroll(rom: &Rom, setting: u8) -> Result<&'static str, RomError> {
+    let at = u32::from(setting & 0x0F);
+    let x = rom.read_u8(LAYER2_SCROLL_X.add(at))?;
+    let y = rom.read_u8(LAYER2_SCROLL_Y.add(at))?;
+    Ok(match (x, y) {
+        (0, 0) => "Fixed",
+        (0, 1) => "Fixed across, with layer 1 up and down",
+        (0, 2) => "Fixed across, half speed up and down",
+        (0, 3) => "Fixed across, a 32nd up and down",
+        (1, 0) => "With layer 1 across, fixed up and down",
+        (1, 1) => "With layer 1",
+        (1, 2) => "With layer 1 across, half speed up and down",
+        (1, 3) => "With layer 1 across, a 32nd up and down",
+        (2, 0) => "Half speed across, fixed up and down",
+        (2, 1) => "Half speed across, with layer 1 up and down",
+        (2, 2) => "Half speed",
+        (2, 3) => "Half speed across, a 32nd up and down",
+        _ => "Other",
+    })
+}
+
 /// The game's background tilemaps (in bank `$0C`) that `rom`'s levels
 /// use, each with the levels that use it, the most used first. A level
 /// that does not read is left out.

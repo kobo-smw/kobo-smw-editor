@@ -74,6 +74,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .and_then(|w| kobo_core::palette::game_palette(w.clean(), &level.header).ok());
     let mut show_table: Option<&'static str> = None;
     let strips = app.workspace().map(|w| palette_strips(w.clean()));
+    // How each layer 2 scroll setting moves layer 2.
+    let scroll_names = app.workspace().map(|w| {
+        std::array::from_fn(|s| kobo_core::level::layer2_scroll(w.clean(), s as u8).unwrap_or("?"))
+    });
     // What each layer 3 setting does in the level's tileset.
     let layer3_names = app.workspace().map(|w| {
         std::array::from_fn(|s| {
@@ -103,7 +107,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     header(ui, &level, strips.as_ref(), screens_used, &mut change, |ui| {
                         crate::backgrounds::row(app, ui);
                     });
-                    entrances(ui, &level, free_entrance, layer3_names, &mut change, |ui, change| {
+                    entrances(ui, &level, free_entrance, layer3_names, scroll_names, &mut change, |ui, change| {
                         graphics_and_palette(
                             ui,
                             &level,
@@ -1234,10 +1238,8 @@ fn camera_fields(
     changed.filter(|_| new != camera).map(|r| (r, new))
 }
 
-/// A numbered field of a value: its label, what it holds, its largest
-/// value, and the value with it changed.
-type Field<T> = (&'static str, u8, u16, fn(T, u8) -> T);
-/// A flag of Lunar Magic's level settings, likewise.
+/// A flag of Lunar Magic's level settings: its label, what it does, what
+/// it holds, and the settings with it changed.
 type Flag = (
     &'static str,
     &'static str,
@@ -1253,6 +1255,7 @@ fn entrances(
     level: &Level,
     free_entrance: Option<u16>,
     layer3_names: Option<[&'static str; 4]>,
+    scroll_names: Option<[&'static str; 16]>,
     change: &mut Option<Change>,
     before_secondary: impl FnOnce(&mut egui::Ui, &mut Option<Change>),
 ) {
@@ -1302,24 +1305,26 @@ fn entrances(
                         },
                     );
                     ui.end_row();
-                    let fields: [Field<SecondaryHeader>; 1] =
-                        [("Layer 2 scroll", e.layer2_scroll, 15, |h, v| {
-                            SecondaryHeader {
-                                layer2_scroll: v,
-                                ..h
-                            }
-                        })];
-                    for (label, value, max, with) in fields {
-                        ui.label(label);
-                        let mut v = u16::from(value);
-                        let r = number_field(ui, &mut v, 0, max, false);
-                        set(
-                            &r,
-                            &format!("Change entrance {}", label.to_lowercase()),
-                            with(e, v as u8),
-                        );
-                        ui.end_row();
-                    }
+                    ui.label("Layer 2 scroll").on_hover_text(
+                        "How layer 2 moves as layer 1 does; with Lunar Magic's separate \
+                         vertical setting, how it moves across",
+                    );
+                    let mut scroll = e.layer2_scroll;
+                    let separate = level.settings.layer2_vertical_scroll.is_some();
+                    let r = choice(ui, "layer2-scroll", &mut scroll, 0..=15, |v| {
+                        scroll_names
+                            .filter(|_| !separate)
+                            .map(|names| names[usize::from(v & 15)])
+                    });
+                    set(
+                        &r,
+                        "Change layer 2 scroll",
+                        SecondaryHeader {
+                            layer2_scroll: scroll,
+                            ..e
+                        },
+                    );
+                    ui.end_row();
                     ui.label("Layer 3").on_hover_text(
                         "What the game's table for the level's tileset makes of each setting",
                     );
