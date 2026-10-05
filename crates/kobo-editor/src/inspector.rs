@@ -702,7 +702,10 @@ fn header(
             ui.label("Time");
             let mut time = h.time;
             let r = choice(ui, "time", &mut time, 0..=3, |t| {
-                ["0", "200", "300", "400"].get(usize::from(t)).copied()
+                // A timer at 0 never counts down (`UpdateStatusBar`).
+                ["no limit", "200", "300", "400"]
+                    .get(usize::from(t))
+                    .copied()
             });
             set(&r, "Change time", PrimaryHeader { time, ..h });
             ui.end_row();
