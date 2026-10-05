@@ -1,4 +1,4 @@
-//! The step 2a round trip: every vanilla level imported as text and built
+//! The vanilla round trip: every vanilla level imported as text and built
 //! back into a ROM, with its layer data in the expanded ROM, reads back as
 //! the same level and renders as vanilla does. The full picture check of
 //! all 512 levels is `render_hashes` (docs/testing.md); this renders a

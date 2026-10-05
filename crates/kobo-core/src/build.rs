@@ -508,8 +508,7 @@ impl Project {
     }
 }
 
-/// The build's stages, in the order they run (docs/step-2.md). The ones
-/// of the plan still to come take their places between these.
+/// The build's stages, in the order they run (docs/build.md, "Stages").
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Stage {
     /// The clean ROM, expanded to the project's size.

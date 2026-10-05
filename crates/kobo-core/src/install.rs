@@ -1,5 +1,5 @@
 //! Kobo's ROM-side code: the Asar patches that give a build the code Lunar
-//! Magic's layout needs, written clean-room (docs/step-2.md, "Clean room").
+//! Magic's layout needs, written clean-room (docs/clean-room.md).
 //! The patches are sources in `asm/`, assembled into the ROM through
 //! [`crate::asar`] at build time.
 //!

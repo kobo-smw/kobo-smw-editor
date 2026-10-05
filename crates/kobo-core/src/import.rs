@@ -2106,7 +2106,7 @@ pub struct CallistoOptions {
 }
 
 /// File extensions a project never holds: ROM images and patches of them
-/// (docs/step-2.md, "No base"), and programs, which are the user's own.
+/// (docs/build.md, "No base"), and programs, which are the user's own.
 const NOT_SOURCE: &[&str] = &["smc", "sfc", "bps", "ips", "exe", "dll", "so", "dylib"];
 
 /// Imports the Callisto project in `source` (`crate::callisto`) into a new

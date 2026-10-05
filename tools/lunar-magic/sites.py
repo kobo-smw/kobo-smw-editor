@@ -9,7 +9,7 @@ byte offsets of each changed. Build the symbols once from the SMWDisX checkout:
 
     asar -D_VER=1 --symbols=wla --symbols-path=smw.wla smw.asm smw.smc
 
-Clean room (docs/step-2.md): it prints SMWDisX's vanilla source and offsets, never the
+Clean room (docs/clean-room.md): it prints SMWDisX's vanilla source and offsets, never the
 bytes Lunar Magic wrote. The one exception is the interface of a hook: where a vanilla
 jump (JSL, JML, JSR, JMP) keeps its opcode and gets a new operand, the bytes on either side
 of the instruction unchanged, or where a change that was not vanilla's $FF free space

@@ -266,12 +266,33 @@ how each oracle is produced, where its data lives, and what is known not to matc
   `target/release`'s `kobo` (or `KOBO_BIN`) and `render_hashes`, so build both with
   `--release` first.
   A run stopped part way resumes from `results.json`; `--summary` only rewrites the summary,
-  and `--no-render` and `--no-save` skip the slow steps. The whole corpus (175 entries,
-  QLDC 2021's and 2022's `.bps` patches included) takes about two hours on four cores,
-  mostly in rendering, and about 500 MB: point `out` and `TMPDIR` at a disk, not a `/tmp` in
-  memory. The 2026-10-01 run's results are in [step-2.md](step-2.md) (work order, item 2).
+  and `--no-render` and `--no-save` skip the slow steps. The whole corpus (175 entries:
+  the 47 `KOBO_LM_ROMS` hacks and QLDC 2021's and 2022's 128 `.bps` patches, 135 LoROM and
+  40 SA-1, Lunar Magic 1.62 to 3.51) takes about 45 minutes on four cores, mostly in rendering, and
+  about 1 GB: point `out` and `TMPDIR` at a disk, not a `/tmp` in memory.
   `save-check` leaves its work folder (the saved copy, Lunar Magic's files) in
   `SAVE_CHECK_KEEP` when that is set.
+  The run that closed step 2 (2026-10-05, `4dbf9ad`): all 175 import, 163 build whole,
+  13,678 of 13,766 changed levels build, and every build reads back as its hack (`kobo
+  diff`). What is refused is in the locked ROMs (Invictus, Baby Kaizo World 3, both Super
+  Dram Worlds, SMW_2021-4-3 and -4-24, QLDC 2022 `05_Bumpty`: objects past a layer's edge
+  or rows, objects `24` and `25` on layer 2, and the entrances to the levels those leave
+  out), but for what stays refused on purpose ([build.md](build.md#what-builds-refuse)):
+  more than 128 sprites without a 255-sprite loader (QLDC 2021 `34_idol`, QLDC 2022
+  `30_Fellipe_R`, and QLDC 2021 `48_JamesD28`, whose PIXI code an SA-1 import cannot
+  carry), `34_idol`'s lists out of screen order, and QLDC 2021 `84_TickTockClock`'s midway
+  loops. Grand Poo World 2 is treated as locked: its level pointers all name `$068000`,
+  and Lunar Magic sees none of its levels either ([lunar-magic.md](lunar-magic.md)).
+  Lunar Magic's save keeps level `105` in 118 builds; in the other 57 it changes it only
+  as it does every level it re-imports (SP4's bit 12, the header's screen count;
+  lunar-magic.md). `render_hashes` draws 5,915 of the 13,678 built levels as the hack
+  does: every hack keeps 68 KB and more of changes the import does not carry (its own
+  code, an older Lunar Magic's), so the pictures do not single out a blocker. 245 levels
+  do not draw from the build, all in locked ROMs but apes `010` and Extended Interactions
+  `012`. Nine levels of seven hacks drew as the hack before 2026-10-04 and do not since
+  Kobo's entrance took 3.70's first camera and layer 2 offset, which these hacks' older
+  Lunar Magic code (2.41 to 3.51) does otherwise; moved into a 3.70 ROM (`transfer`), each
+  draws as Kobo's build does.
 - **Kobo's ROM-side code**: `tests/install.rs` applies `kobo_core::install`'s patches to
   vanilla (Asar's library needed) and runs the ROM: Map16 lookups for pages 0 and 1 as the
   game's, pages past 1 from tables written where Lunar Magic's layout points, and a few
@@ -473,7 +494,7 @@ how each oracle is produced, where its data lives, and what is known not to matc
   right at 3 and at 8 pixels a frame, and up or down, comparing the camera, the scroll
   and layer 3 RAM, the player, what he touches, and the tile planes frame by frame,
   until the level is left. Against the hack, what differs is often the hack's: its own
-  code, which the import does not carry (`docs/step-2.md`), and an older Lunar Magic's
+  code, which the import does not carry ([build.md](build.md#no-base)), and an older Lunar Magic's
   code. `against=` takes the hack's levels moved into a 3.70 ROM
   (`tools/lunar-magic/transfer`, with MWL exports from `tools/lunar-magic/export-mwl` for
   hacks without them) instead, which compares Kobo's code with 3.70's on the same levels:
@@ -566,8 +587,8 @@ how each oracle is produced, where its data lives, and what is known not to matc
   as Lunar Magic's code does; the base pieces differ in `01B` and `047`, the graphics
   loader in `00E`, `03B`, `0DE`, `180`, `189`, and `1DD`, and the VRAM patch in 18 levels,
   and the same content moved into the LoROM vanilla ROM differs in exactly the same
-  levels: gaps of Kobo's code with this content, not of SA-1, left for the corpus sweep
-  (step-2.md). Level `006` breaks (`BRK`) in both ROMs alike: its custom content needs
+  levels: gaps of Kobo's code with this content, not of SA-1, left for the corpus sweep.
+  Level `006` breaks (`BRK`) in both ROMs alike: its custom content needs
   the hack's own code.
 - **Kobo's code against Lunar Magic's, swapped into its own save**: `lunar_magic_save.rs`
   saves the clean ROM (and the SA-1 base) with Lunar Magic, puts Kobo's patch for a piece
@@ -637,10 +658,10 @@ how each oracle is produced, where its data lives, and what is known not to matc
   pages 0 and 1 and page 2, and every page the build lists as written (the file's layout is
   in [lunar-magic.md](lunar-magic.md)); without the marker at `$06F5FC` it shows the
   acts-like settings, page 2 per tileset, and pages past `$0F` wrong, and nothing else. A
-  new step 2b piece adds its part to that build. A build of the whole vanilla import passes
-  with levels `105` and `106`. The Lunar Magic features of step 2b are each to be checked
-  this way. Once a build writes any of the bytes Kobo writes only because Lunar Magic
-  checks them ([lunar-magic-install.md](lunar-magic-install.md#bytes-kobo-writes-because-lunar-magic-checks-them)),
+  new piece of Kobo's install adds its part to that build. A build of the whole vanilla
+  import passes with levels `105` and `106`. Every Lunar Magic feature builds write is
+  checked this way. Once a build writes any of the bytes Kobo writes only because Lunar Magic
+  checks them ([lunar-magic-install.md](lunar-magic-install.md#bytes-kobo-writes-because-lunar-magic-or-other-tools-check-them)),
   every feature's check runs twice, with those bytes and with them cleared back to what a
   build without them has, and anything Lunar Magic then does differently (installs, keeps,
   or drops) is recorded in that section.

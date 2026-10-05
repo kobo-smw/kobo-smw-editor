@@ -10,7 +10,7 @@
     options: --kobo PATH (default: kobo on PATH), --vram (also VRAM and CGRAM),
              --sa1 (also an SA-1 ROM's I-RAM and BW-RAM, raw, at their bus addresses)
 
-Clean room (docs/step-2.md): this reports memory effects only, addresses and the
+Clean room (docs/clean-room.md): this reports memory effects only, addresses and the
 values each ROM left there after `kobo level wram` / `kobo level dump` ran its load.
 It never prints instructions, program counters, or ROM bytes, so it may be run on
 Lunar Magic-saved ROMs to find what a hook leaves behind. Do not extend it to print

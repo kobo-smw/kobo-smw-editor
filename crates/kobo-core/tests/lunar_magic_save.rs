@@ -134,7 +134,7 @@ fn entry(tile: u16) -> Map16Entry {
     }
 }
 
-/// Level 105 with what step 2b builds in Lunar Magic's layout: objects
+/// Level 105 with what builds write in Lunar Magic's layout: objects
 /// placing tiles of page 2, a palette of its own, a main entrance and a
 /// separate midway entrance with Lunar Magic's settings, and a secondary
 /// entrance using both of its further tables; and Map16 pages in three

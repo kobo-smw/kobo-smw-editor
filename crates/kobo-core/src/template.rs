@@ -4,7 +4,7 @@
 //! own release, its SHA-256, the steps its setup takes before a first build,
 //! and how Kobo builds it. Kobo carries nothing of the baserom itself:
 //! most baseroms have no licence, their resources staying their authors'
-//! (docs/step-2.md, "No base"), so the user's machine fetches the release
+//! (docs/build.md, "No base"), so the user's machine fetches the release
 //! from where its authors publish it, checked against the recipe, and the
 //! import (`import::import_callisto`) turns it into the user's project.
 

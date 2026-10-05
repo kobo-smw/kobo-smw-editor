@@ -98,6 +98,9 @@ What a rendered level does not reproduce, and what the tooling does not handle.
   there among the ranges it did not carry, and a Callisto import says how many colours its
   `shared_palettes` file changes (the Romhack Races baserom: 3). Every word there is a
   colour, so the text format can be `#RRGGBB` by table.
+- Builds are not FastROM. A Callisto project whose initial patch (a ROM, which Kobo does
+  not carry) is FastROM, as the Romhack Races baserom's is, imports with a note: code its
+  patches put in banks `$80` and up runs at SlowROM speed in the build.
 - A rendered level shows every ExAnimation slot's first frame: the level's setup runs the
   animation once for each of its eight phases, so the picture has what the level shows as
   it appears. There is no option to render a later frame or a triggered state. Decided on

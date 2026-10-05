@@ -1,4 +1,4 @@
-//! The clean room (`docs/step-2.md`, "Clean room"): Kobo never shows
+//! The clean room (`docs/clean-room.md`): Kobo never shows
 //! anyone Lunar Magic's code. This module is the one place that decides
 //! when a process holds a ROM Lunar Magic saved, and what every output
 //! Kobo has then leaves out.

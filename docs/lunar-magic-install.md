@@ -5,7 +5,7 @@ save decides that piece by piece, what each piece replaces in the vanilla game, 
 for, and what it has to leave behind. A piece whose tables a Kobo build writes has to be
 Kobo's, with the check Lunar Magic makes for it met, or a save installs Lunar Magic's
 over it and resets the tables; any other piece a save may install
-([step-2.md](step-2.md), work order 2b). The rest of Lunar Magic's footprint, and the
+([build.md](build.md#lunar-magics-layout-piece-by-piece)). The rest of Lunar Magic's footprint, and the
 spike that found this set, are in [lunar-magic.md](lunar-magic.md); the vanilla code
 named here is described in [smw.md](smw.md).
 
@@ -149,7 +149,7 @@ time); the command line reports success in every case.
 
 Bytes of Lunar Magic's own that Kobo writes only because Lunar Magic, or a patch or tool
 that expects its install, checks them before it treats a piece as installed, and only as
-many as the check needs (step-2.md, "Clean room").
+many as the check needs ([clean-room.md](clean-room.md)).
 Each can tell Lunar Magic more than Kobo means: a feature that goes in after one of these
 has its Lunar Magic check run with and without the bytes ([testing.md](testing.md)), and
 what Lunar Magic does differently is recorded here.
@@ -1692,7 +1692,7 @@ one: in level `156` (298 rows, `TT` 1 with smart spawning) 3.30's loader erases 
 Brother whose Y is `$130` below the camera's a frame before Kobo's does. Moved into a 3.70
 ROM (`tools/lunar-magic/transfer`), the hack plays that level the same with 3.70's
 loader and with Kobo's on nine routes through it, down, up, and across (2026-09-28), so
-the difference is 3.30's. Kobo matches 3.70, the version step 2 targets, and does not
+the difference is 3.30's. Kobo matches 3.70, the version its builds target, and does not
 follow older versions' differences (accepted, maintainer, 2026-10-03). A level made taller by editing an MWL's size byte for Lunar Magic to import
 never built its cache (`$0CF6`) or `$0BF0` in `sprite_probe` and spawned nothing, so it
 was not used. `$02AA61` was not seen to matter.
@@ -2021,4 +2021,14 @@ restorable code, or anything else, reads it; which reads exist is the main open 
   to 3.70, vanilla, or other), and what makes 3.70 upgrade an older install. Kobo reads
   many versions but writes 3.70's layout, so this matters only for import.
 - GUI operations (overworld save, ExAnimation, custom palettes, VRAM patch options) were
-  not tried; they may write inside this set.
+  not tried; they may write inside this set. They matter most of all the unknowns: a
+  build leaves the overworld, the title screen, the credits, and messages for Lunar
+  Magic's GUI to finish ([build.md](build.md#what-is-left-to-lunar-magic)), and every check
+  so far ran its command line. Deferred by the maintainer at step 2's close (2026-10-05),
+  to be done by hand. Method: build a project that uses every piece (Kaizo Kindergarten
+  imported, or the RHR template); in Lunar Magic's GUI under Wine, on a copy, edit and
+  save the overworld (a tile, a level tile's number, a path), a message, the title
+  screen's demo, and the credits, then each of the other operations above; after each
+  save, `kobo diff` of the build and the saved copy must show only the edit (and what
+  any save changes, lunar-magic.md), `romdiff.py` which ranges of Kobo's install it
+  touched, and `install-gate.py` whether a piece of Kobo's was replaced.

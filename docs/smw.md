@@ -41,7 +41,8 @@ are SMWDisX's.
   `ReadByte` goes on at `$8000` of the next bank when the address wraps, so a stream may
   cross a LoROM bank boundary. The vanilla files are not optimally packed: `compress::lz2`
   stores the 52 in 121,663 bytes against the ROM's 130,317, and the game reads them back
-  (`tests/lz2_compression.rs`).
+  (`tests/lz2_compression.rs`). `compress::lz3`, for an SA-1 build with LC_LZ3 GFX, stores
+  them in 116,124, without LC_LZ3's reversed and backwards copies.
 - The game's `UploadGFXFile` sets the fourth plane to the tile silhouette for the first 16x16
   block of `GFX01`/`17`/`31` (the berry, drawn with colours 9-F) and for all of `GFX1E` (and
   `GFX08` in tilesets `$11+`). Lunar Magic's export mirrors this except it skips `17` and flags a
