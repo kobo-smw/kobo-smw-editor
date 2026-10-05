@@ -172,6 +172,11 @@ Early stage: roadmap steps 1 and 2 are complete; step 3, the GUI level editor, i
 - `kobo_core::exanimation` is the one place that knows Lunar Magic's ExAnimation (the
   list format, where its tables are, what builds refuse); `source::animation` is its text
   format, and `asm/lunar-magic/exanimation.asm` Kobo's code for it.
+- `kobo_core::edit` is how anything changes a project: `LevelDocument` is an open level
+  file (its `Level` and `Comments`), `Edit` a change to it as a value (the editor's and a
+  script's alike), applied whole or not at all, and one undo step with the comments
+  before an entry moving with it; `Workspace` is the project in memory, built and a
+  level rendered from it (`preview`). The editor makes no change any other way.
 - `kobo_core::names` holds the names Kobo writes after ids (objects by object set, extended
   objects, sprites, tilesets, music) as data in `names.toml`; `LevelMode::name` names level
   modes. Take names from there; do not write lists of them elsewhere.
@@ -379,6 +384,8 @@ describes that module's code rather than the game). Do not grow this file with t
   what builds refuse, what is left to Lunar Magic, and the risks.
 - `docs/clean-room.md`: why Kobo looks at Lunar Magic only to interoperate with it, what
   evidence that allows, and how Kobo's outputs keep to it.
+- `docs/step-3.md`: the plan for the level editor, its decisions and work order, until
+  step 3 is done.
 - `docs/review.md`: decisions taken without the maintainer, and settings left refused,
   waiting for a batch review. Add to it rather than stopping to ask.
 - `docs/clean-room-audit.md`: the 2026-10-03 audit of everything Kobo knew of Lunar Magic:
@@ -406,6 +413,9 @@ describes that module's code rather than the game). Do not grow this file with t
   stage keyed by a chained input hash (kept in the user's cache folder, `kobo/stages`, or
   `KOBO_CACHE_DIR`). Output is identical on all three platforms, except
   where a tool orders files by directory listing, which may vary by file system.
+- **The editor is egui** (`eframe`, its OpenGL renderer), decided 2026-10-05: one
+  binary in Rust alone on all three platforms, and an immediate-mode interface drawn from
+  the editor's state with no second copy of it. `docs/step-3.md` has the reasoning.
 - **Tools come from pinned builds**: `kobo-smw/kobo-tools` builds Asar, PIXI, and UberASM
   Tool from pinned upstream commits for Linux x64, Windows x64, and macOS (arm64 and x64)
   and publishes them with their sources; Kobo pins a release's hashes
@@ -418,7 +428,7 @@ describes that module's code rather than the game). Do not grow this file with t
 
 ## Open decisions
 
-- GUI toolkit. Deferred until the library exists.
+None at present.
 
 ## Prior art to know
 

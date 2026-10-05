@@ -12,6 +12,7 @@ pub mod clean_room;
 pub mod compress;
 pub mod config;
 pub mod cpu;
+pub mod edit;
 pub mod entrance;
 pub mod exanimation;
 pub mod exgfx;

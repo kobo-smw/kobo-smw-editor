@@ -58,6 +58,71 @@ impl Comments {
         }
     }
 
+    /// Makes room for an entry inserted at `index` of array `list`
+    /// (`layer1.objects`): the comments before later entries move on with
+    /// them.
+    pub fn insert_entry(&mut self, list: &str, index: usize) {
+        self.renumber(list, |i| Some(if i >= index { i + 1 } else { i }));
+    }
+
+    /// Follows the removal of entry `index` of array `list`: its comments
+    /// stay where it stood, before the entry after it (or the closing
+    /// bracket), since a comment on a line of its own may head what
+    /// follows as much as describe what went.
+    pub fn remove_entry(&mut self, list: &str, index: usize, len: usize) {
+        let removed = self.places.remove(&entry_place(list, index));
+        self.renumber(list, |i| Some(if i > index { i - 1 } else { i }));
+        if let Some(lines) = removed {
+            // The entry that now stands at `index`, if there is one.
+            let next = if index + 1 < len {
+                entry_place(list, index)
+            } else {
+                format!("{list}[]")
+            };
+            let after = self.places.remove(&next).unwrap_or_default();
+            self.add(next, lines.into_iter().chain(after));
+        }
+    }
+
+    /// Follows entry `from` of array `list` to `to`: its comments go with
+    /// it.
+    pub fn move_entry(&mut self, list: &str, from: usize, to: usize) {
+        let moved = self.places.remove(&entry_place(list, from));
+        self.renumber(list, |i| {
+            Some(if from < to && (from + 1..=to).contains(&i) {
+                i - 1
+            } else if to < from && (to..from).contains(&i) {
+                i + 1
+            } else {
+                i
+            })
+        });
+        if let Some(lines) = moved {
+            self.add(entry_place(list, to), lines);
+        }
+    }
+
+    /// Gives every entry of `list` with comments the index `new` says.
+    fn renumber(&mut self, list: &str, new: impl Fn(usize) -> Option<usize>) {
+        let prefix = format!("{list}[");
+        let entries: Vec<(usize, Vec<String>)> = self
+            .places
+            .keys()
+            .filter_map(|place| {
+                let index = place.strip_prefix(&prefix)?.strip_suffix(']')?;
+                Some((index.parse().ok()?, place.clone()))
+            })
+            .collect::<Vec<(usize, String)>>()
+            .into_iter()
+            .map(|(i, place)| (i, self.places.remove(&place).unwrap_or_default()))
+            .collect();
+        for (i, lines) in entries {
+            if let Some(to) = new(i) {
+                self.add(entry_place(list, to), lines);
+            }
+        }
+    }
+
     /// Every place with comments, in order.
     pub fn places(&self) -> impl Iterator<Item = (&str, &[String])> {
         self.places.iter().map(|(p, l)| (p.as_str(), l.as_slice()))
@@ -66,6 +131,11 @@ impl Comments {
     pub fn is_empty(&self) -> bool {
         self.places.is_empty()
     }
+}
+
+/// The place of entry `index` of array `list`: `layer1.objects[3]`.
+pub fn entry_place(list: &str, index: usize) -> String {
+    format!("{list}[{index}]")
 }
 
 fn prefix(decor: &Decor) -> &str {
