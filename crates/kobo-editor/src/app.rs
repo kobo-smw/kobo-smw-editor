@@ -181,6 +181,8 @@ pub struct App {
     pub palette: PaletteState,
     /// What a click on the canvas places, while choosing from the palette.
     pub placing: Option<Placing>,
+    /// The layer the palette's objects go on.
+    pub place_layer: edit::ObjectLayer,
     /// A message for the status bar, and when it was given.
     status: Option<(String, Instant)>,
     /// The inspector widget whose change is being made, so that dragging
@@ -237,6 +239,7 @@ impl App {
             },
             palette: PaletteState::default(),
             placing: None,
+            place_layer: edit::ObjectLayer::One,
             status: None,
             editing: None,
             confirm_close: false,
@@ -306,6 +309,15 @@ impl App {
             }
         }
         self.current = Some(number);
+        let has_layer2 = self.open.get(&number).is_some_and(|o| {
+            matches!(
+                o.document.level().layer2,
+                kobo_core::source::level::Layer2::Objects(_)
+            )
+        });
+        if !has_layer2 {
+            self.place_layer = edit::ObjectLayer::One;
+        }
         self.request_preview(number);
     }
 

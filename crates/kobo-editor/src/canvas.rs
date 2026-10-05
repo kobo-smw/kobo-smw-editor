@@ -365,6 +365,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
     let sprites_on = view.sprites != SpriteView::Hidden;
     let placing = app.placing.clone();
     let mut place_at: Option<(u16, u16)> = None;
+    let place_layer = app.place_layer;
     let mut stop_placing = false;
     let mut finished: Option<Finished> = None;
     let mut context_edit: Option<(String, Vec<Edit>)> = None;
@@ -453,10 +454,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
         if placing.is_some() && !space {
             if response.clicked_by(PointerButton::Primary)
                 && let Some(at) = pointer
-                && at.x >= 0.0
-                && at.y >= 0.0
             {
-                place_at = Some(((at.x / TILE) as u16, (at.y / TILE) as u16));
+                let layer = match placing {
+                    Some(Placing::Object(_)) => place_layer,
+                    _ => ObjectLayer::One,
+                };
+                place_at = geometry.tile_at(layer, at);
             }
             if response.clicked_by(PointerButton::Secondary) {
                 stop_placing = true;
@@ -616,8 +619,17 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
             painter.galley(rect.min + Vec2::new(6.0, 3.0), galley, text);
         }
         if let (Some(placing), Some(at)) = (&placing, pointer) {
-            let tile =
-                selection::tile_rect((at.x / TILE).floor() as i32, (at.y / TILE).floor() as i32);
+            let layer = match placing {
+                Placing::Object(_) => place_layer,
+                Placing::Sprite(_) => ObjectLayer::One,
+            };
+            let offset = geometry_ref(open).layer_offset(layer);
+            let local = at - offset;
+            let tile = selection::tile_rect(
+                (local.x / TILE).floor() as i32,
+                (local.y / TILE).floor() as i32,
+            )
+            .translate(offset);
             let r = camera.rect_to_screen(canvas, tile);
             painter.rect(
                 r,
@@ -681,7 +693,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
         app.placing = None;
     }
     if let (Some(placing), Some((x, y))) = (placing, place_at) {
-        place(app, number, &placing, x, y);
+        place(app, number, &placing, place_layer, x, y);
     }
     hover
 }
@@ -753,24 +765,20 @@ fn exit_pills(
 /// Puts what the palette chose at tile (`x`, `y`): an object last in
 /// layer 1's list, so it draws over the rest; a sprite where the loader
 /// reaches it.
-fn place(app: &mut App, number: u16, placing: &Placing, x: u16, y: u16) {
+fn place(app: &mut App, number: u16, placing: &Placing, layer: ObjectLayer, x: u16, y: u16) {
     let Some(open) = app.open_mut(number) else {
         return;
     };
     let level = open.document.level();
     let (label, edits, item) = match placing {
         Placing::Object(template) => {
-            let index = level.layer1.len();
+            let index = objects(level, layer).map_or(0, Vec::len);
             let edit = Edit::InsertObject {
-                layer: ObjectLayer::One,
+                layer,
                 index,
                 object: edit::object_at(template, x, y),
             };
-            (
-                "Add object",
-                vec![edit],
-                Item::object(ObjectLayer::One, index),
-            )
+            ("Add object", vec![edit], Item::object(layer, index))
         }
         Placing::Sprite(id) => {
             let sprite = Sprite {

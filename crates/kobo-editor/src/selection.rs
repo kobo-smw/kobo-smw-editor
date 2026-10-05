@@ -110,13 +110,33 @@ impl Geometry {
         }
     }
 
-    /// The tiles an object drew, as level-pixel rectangles.
+    /// Where a layer's tile (0, 0) shows in the picture: layer 2 is
+    /// displaced from layer 1 by how the level scrolls it
+    /// (`LevelScene::layer2_offset`).
+    pub fn layer_offset(&self, layer: ObjectLayer) -> Vec2 {
+        match layer {
+            ObjectLayer::One => Vec2::ZERO,
+            ObjectLayer::Two => {
+                let [x, y] = self.loaded.scene.layer2_offset();
+                Vec2::new(x as f32, y as f32)
+            }
+        }
+    }
+
+    /// The tile of a layer at a point of the picture.
+    pub fn tile_at(&self, layer: ObjectLayer, at: Pos2) -> Option<(u16, u16)> {
+        let at = at - self.layer_offset(layer);
+        (at.x >= 0.0 && at.y >= 0.0).then(|| ((at.x / TILE) as u16, (at.y / TILE) as u16))
+    }
+
+    /// The tiles an object drew, as rectangles in the picture.
     pub fn object_tiles(&self, object: ObjectRef) -> Vec<Rect> {
+        let offset = self.layer_offset(object.layer);
         self.loaded
             .objects
             .tiles(&self.loaded.tiles, object)
             .into_iter()
-            .map(|(x, y)| tile_rect(x as i32, y as i32))
+            .map(|(x, y)| tile_rect(x as i32, y as i32).translate(offset))
             .collect()
     }
 
@@ -126,10 +146,13 @@ impl Geometry {
         match item {
             Item::Sprite(i) => self.sprites.get(i).copied(),
             Item::Object(object) => match self.loaded.objects.bounds(&self.loaded.tiles, object) {
-                Some([x, y, w, h]) => Some(Rect::from_min_size(
-                    Pos2::new(x as f32 * TILE, y as f32 * TILE),
-                    Vec2::new(w as f32 * TILE, h as f32 * TILE),
-                )),
+                Some([x, y, w, h]) => Some(
+                    Rect::from_min_size(
+                        Pos2::new(x as f32 * TILE, y as f32 * TILE),
+                        Vec2::new(w as f32 * TILE, h as f32 * TILE),
+                    )
+                    .translate(self.layer_offset(object.layer)),
+                ),
                 None => {
                     let list = objects(&self.level, object.layer)?;
                     let placed = list.get(object.index)?;
@@ -144,7 +167,8 @@ impl Geometry {
                         });
                     }
                     let (x, y) = edit::object_position(placed)?;
-                    Some(tile_rect(i32::from(x), i32::from(y)))
+                    let offset = self.layer_offset(object.layer);
+                    Some(tile_rect(i32::from(x), i32::from(y)).translate(offset))
                 }
             },
         }
@@ -166,14 +190,15 @@ impl Geometry {
                 return Some(Item::Sprite(i));
             }
         }
-        if at.x < 0.0 || at.y < 0.0 {
-            return None;
-        }
-        let (x, y) = ((at.x / TILE) as usize, (at.y / TILE) as usize);
         let tiles = &self.loaded.tiles;
         [ObjectLayer::One, ObjectLayer::Two]
             .into_iter()
-            .find_map(|layer| self.loaded.objects.owner_at(tiles, layer, x, y))
+            .find_map(|layer| {
+                let (x, y) = self.tile_at(layer, at)?;
+                self.loaded
+                    .objects
+                    .owner_at(tiles, layer, usize::from(x), usize::from(y))
+            })
             .map(Item::Object)
     }
 

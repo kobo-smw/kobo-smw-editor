@@ -51,21 +51,23 @@ struct Project(PathBuf);
 
 impl Project {
     fn new(clean: &Rom, name: &str) -> Self {
+        Self::with_level(clean, name, 0x105)
+    }
+
+    fn with_level(clean: &Rom, name: &str, number: u16) -> Self {
         let dir =
             std::env::temp_dir().join(format!("kobo-test-editor-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("levels")).unwrap();
-        let (level, _) = import::read_level(clean, 0x105).unwrap();
+        let (level, _) = import::read_level(clean, number).unwrap();
         std::fs::write(
-            dir.join("levels/105.toml"),
+            dir.join(format!("levels/{number:03X}.toml")),
             level.to_toml(&Default::default()),
         )
         .unwrap();
-        std::fs::write(
-            dir.join("kobo.toml"),
-            "format = 1\n\n[levels]\n0x105 = \"levels/105.toml\"\n",
-        )
-        .unwrap();
+        let manifest =
+            format!("format = 1\n\n[levels]\n0x{number:03X} = \"levels/{number:03X}.toml\"\n");
+        std::fs::write(dir.join("kobo.toml"), manifest).unwrap();
         Self(dir)
     }
 
@@ -81,9 +83,13 @@ impl Drop for Project {
 }
 
 fn harness(project: &Path) -> Harness<'static, App> {
+    harness_for(project, 0x105)
+}
+
+fn harness_for(project: &Path, level: u16) -> Harness<'static, App> {
     let startup = Startup {
         project: Some(project.to_path_buf()),
-        level: Some(0x105),
+        level: Some(level),
         ..Default::default()
     };
     Harness::builder()
@@ -99,10 +105,13 @@ fn wait_for(harness: &mut Harness<'static, App>, what: &str, done: impl Fn(&App)
         assert!(
             started.elapsed() < Duration::from_secs(30),
             "waited too long for {what}: {:?}",
-            harness
-                .state()
-                .current()
-                .and_then(|o| o.render_error.clone())
+            harness.state().current().map(|o| (
+                o.render_error.clone(),
+                o.requested,
+                o.shown,
+                o.document.undo_label().map(str::to_owned),
+                harness.state().status().map(str::to_owned),
+            ))
         );
         harness.step();
         std::thread::sleep(Duration::from_millis(10));
@@ -428,4 +437,58 @@ fn levels_are_added_by_copy_or_from_the_games_own() {
         app.current_number() == Some(0x107) && drawn(app)
     });
     assert!(project.0.join("levels/107.toml").exists());
+}
+
+#[test]
+fn layer_2_objects_are_selected_and_placed_where_layer_2_shows() {
+    use crate::palette::Placing;
+    use kobo_core::level::objects::Object;
+    use kobo_core::source::level::Layer2;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::with_level(&clean, "layer2", 0x00E);
+    let mut harness = harness_for(&project.0, 0x00E);
+    wait_for(&mut harness, "the picture", drawn);
+
+    // Layer 2's first object, at its tile (3, 19).
+    let at = {
+        let open = harness.state().current().unwrap();
+        let geometry = open.geometry.as_ref().unwrap();
+        let offset = geometry.layer_offset(ObjectLayer::Two);
+        let camera = open.camera.unwrap();
+        camera.to_screen(
+            open.canvas,
+            Pos2::new(3.0 * 16.0 + 8.0, 19.0 * 16.0 + 8.0) + offset,
+        )
+    };
+    harness.hover_at(at);
+    harness.step();
+    press(&mut harness, at, true);
+    harness.step();
+    press(&mut harness, at, false);
+    harness.step();
+    let selection = harness.state().current().unwrap().selection.clone();
+    assert_eq!(selection, [Item::object(ObjectLayer::Two, 0)]);
+
+    let layer2 = |app: &App| match &app.current().unwrap().document.level().layer2 {
+        Layer2::Objects(list) => list.clone(),
+        _ => panic!("level 00E has layer 2 objects"),
+    };
+    let before = layer2(harness.state()).len();
+    harness.state_mut().place_layer = ObjectLayer::Two;
+    harness.state_mut().placing = Some(Placing::Object(Object::Standard {
+        number: 0x05,
+        x: 0,
+        y: 0,
+        settings: 0,
+    }));
+    harness.hover_at(at);
+    harness.step();
+    press(&mut harness, at, true);
+    harness.step();
+    press(&mut harness, at, false);
+    harness.step();
+    let after = layer2(harness.state());
+    assert_eq!(after.len(), before + 1);
+    assert_eq!(edit::object_position(&after[before]), Some((3, 19)));
 }

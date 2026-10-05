@@ -258,6 +258,16 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 .color(theme::MUTED),
         );
     }
+    if matches!(level.layer2, kobo_core::source::level::Layer2::Objects(_))
+        && state.kind != Kind::Sprites
+    {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("On").color(theme::MUTED));
+            ui.selectable_value(&mut app.place_layer, edit::ObjectLayer::One, "Layer 1");
+            ui.selectable_value(&mut app.place_layer, edit::ObjectLayer::Two, "Layer 2");
+        });
+    }
+    let state = &mut app.palette;
     let kind = state.kind;
     let all = entries(kind, tileset);
     let key = (number, tileset, kind);
