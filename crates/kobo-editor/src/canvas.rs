@@ -802,13 +802,20 @@ fn show_canvas(
                 y,
                 screen: if vertical { y / 16 } else { x / 16 },
                 tile: inside.then(|| geometry.loaded.tiles.tile_at(x as usize, y as usize)),
-                owner: hovered_item.map(|item| {
-                    let name = selection::describe(&geometry.level, item);
-                    match item {
-                        Item::Object(o) => format!("{name} (object {})", o.index),
-                        Item::Sprite(i) => format!("{name} (sprite {i})"),
-                    }
-                }),
+                owner: open
+                    .failed_sprites
+                    .iter()
+                    .find(|(fx, fy, _)| (*fx, *fy) == (x, y))
+                    .map(|(_, _, why)| format!("Not drawn: {why}"))
+                    .or_else(|| {
+                        hovered_item.map(|item| {
+                            let name = selection::describe(&geometry.level, item);
+                            match item {
+                                Item::Object(o) => format!("{name} (object {})", o.index),
+                                Item::Sprite(i) => format!("{name} (sprite {i})"),
+                            }
+                        })
+                    }),
             });
         }
     }
@@ -1235,6 +1242,24 @@ fn draw(
 
     if view.entrances {
         draw_entries(&painter, canvas, camera, &open.entries);
+    }
+    for (x, y, _) in &open.failed_sprites {
+        let tile = camera.rect_to_screen(canvas, selection::tile_rect(*x, *y));
+        painter.rect_stroke(
+            tile,
+            CornerRadius::same(2),
+            Stroke::new(2.0, theme::ERROR),
+            StrokeKind::Outside,
+        );
+        let badge = Pos2::new(tile.right(), tile.top());
+        painter.circle_filled(badge, 7.0, theme::ERROR);
+        painter.text(
+            badge,
+            Align2::CENTER_CENTER,
+            "!",
+            FontId::monospace(11.0),
+            Color32::WHITE,
+        );
     }
     if view.changes
         && let Some(head) = &open.head

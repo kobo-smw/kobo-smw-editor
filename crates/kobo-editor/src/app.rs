@@ -71,6 +71,8 @@ pub struct OpenLevel {
     pub geometry: Option<Geometry>,
     pub diagnostics: Vec<String>,
     pub entries: Vec<crate::preview::Entry>,
+    /// The sprites the sprite capture gave up on, by tile, and why.
+    pub failed_sprites: Vec<(i32, i32, String)>,
     pub render_error: Option<String>,
     pub rendered_in: Option<Duration>,
     /// The newest preview asked for, and the one shown.
@@ -108,6 +110,7 @@ impl OpenLevel {
             geometry: None,
             diagnostics: Vec::new(),
             entries: Vec::new(),
+            failed_sprites: Vec::new(),
             render_error: None,
             rendered_in: None,
             requested: 0,
@@ -441,9 +444,11 @@ impl App {
                     loaded,
                     sprites,
                     diagnostics,
+                    failed_sprites,
                     entries,
                     took,
                 } = rendered;
+                open.failed_sprites = failed_sprites;
                 // The secondary entrances follow; until they do, the last
                 // ones stay.
                 let old: Vec<_> = open

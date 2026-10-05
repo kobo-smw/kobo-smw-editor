@@ -20,6 +20,8 @@ pub struct Rendered {
     pub sprites: Option<SpriteScene>,
     /// One line per distinct thing a pass gave up on.
     pub diagnostics: Vec<String>,
+    /// The sprites whose pass gave up, by tile, and why.
+    pub failed_sprites: Vec<(i32, i32, String)>,
     /// Where the player enters the level, each way he can.
     pub entries: Vec<Entry>,
     pub took: Duration,
@@ -189,6 +191,17 @@ fn run(job: &Job) -> Ran {
     let rendered = Rendered {
         image: egui::ColorImage::from_rgb(size, &rgb),
         diagnostics: expand::summarize(&render.diagnostics),
+        failed_sprites: render
+            .diagnostics
+            .iter()
+            .filter_map(|d| match d {
+                expand::Diagnostic::Cpu {
+                    pass: expand::Pass::Sprite { x, y, .. },
+                    ..
+                } => Some((*x, *y, d.to_string())),
+                _ => None,
+            })
+            .collect(),
         loaded: render.level,
         sprites: render.sprites,
         entries,
