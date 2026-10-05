@@ -405,7 +405,80 @@ struct Finished {
 /// Draws the canvas and handles the mouse on it.
 pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Hover> {
     let view = app.view;
-    let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+    let size = ui.available_size() - Vec2::new(0.0, MINIMAP_HEIGHT);
+    let (response, painter) =
+        ui.allocate_painter(size.max(Vec2::splat(64.0)), Sense::click_and_drag());
+    let hover = show_canvas(app, ui, response, painter, view);
+    minimap(app, ui);
+    hover
+}
+
+/// The strip under the canvas: the whole level, small.
+const MINIMAP_HEIGHT: f32 = 64.0;
+
+/// The whole level, small, with the view's rectangle on it; a click or a
+/// drag there brings the view to that place.
+fn minimap(app: &mut App, ui: &mut egui::Ui) {
+    let (response, painter) = ui.allocate_painter(
+        Vec2::new(ui.available_width(), MINIMAP_HEIGHT),
+        Sense::click_and_drag(),
+    );
+    let strip = response.rect;
+    painter.rect_filled(strip, CornerRadius::ZERO, theme::PANEL);
+    painter.line_segment(
+        [strip.left_top(), strip.right_top()],
+        Stroke::new(1.0, theme::LINE),
+    );
+    let Some(number) = app.current_number() else {
+        return;
+    };
+    let Some(open) = app.open_mut(number) else {
+        return;
+    };
+    let (Some(picture), Some(camera)) = (&open.picture, &mut open.camera) else {
+        return;
+    };
+    let room = strip.shrink2(Vec2::new(16.0, 8.0));
+    let scale = (room.height() / picture.size.y).min(room.width() / picture.size.x);
+    let shown = Rect::from_center_size(room.center(), picture.size * scale);
+    let whole = Rect::from_min_size(Pos2::ZERO, picture.size);
+    picture.draw(&painter, whole, shown, Color32::WHITE);
+    painter.rect_stroke(
+        shown,
+        CornerRadius::ZERO,
+        Stroke::new(1.0, theme::LINE),
+        StrokeKind::Outside,
+    );
+    let seen = Rect::from_min_size(camera.offset.to_pos2(), open.canvas.size() / camera.zoom);
+    let seen_on_strip = Rect::from_min_max(
+        shown.min + seen.min.to_vec2() * scale,
+        shown.min + seen.max.to_vec2() * scale,
+    )
+    .intersect(shown.expand(2.0));
+    painter.rect_stroke(
+        seen_on_strip,
+        CornerRadius::same(2),
+        Stroke::new(2.0, theme::ACCENT),
+        StrokeKind::Outside,
+    );
+    if (response.clicked() || response.dragged())
+        && let Some(at) = response.interact_pointer_pos()
+    {
+        let level = (at - shown.min) / scale;
+        camera.offset = level - seen.size() / 2.0;
+    }
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+}
+
+fn show_canvas(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    response: egui::Response,
+    painter: egui::Painter,
+    view: crate::app::View,
+) -> Option<Hover> {
     let canvas = response.rect;
     painter.rect_filled(canvas, CornerRadius::ZERO, theme::CANVAS);
     let Some(number) = app.current_number() else {
