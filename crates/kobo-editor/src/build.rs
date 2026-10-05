@@ -49,6 +49,8 @@ type Running = (
 
 pub struct BuildState {
     pub open: bool,
+    /// Open the ROM once built, with what the system opens it with.
+    play: bool,
     /// Also write a BPS patch beside the ROM.
     pub bps: bool,
     stages: Vec<(Stage, Status)>,
@@ -61,6 +63,7 @@ impl Default for BuildState {
     fn default() -> Self {
         Self {
             open: false,
+            play: false,
             bps: true,
             stages: Stage::ALL.iter().map(|&s| (s, Status::Waiting)).collect(),
             running: None,
@@ -190,6 +193,17 @@ pub fn poll(app: &mut App) {
             }
         }
     }
+    if state.play
+        && let Ok(built) = &result
+    {
+        let path = built.path.clone();
+        state.play = false;
+        state.result = Some(result);
+        crate::start::reveal(app, &path);
+        app.say(format!("Built and opened {}", path.display()));
+        return;
+    }
+    state.play = false;
     let message = match &result {
         Ok(built) => format!(
             "Built {} in {:.1} s",
@@ -210,6 +224,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     let mut open = app.build.open;
     let mut go_to = None;
     let mut build_again = false;
+    let mut play = false;
     egui::Window::new("Build")
         .open(&mut open)
         .resizable(false)
@@ -302,11 +317,18 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         .add_enabled(!state.busy(), button)
                         .on_hover_text("Ctrl+B")
                         .clicked();
+                    play = ui
+                        .add_enabled(!state.busy(), egui::Button::new("Build and play"))
+                        .on_hover_text(
+                            "Build, then open the ROM with what your system opens it with: your emulator",
+                        )
+                        .clicked();
                 });
             });
         });
     app.build.open = open;
-    if build_again {
+    if build_again || play {
+        app.build.play = play;
         start(app);
     }
     if let Some(level) = go_to {
