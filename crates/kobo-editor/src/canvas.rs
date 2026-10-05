@@ -530,9 +530,23 @@ fn show_canvas(
                 fit_height: false,
             };
             camera.fit(level_size, canvas.size(), vertical);
-            // A horizontal level is seen from its bottom, where the ground
-            // is; a vertical one from its bottom too, where it starts.
-            camera.offset.y = level_size.y - canvas.height() / camera.zoom;
+            // The level is seen first where the player starts: a third of
+            // the way in along it. Without that, from its bottom, where
+            // the ground is.
+            let seen = canvas.size() / camera.zoom;
+            camera.offset.y = level_size.y - seen.y;
+            if let Some(start) = open
+                .entries
+                .iter()
+                .find(|e| e.kind == crate::preview::EntryKind::Main)
+            {
+                let (x, y) = (start.x as f32, start.y as f32);
+                if vertical {
+                    camera.offset.y = y - seen.y * 2.0 / 3.0;
+                } else {
+                    camera.offset.x = x - seen.x / 3.0;
+                }
+            }
             camera
         });
         if camera.fit_height {
