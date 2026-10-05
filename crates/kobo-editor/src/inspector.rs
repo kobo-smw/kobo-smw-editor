@@ -1207,7 +1207,12 @@ fn camera_fields(
 /// value, and the value with it changed.
 type Field<T> = (&'static str, u8, u16, fn(T, u8) -> T);
 /// A flag of Lunar Magic's level settings, likewise.
-type Flag = (&'static str, bool, fn(&mut LevelSettings, bool));
+type Flag = (
+    &'static str,
+    &'static str,
+    bool,
+    fn(&mut LevelSettings, bool),
+);
 
 /// The main entrance and midway, Lunar Magic's settings the editor
 /// shows, `before_secondary`'s sections, and the secondary entrances that
@@ -1770,16 +1775,40 @@ fn lunar_settings(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>)
                     ui.end_row();
 
                     let flags: [Flag; 5] = [
-                        ("Slippery", settings.slippery, |s, v| s.slippery = v),
-                        ("Water", settings.water, |s, v| s.water = v),
-                        ("Face left", settings.face_left, |s, v| s.face_left = v),
-                        ("Smart spawning", settings.smart_spawn, |s, v| s.smart_spawn = v),
-                        ("Screens set themselves", settings.auto_screens, |s, v| {
-                            s.auto_screens = v
-                        }),
+                        (
+                            "Slippery",
+                            "The level is slippery from the main entrance on",
+                            settings.slippery,
+                            |s, v| s.slippery = v,
+                        ),
+                        (
+                            "Water",
+                            "The player swims from the main entrance on",
+                            settings.water,
+                            |s, v| s.water = v,
+                        ),
+                        (
+                            "Face left",
+                            "The player enters facing left",
+                            settings.face_left,
+                            |s, v| s.face_left = v,
+                        ),
+                        (
+                            "Smart spawning",
+                            "Lunar Magic's sprite loader spawns by the range below",
+                            settings.smart_spawn,
+                            |s, v| s.smart_spawn = v,
+                        ),
+                        (
+                            "Lunar Magic sets screens",
+                            "Lunar Magic sets the level's screen count from its objects when \
+                             it saves the level; Kobo builds the count the header gives",
+                            settings.auto_screens,
+                            |s, v| s.auto_screens = v,
+                        ),
                     ];
-                    for (label, value, with) in flags {
-                        ui.label(label);
+                    for (label, tip, value, with) in flags {
+                        ui.label(label).on_hover_text(tip);
                         let mut v = value;
                         let r = ui.checkbox(&mut v, "");
                         let mut changed = settings;
