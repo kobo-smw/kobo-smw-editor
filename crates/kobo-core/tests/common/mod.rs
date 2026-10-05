@@ -116,8 +116,8 @@ pub fn tier_path(tier: Tier) -> Option<PathBuf> {
 
 /// A test that found nothing to check in its tier (no hack of the corpus
 /// in a fixture, say) says so, which fails it when the tier is required:
-/// a test that checked nothing has not passed.
-/// A tier that is not set has said so already.
+/// a test that checked nothing has not passed. Nothing is said for a
+/// tier that is not set, which has said so already.
 pub fn none_checked(tier: Tier, checked: usize, what: impl std::fmt::Display) {
     if checked == 0 && tier.resolve().is_ok_and(|r| r.is_some()) {
         skip(tier, format_args!("nothing to check: {what}"));
