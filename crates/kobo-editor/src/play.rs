@@ -56,6 +56,29 @@ pub fn start(app: &mut App, start: Start) {
     ));
 }
 
+/// Plays the open level from where its main entrance puts the player.
+pub fn from_start(app: &mut App, powerup: u8) {
+    let start = app.current().and_then(|open| {
+        let entry = open
+            .entries
+            .iter()
+            .find(|e| e.kind == crate::preview::EntryKind::Main)?;
+        Some(Start {
+            level: open.number,
+            x: (entry.x.max(0) / 16) as u16,
+            y: (entry.y.max(0) / 16) as u16,
+            powerup,
+        })
+    });
+    match start {
+        Some(start) => {
+            app.play.powerup = powerup;
+            self::start(app, start);
+        }
+        None => app.say("The level's start is not known until its picture is drawn"),
+    }
+}
+
 /// Opens the build once it is done.
 pub fn poll(app: &mut App) {
     let Some((handle, _)) = &app.play.running else {

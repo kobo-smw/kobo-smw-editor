@@ -22,8 +22,8 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
 
 ## The window
 
-- **Top bar**: the Project, Edit, and View menus; Commands (Ctrl+K); Undo, Redo, Save, and
-  Build.
+- **Top bar**: the Project, Edit, and View menus; back and forward between levels;
+  Commands (Ctrl+K); Undo, Redo, Save, Play, and Build.
 - **Left**: five tabs.
   - *Levels*: the project's levels (and with the box ticked, the game's own, which are added
     when chosen); *All levels as pictures* shows every level as a card.

@@ -1034,6 +1034,17 @@ impl App {
                 if build.clicked() {
                     crate::build::start(self);
                 }
+                let play = ui
+                    .add_enabled(
+                        self.current().is_some() && !self.play.busy(),
+                        egui::Button::new("▶ Play"),
+                    )
+                    .on_hover_text(
+                        "Play the level from its start (F5: from where the mouse is; the canvas's menu: from there, with a power-up)",
+                    );
+                if play.clicked() {
+                    crate::play::from_start(self, self.play.powerup);
+                }
                 let modified = self.modified().count();
                 let save = ui
                     .add_enabled(modified > 0, egui::Button::new("Save"))

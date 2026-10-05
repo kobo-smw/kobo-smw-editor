@@ -249,24 +249,7 @@ fn run(app: &mut App, command: Command) {
         }
         Command::Background => app.backgrounds.open = true,
         Command::Back(forward) => app.go_back(forward),
-        Command::Play(powerup) => {
-            let start = app.current().and_then(|open| {
-                let entry = open
-                    .entries
-                    .iter()
-                    .find(|e| e.kind == crate::preview::EntryKind::Main)?;
-                Some(kobo_core::playtest::Start {
-                    level: open.number,
-                    x: (entry.x.max(0) / 16) as u16,
-                    y: (entry.y.max(0) / 16) as u16,
-                    powerup,
-                })
-            });
-            if let Some(start) = start {
-                app.play.powerup = powerup;
-                crate::play::start(app, start);
-            }
-        }
+        Command::Play(powerup) => crate::play::from_start(app, powerup),
         Command::Player => {
             view.player = !view.player;
             app.redraw();
