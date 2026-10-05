@@ -110,14 +110,18 @@ pub fn query_for(level: &Level, entry: Entry) -> Option<String> {
     }
 }
 
-/// The entries of every level of `workspace` that `query` finds, in level
-/// order and each level's drawing order. An empty query finds nothing.
-pub fn find(workspace: &Workspace, query: &str) -> Vec<Found> {
-    let words: Vec<String> = query
+fn words(query: &str) -> Vec<String> {
+    query
         .to_lowercase()
         .split_whitespace()
         .map(str::to_string)
-        .collect();
+        .collect()
+}
+
+/// The entries of every level of `workspace` that `query` finds, in level
+/// order and each level's drawing order. An empty query finds nothing.
+pub fn find(workspace: &Workspace, query: &str) -> Vec<Found> {
+    let words = words(query);
     if words.is_empty() {
         return Vec::new();
     }
@@ -127,6 +131,18 @@ pub fn find(workspace: &Workspace, query: &str) -> Vec<Found> {
         .into_iter()
         .filter_map(|n| Some((n, workspace.level(n)?)))
         .flat_map(|(n, level)| entries(n, level))
+        .filter(|found| matches(found, &words))
+        .collect()
+}
+
+/// The entries of level `number`, `level`, that `query` finds.
+pub fn find_in(number: u16, level: &Level, query: &str) -> Vec<Found> {
+    let words = words(query);
+    if words.is_empty() {
+        return Vec::new();
+    }
+    entries(number, level)
+        .into_iter()
         .filter(|found| matches(found, &words))
         .collect()
 }

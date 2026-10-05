@@ -1256,14 +1256,28 @@ fn context_menu(
             Item::Object(o) => kobo_core::edit::find::Entry::Object(o.layer, o.index),
             Item::Sprite(i) => kobo_core::edit::find::Entry::Sprite(i),
         };
-        if let Some(query) = kobo_core::edit::find::query_for(open.document.level(), entry)
-            && ui
+        if let Some(query) = kobo_core::edit::find::query_for(open.document.level(), entry) {
+            if ui.button("Select every one like it").clicked() {
+                let found = kobo_core::edit::find::find_in(number, open.document.level(), &query);
+                open.selection = found
+                    .iter()
+                    .map(|f| match f.entry {
+                        kobo_core::edit::find::Entry::Object(layer, index) => {
+                            Item::object(layer, index)
+                        }
+                        kobo_core::edit::find::Entry::Sprite(index) => Item::Sprite(index),
+                    })
+                    .collect();
+                ui.close();
+            }
+            if ui
                 .button("Find every one in the project")
                 .on_hover_text(format!("Find: {query}"))
                 .clicked()
-        {
-            *find = Some(query);
-            ui.close();
+            {
+                *find = Some(query);
+                ui.close();
+            }
         }
     }
     if ui.button("Delete").clicked() {

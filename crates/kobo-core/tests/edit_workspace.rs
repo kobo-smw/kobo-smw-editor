@@ -434,6 +434,16 @@ fn a_search_finds_every_one_of_a_kind() {
         };
         assert_eq!(workspace.level(f.level).unwrap().sprites.list[i].id, id);
     }
+    // One level's alone.
+    let here = find::find_in(0x105, &level, &query);
+    assert_eq!(
+        here,
+        found
+            .iter()
+            .filter(|f| f.level == 0x105)
+            .cloned()
+            .collect::<Vec<_>>()
+    );
     // Every screen exit, of both levels.
     let exits = find::find(&workspace, "exit");
     assert!(exits.iter().any(|f| f.level == 0x105));
