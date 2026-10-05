@@ -244,6 +244,8 @@ pub struct App {
     pub build: crate::build::BuildState,
     startup: Startup,
     screenshot_frames: Option<u32>,
+    /// The window's title as last set.
+    shown_title: String,
 }
 
 impl App {
@@ -309,6 +311,7 @@ impl App {
             build: Default::default(),
             startup: startup.clone(),
             screenshot_frames: None,
+            shown_title: String::new(),
         };
         if let Clean::Loaded(rom) = &app.clean {
             app.entrance_tables = kobo_core::entrance::MainEntranceTables::read(rom).ok();
@@ -1471,6 +1474,30 @@ impl App {
         }
     }
 
+    /// The window's title: the project, the level, and whether anything is
+    /// unsaved; set when it changes.
+    fn title(&mut self, ctx: &egui::Context) {
+        let mut title = String::from("Kobo");
+        if let Some(workspace) = &self.workspace {
+            let root = &workspace.project().root;
+            let name = root.file_name().map_or_else(
+                || root.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            );
+            title = format!("{name} — Kobo");
+            if let Some(open) = self.current() {
+                title = format!("{name} / {:03X} — Kobo", open.number);
+            }
+            if self.modified().count() > 0 {
+                title = format!("● {title}");
+            }
+        }
+        if self.shown_title != title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.shown_title = title;
+        }
+    }
+
     /// With `--screenshot`, saves the window once the level is drawn.
     fn screenshot(&mut self, ctx: &egui::Context) {
         let Some(path) = self.startup.screenshot.clone() else {
@@ -1555,6 +1582,7 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
         self.take_preview(&ctx);
         crate::start::poll(self, &ctx);
+        self.title(&ctx);
         self.follow_files();
         crate::build::poll(self);
         self.shortcuts(&ctx);

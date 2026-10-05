@@ -58,6 +58,63 @@ struct Args {
     size: String,
 }
 
+/// The window's icon: Kobo's amber square with a dark K, drawn here
+/// rather than kept as a file.
+fn icon() -> egui::IconData {
+    const SIZE: usize = 64;
+    // The K, on a 16 by 16 grid of 4-pixel cells.
+    const K: [&str; 16] = [
+        "................",
+        "................",
+        "...##.....##....",
+        "...##....##.....",
+        "...##...##......",
+        "...##..##.......",
+        "...##.##........",
+        "...####.........",
+        "...#####........",
+        "...##.###.......",
+        "...##..###......",
+        "...##...###.....",
+        "...##....###....",
+        "...##.....###...",
+        "................",
+        "................",
+    ];
+    let amber = [0xF2, 0xB5, 0x44, 0xFF];
+    let dark = [0x16, 0x18, 0x1D, 0xFF];
+    let mut rgba = Vec::with_capacity(SIZE * SIZE * 4);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            // Rounded corners, 10 pixels in.
+            let corner = |c: usize| {
+                if c < 10 {
+                    10 - c
+                } else if c >= SIZE - 10 {
+                    c + 11 - SIZE
+                } else {
+                    0
+                }
+            };
+            let (cx, cy) = (corner(x), corner(y));
+            let outside = cx * cx + cy * cy > 100;
+            let ink = K[y / 4].as_bytes()[x / 4] == b'#';
+            rgba.extend(if outside {
+                [0, 0, 0, 0]
+            } else if ink {
+                dark
+            } else {
+                amber
+            });
+        }
+    }
+    egui::IconData {
+        rgba,
+        width: SIZE as u32,
+        height: SIZE as u32,
+    }
+}
+
 fn parse_hex(text: &str) -> Result<u16, String> {
     u16::from_str_radix(text.trim_start_matches("0x"), 16).map_err(|e| e.to_string())
 }
@@ -72,6 +129,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Kobo")
+            .with_icon(icon())
             .with_inner_size([width, height])
             .with_min_inner_size([800.0, 500.0]),
         ..Default::default()
