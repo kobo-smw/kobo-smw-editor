@@ -213,6 +213,12 @@ are SMWDisX's.
   Eeries, `E0` three platforms on chains, `E1`-`E6` cluster sprites, and `E7`-`FF` scroll
   commands (`$143E` = number minus `$E7`), whose dispatches (`CODE_05BC76`, `CODE_05BCE9`)
   have 15 entries, so `F6`-`FF` run past them.
+- A sprite list must be in screen order. `LoadSprFromLevel` walks the list from its
+  start each time a column of the level comes into view, skips sprites on screens before
+  the one it loads, and returns at the first sprite on a screen past it (`CODE_02A84C`'s
+  `BNE`), so a sprite placed after one on a later screen is never loaded. Within a screen
+  the order does not matter. The editor keeps the order when it adds or moves a sprite
+  (`edit::insert_sprite`, `edit::move_sprites`); a build does not sort.
 - The music setting indexes `LevelMusicTable` (`$0584DB`: songs `02 06 01 08 07 03 05 12`).
   `SpecialLevTable` (`$058497`) marks the boss modes: `$C0` in `09` (Morton, Roy, Ludwig,
   Reznor), `$80` in `0B` (Iggy, Larry), `$C1` in `10` (Bowser).

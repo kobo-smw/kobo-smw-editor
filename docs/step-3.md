@@ -103,17 +103,33 @@ file by hand; when they do, the editor follows.
 
 ## Work order
 
-1. `kobo_core::edit`: `LevelDocument`, `Edit`, undo, comments that follow their entry,
-   reloading from disk. Unit tests.
-2. `expand::ObjectMap`: the owner of every grid tile, and each object's footprint.
-   ROM-backed tests on vanilla levels.
-3. `edit::Workspace`: the project in memory, rebuilt and rendered for a level.
-4. `crates/kobo-editor`: the window, the level list, the canvas with a level picture,
-   pan and zoom.
-5. Selection and the inspector; moving, resizing, deleting, undo, save.
-6. Live reload and the source pane.
-7. The palette for adding objects and sprites; the header and entrances.
-8. Build from the editor, diagnostics, and CI on all three platforms.
+Done (2026-10-05), on the `step-3-editor` branch:
+
+1. `kobo_core::edit`: `LevelDocument`, `Edit`, undo (`amend` for a dragged value), comments
+   that follow their entry, reloading from disk, the line of an entry, settings fields,
+   sprites kept in screen order, exit targets, `copy_of`.
+2. `expand::ObjectMap`, through `cpu::watch`: every vanilla level's drawn tiles owned.
+3. `edit::Workspace`: preview, adding a level (`import::add_level`), `clean_level`;
+   `edit::object_previews` for the palette's pictures.
+4. `crates/kobo-editor`: the window, the level list (the game's own levels too), the canvas
+   with pan, zoom, screens, grid, and sprites drawn, as IDs, or off.
+5. Selection (click, shift-click, marquee), moving (drag, arrow keys), resizing by a
+   handle, delete, reorder, the inspector (objects, sprites, screen exits, the header, the
+   main entrance, level settings, secondary entrances), undo, save.
+6. Live reload with a conflict prompt, and the source pane.
+7. The palette (objects, extended objects, sprites) with pictures; placing; screen exits
+   from the canvas's menu; copying a level.
+8. Build to `build.sfc`, diagnostics, unsaved-edit prompt on close.
+
+Next:
+
+- Layer 2 objects: placing on layer 2 in the modes that have it (selecting and moving
+  them works).
+- Adding and removing secondary entrances, and the midway entrance's own settings.
+- Level size (Lunar Magic's heights) and the rest of `LevelSettings`.
+- Sprite pictures in the palette, and extension bytes for a tool's sprites.
+- CI: the editor builds and its tests run on all three platforms (they need no display),
+  but this has not been pushed yet.
 
 ## Running it
 
