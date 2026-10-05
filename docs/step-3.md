@@ -121,12 +121,13 @@ Done (2026-10-05), on the `step-3-editor` branch:
    from the canvas's menu; copying a level.
 8. Build to `build.sfc`, diagnostics, unsaved-edit prompt on close.
 
+Since: layer 2's objects selected and placed where the picture shows them, and secondary
+entrances added (`Workspace::free_entrance`) and removed.
+
 Next:
 
-- Layer 2 objects: placing on layer 2 in the modes that have it (selecting and moving
-  them works).
-- Adding and removing secondary entrances, and the midway entrance's own settings.
-- Level size (Lunar Magic's heights) and the rest of `LevelSettings`.
+- The midway entrance's own settings, Lunar Magic's level sizes, and the rest of
+  `LevelSettings`.
 - Sprite pictures in the palette, and extension bytes for a tool's sprites.
 - CI: the editor builds and its tests run on all three platforms (they need no display),
   but this has not been pushed yet.
