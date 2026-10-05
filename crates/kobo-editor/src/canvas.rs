@@ -597,13 +597,15 @@ fn show_canvas(
                 Some(e) => format!("This level does not draw: {e}"),
                 None => "Drawing…".to_string(),
             };
-            painter.text(
-                canvas.center(),
-                Align2::CENTER_CENTER,
+            // Wrapped to the canvas, for a long reason.
+            let galley = painter.layout(
                 text,
                 FontId::proportional(16.0),
                 theme::MUTED,
+                (canvas.width() - 80.0).max(200.0),
             );
+            let at = canvas.center() - galley.size() / 2.0;
+            painter.galley(at, galley, theme::MUTED);
             return None;
         };
         let level_size = geometry.size();

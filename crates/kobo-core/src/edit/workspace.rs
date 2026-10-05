@@ -19,12 +19,37 @@ pub enum WorkspaceError {
     Build(#[from] BuildError),
     #[error(transparent)]
     Render(#[from] RenderError),
+    /// The level does not draw from a build that had to leave other
+    /// levels out, which may be why.
+    #[error("{error} (the build for it left out {}, which do not build)", left_out_list(.left_out))]
+    RenderLeavingOut {
+        error: RenderError,
+        left_out: Vec<(u16, String)>,
+    },
     #[error("the project has no level {0:03X}")]
     NoLevel(u16),
     #[error("the project has level {0:03X} already")]
     HasLevel(u16),
     #[error(transparent)]
     Import(Box<crate::import::ImportError>),
+}
+
+/// The levels a build left out, by number: the first eight.
+fn left_out_list(left_out: &[(u16, String)]) -> String {
+    let mut levels: Vec<String> = left_out
+        .iter()
+        .take(8)
+        .map(|(n, _)| format!("{n:03X}"))
+        .collect();
+    if left_out.len() > 8 {
+        levels.push(format!("and {} more", left_out.len() - 8));
+    }
+    let noun = if left_out.len() == 1 {
+        "level"
+    } else {
+        "levels"
+    };
+    format!("{noun} {}", levels.join(", "))
 }
 
 impl From<crate::import::ImportError> for WorkspaceError {
@@ -285,7 +310,14 @@ impl Workspace {
         let (rom, left_out) = self.build_leaving_out(Some(level))?;
         let rom = Arc::new(rom);
         operation.check().map_err(RenderError::from)?;
-        let render = render::render_level_with_control(&rom, level, options, operation)?;
+        let render = match render::render_level_with_control(&rom, level, options, operation) {
+            Ok(render) => render,
+            // A cancelled render stays what it is.
+            Err(error) if !left_out.is_empty() && !matches!(error, RenderError::Operation(_)) => {
+                return Err(WorkspaceError::RenderLeavingOut { error, left_out });
+            }
+            Err(error) => return Err(error.into()),
+        };
         Ok(Preview {
             rom,
             render,
