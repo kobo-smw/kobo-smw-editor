@@ -95,8 +95,10 @@ pub struct OpenLevel {
     pub menu_at: Option<egui::Pos2>,
     pub drag: Option<Drag>,
     pub pending: Option<Pending>,
-    /// Bring the selection into view on the next frame.
+    /// Bring the selection into view on the next frame; with `centre`,
+    /// to the middle of the view even if it is in view already.
     pub focus: bool,
+    pub centre: bool,
     /// Bring this entrance into view once the picture has it.
     pub look_at: Option<crate::preview::EntryKind>,
     /// The build the picture is of.
@@ -137,6 +139,7 @@ impl OpenLevel {
             drag: None,
             pending: None,
             focus: false,
+            centre: false,
             look_at: None,
             built: None,
             outline_scrolled_to: None,

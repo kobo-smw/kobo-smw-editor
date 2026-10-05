@@ -374,6 +374,12 @@ pub fn keys(app: &mut App, ctx: &egui::Context) {
     if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::G)) {
         app.view.grid = !app.view.grid;
     }
+    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::F))
+        && let Some(open) = app.current_mut()
+    {
+        open.focus = true;
+        open.centre = true;
+    }
     // Tab and Shift+Tab: the next or the one before in drawing order,
     // which reaches what draws behind something else.
     let step = ctx.input_mut(|i| {
@@ -649,6 +655,7 @@ fn show_canvas(
         }
         if open.focus {
             open.focus = false;
+            let centre = std::mem::take(&mut open.centre);
             let bounds = open
                 .selection
                 .iter()
@@ -657,7 +664,7 @@ fn show_canvas(
             // Only what is out of view is brought into it.
             let seen = Rect::from_min_size(camera.offset.to_pos2(), canvas.size() / camera.zoom);
             if let Some(bounds) = bounds
-                && !seen.contains_rect(bounds)
+                && (centre || !seen.contains_rect(bounds))
             {
                 camera.centre_on(bounds, canvas.size());
             }

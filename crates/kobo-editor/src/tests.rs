@@ -1466,3 +1466,25 @@ fn tab_steps_through_the_level_in_drawing_order() {
         [Item::object(ObjectLayer::One, 9)]
     );
 }
+
+#[test]
+fn f_centres_the_view_on_the_selection() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "centre");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    let open = harness.state_mut().current_mut().unwrap();
+    open.selection = vec![Item::object(ObjectLayer::One, 10)];
+    open.camera.as_mut().unwrap().offset.x = 0.0;
+    harness.step();
+    harness.key_press(Key::F);
+    harness.run_steps(2);
+    // The ledge at (60, 20), 12 wide, centred on pixel 1056: the view
+    // starts left of it by less than its middle.
+    let camera = harness.state().current().unwrap().camera.unwrap();
+    assert!(
+        camera.offset.x > 500.0 && camera.offset.x < 1056.0,
+        "the view starts at {}",
+        camera.offset.x
+    );
+}

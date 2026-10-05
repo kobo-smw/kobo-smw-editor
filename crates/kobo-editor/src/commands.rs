@@ -423,6 +423,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                             "Tab, Shift+Tab",
                             "Select the next, the one before, in drawing order",
                         ),
+                        ("F", "Centre the view on the selection"),
                         (
                             "Ctrl+[, Ctrl+]",
                             "Send backward, bring forward (Shift: to the back, front)",
