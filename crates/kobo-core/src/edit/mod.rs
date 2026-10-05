@@ -121,6 +121,16 @@ pub enum EditError {
     },
 }
 
+/// A level as a copy of it under another number starts: the same but for
+/// the secondary entrances into it, which are each one level's by their
+/// number, and stay with the original.
+pub fn copy_of(level: &Level) -> Level {
+    Level {
+        entrances: Vec::new(),
+        ..level.clone()
+    }
+}
+
 /// What a screen exit leads to, whichever format it is kept in.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ExitTarget {

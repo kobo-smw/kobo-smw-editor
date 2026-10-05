@@ -169,6 +169,12 @@ pub struct App {
     watcher: Option<Watcher>,
     pub view: View,
     level_filter: String,
+    /// List the levels the project leaves as the game's too.
+    all_levels: bool,
+    /// A level the user asked to add from the game's own, to confirm.
+    pub(crate) adding: Option<u16>,
+    /// Where the level panel's copy goes.
+    pub copy_to: u16,
     left: LeftTab,
     pub palette: PaletteState,
     /// What a click on the canvas places, while choosing from the palette.
@@ -219,6 +225,9 @@ impl App {
                 source: startup.source,
             },
             level_filter: String::new(),
+            all_levels: false,
+            adding: None,
+            copy_to: 0,
             left: LeftTab::Levels,
             palette: PaletteState::default(),
             placing: None,
@@ -683,9 +692,16 @@ impl App {
         let Some(workspace) = &self.workspace else {
             return;
         };
+        ui.checkbox(&mut self.all_levels, "The game's own levels too")
+            .on_hover_text("Levels the project does not list build as the game has them. Choose one to add it.");
         let filter = self.level_filter.trim().to_ascii_uppercase();
-        let levels: Vec<u16> = workspace
-            .levels()
+        let listed: Vec<u16> = if self.all_levels {
+            (0..0x200).collect()
+        } else {
+            workspace.levels().collect()
+        };
+        let levels: Vec<u16> = listed
+            .into_iter()
             .filter(|n| filter.is_empty() || format!("{n:03X}").contains(&filter))
             .collect();
         let mut clicked = None;
@@ -698,12 +714,15 @@ impl App {
                             .open
                             .get(&number)
                             .is_some_and(|o| o.document.is_modified());
-                        let about = workspace.level(number).map(|level| {
-                            let tileset =
-                                kobo_core::names::object_tileset(level.header.object_tileset)
-                                    .unwrap_or("?");
-                            format!("{tileset} · {}", level.header.screens)
-                        });
+                        let about = match workspace.level(number) {
+                            Some(level) => {
+                                let tileset =
+                                    kobo_core::names::object_tileset(level.header.object_tileset)
+                                        .unwrap_or("?");
+                                format!("{tileset} · {}", level.header.screens)
+                            }
+                            None => "the game's own".to_string(),
+                        };
                         let mut job = egui::text::LayoutJob::default();
                         let font = egui::FontId::monospace(12.5);
                         job.append(
@@ -721,16 +740,14 @@ impl App {
                                 ),
                             );
                         }
-                        if let Some(about) = about {
-                            job.append(
-                                &format!("  {about}"),
-                                0.0,
-                                egui::TextFormat::simple(
-                                    egui::FontId::proportional(12.0),
-                                    theme::MUTED,
-                                ),
-                            );
-                        }
+                        job.append(
+                            &format!("  {about}"),
+                            0.0,
+                            egui::TextFormat::simple(
+                                egui::FontId::proportional(12.0),
+                                theme::MUTED,
+                            ),
+                        );
                         let selected = self.current == Some(number);
                         if ui.selectable_label(selected, job).clicked() {
                             clicked = Some(number);
@@ -739,7 +756,11 @@ impl App {
                 });
             });
         if let Some(number) = clicked {
-            self.open_level(number);
+            if workspace.level_path(number).is_some() {
+                self.open_level(number);
+            } else {
+                self.adding = Some(number);
+            }
         }
     }
 
@@ -755,9 +776,11 @@ impl App {
                     ui.label(RichText::new(name).color(theme::MUTED));
                 }
             }
-            if let Some((message, at)) = &self.status
-                && at.elapsed() < Duration::from_secs(8)
-            {
+            let recent = self
+                .status
+                .as_ref()
+                .is_some_and(|(_, at)| at.elapsed() < Duration::from_secs(8));
+            if recent && let Some(message) = self.status() {
                 ui.separator();
                 ui.label(message);
             }
@@ -851,6 +874,60 @@ impl App {
                 }
             }
         });
+    }
+
+    /// Adds level `number` to the project as `level`, and opens it.
+    pub fn add_level(&mut self, number: u16, level: &kobo_core::source::level::Level) {
+        let Some(workspace) = &mut self.workspace else {
+            return;
+        };
+        match workspace.add_level(number, level) {
+            Ok(path) => {
+                self.say(format!("Added level {number:03X} as {}", path.display()));
+                self.open_level(number);
+            }
+            Err(e) => self.say(format!("Could not add level {number:03X}: {e}")),
+        }
+    }
+
+    /// Asks before adding a level the project leaves as the game's own.
+    fn confirm_adding(&mut self, ctx: &egui::Context) {
+        let Some(number) = self.adding else { return };
+        let mut add = false;
+        let mut cancel = false;
+        egui::Modal::new(egui::Id::new("confirm-add")).show(ctx, |ui| {
+            ui.heading(format!("Level {number:03X}"));
+            ui.label("The project does not list this level, so it builds as the game has it.");
+            ui.label("Add it to the project to edit it, starting from the game's own.");
+            ui.horizontal(|ui| {
+                add = ui.button("Add to the project").clicked();
+                cancel = ui.button("Cancel").clicked();
+            });
+        });
+        if cancel {
+            self.adding = None;
+        }
+        if add {
+            self.adding = None;
+            let level = self.workspace.as_ref().map(|w| w.clean_level(number));
+            match level {
+                Some(Ok(level)) => self.add_level(number, &level),
+                Some(Err(e)) => self.say(format!("Could not read level {number:03X}: {e}")),
+                None => {}
+            }
+        }
+    }
+
+    /// The status bar's last message.
+    pub fn status(&self) -> Option<&str> {
+        self.status.as_ref().map(|(message, _)| message.as_str())
+    }
+
+    /// Whether the project lists level `number`.
+    pub fn has_level(&self, number: u16) -> bool {
+        self.workspace
+            .as_ref()
+            .is_some_and(|w| w.level_path(number).is_some())
     }
 
     fn close_requests(&mut self, ctx: &egui::Context) {
@@ -1022,6 +1099,7 @@ impl eframe::App for App {
                 self.view_bar(ui);
                 canvas::show(self, ui);
             });
+        self.confirm_adding(&ctx);
         self.close_requests(&ctx);
         self.screenshot(&ctx);
     }

@@ -72,8 +72,10 @@ fn split_exits(objects: Vec<Object>) -> (Vec<String>, Vec<Object>) {
 /// the encoder's choices.
 fn without_lengths(mut mwl: Mwl) -> Mwl {
     mwl.layer1.data.len = 0;
+    mwl.layer1.data.starts.clear();
     if let Layer2Data::Objects(data) = &mut mwl.layer2.data {
         data.len = 0;
+        data.starts.clear();
     }
     mwl.sprites.list.len = 0;
     mwl

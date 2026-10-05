@@ -2009,35 +2009,14 @@ fn high_bits(p: &CustomPalette) -> bool {
         .any(|c| c.0 & 0x8000 != 0)
 }
 
-/// Imports an MWL file into the project in `dir`, as `level` or the level
-/// it was saved from, creating the project if there is none. The level
-/// goes in the file the manifest lists for it, or in `levels/NNN.toml`,
-/// keeping that file's comments; the manifest is written again.
-pub fn import_mwl(
-    bytes: &[u8],
-    clean: &Rom,
-    dir: &Path,
-    level: Option<u16>,
-) -> Result<Report, ImportError> {
-    import_mwl_sized(bytes, clean, dir, level, None)
-}
-
-/// [`import_mwl`] of a file whose sprites have extension bytes as `sizes`
-/// says: PIXI's sprite size table ([`sprites::pixi_size_table`]) of the ROM
-/// the file came from, which the file does not hold.
-pub fn import_mwl_sized(
-    bytes: &[u8],
-    clean: &Rom,
-    dir: &Path,
-    level: Option<u16>,
-    sizes: Option<&[u8]>,
-) -> Result<Report, ImportError> {
-    let mwl = MwlFile::parse(bytes)?.decode(sizes)?;
-    let number = level.unwrap_or(mwl.info.level);
+/// Writes `level` into the project in `dir` as level `number`, creating
+/// the project if there is none: in the file the manifest lists for it,
+/// or in `levels/NNN.toml`, keeping that file's comments, and the
+/// manifest again, keeping its own. Returns the level file's path.
+pub fn add_level(dir: &Path, number: u16, level: &Level) -> Result<PathBuf, ImportError> {
     if number >= LEVEL_COUNT {
         return Err(ImportError::LevelNumber(number));
     }
-    let (source, notes) = level_from_mwl(&mwl, number, clean)?;
     let manifest_path = dir.join(MANIFEST);
     let (mut manifest, manifest_comments) = match fs::read_to_string(&manifest_path) {
         Ok(text) => Manifest::from_toml(&text).map_err(|source| ImportError::Manifest {
@@ -2075,8 +2054,10 @@ pub fn import_mwl_sized(
             source,
         })?;
     }
-    fs::write(&path, source.to_toml(&comments))
-        .map_err(|source| ImportError::Io { path, source })?;
+    fs::write(&path, level.to_toml(&comments)).map_err(|source| ImportError::Io {
+        path: path.clone(),
+        source,
+    })?;
     manifest.levels.insert(number, file);
     fs::write(&manifest_path, manifest.to_toml(&manifest_comments)).map_err(|source| {
         ImportError::Io {
@@ -2084,6 +2065,39 @@ pub fn import_mwl_sized(
             source,
         }
     })?;
+    Ok(path)
+}
+
+/// Imports an MWL file into the project in `dir`, as `level` or the level
+/// it was saved from, creating the project if there is none. The level
+/// goes in the file the manifest lists for it, or in `levels/NNN.toml`,
+/// keeping that file's comments; the manifest is written again.
+pub fn import_mwl(
+    bytes: &[u8],
+    clean: &Rom,
+    dir: &Path,
+    level: Option<u16>,
+) -> Result<Report, ImportError> {
+    import_mwl_sized(bytes, clean, dir, level, None)
+}
+
+/// [`import_mwl`] of a file whose sprites have extension bytes as `sizes`
+/// says: PIXI's sprite size table ([`sprites::pixi_size_table`]) of the ROM
+/// the file came from, which the file does not hold.
+pub fn import_mwl_sized(
+    bytes: &[u8],
+    clean: &Rom,
+    dir: &Path,
+    level: Option<u16>,
+    sizes: Option<&[u8]>,
+) -> Result<Report, ImportError> {
+    let mwl = MwlFile::parse(bytes)?.decode(sizes)?;
+    let number = level.unwrap_or(mwl.info.level);
+    if number >= LEVEL_COUNT {
+        return Err(ImportError::LevelNumber(number));
+    }
+    let (source, notes) = level_from_mwl(&mwl, number, clean)?;
+    add_level(dir, number, &source)?;
     Ok(Report {
         levels: vec![number],
         notes: notes

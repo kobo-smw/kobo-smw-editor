@@ -388,3 +388,44 @@ fn the_handle_resizes_an_object() {
         "it did not move"
     );
 }
+
+#[test]
+fn levels_are_added_by_copy_or_from_the_games_own() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "add");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+
+    // With nothing selected, the level panel copies the level.
+    harness.state_mut().copy_to = 0x106;
+    harness.step();
+    harness.get_by_label("Copy").click();
+    harness.step();
+    wait_for(&mut harness, "the copy", |app| {
+        app.current_number() == Some(0x106) && drawn(app)
+    });
+    assert!(project.0.join("levels/106.toml").exists());
+    let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
+    assert!(
+        manifest.contains("0x106 = \"levels/106.toml\""),
+        "{manifest}"
+    );
+    let copy = harness.state().current().unwrap().document.level();
+    assert!(
+        copy.entrances.is_empty(),
+        "the entrances stay the original's"
+    );
+
+    // A level the project leaves as the game's is added once confirmed.
+    harness.state_mut().adding = Some(0x107);
+    // The dialog fades in before it takes clicks.
+    harness.run_steps(20);
+    harness.get_by_label("Add to the project").click();
+    harness.step();
+    wait_for(&mut harness, "level 107", |app| {
+        app.current_number() == Some(0x107) && drawn(app)
+    });
+    assert!(project.0.join("levels/107.toml").exists());
+}

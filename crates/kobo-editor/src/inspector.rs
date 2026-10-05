@@ -53,6 +53,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let diagnostics = open.diagnostics.clone();
     let mut change: Option<Change> = None;
     let mut delete = false;
+    let mut copy = false;
+    let mut copy_to = app.copy_to;
+    let taken: Vec<bool> = (0..0x200).map(|n| app.has_level(n)).collect();
 
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -61,6 +64,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 [] => {
                     header(ui, &level, &mut change);
                     entrances(ui, &level, &mut change);
+                    copy = copy_level(ui, &mut copy_to, &taken);
                 }
                 [Item::Object(o)] => object(ui, &level, number, o, &mut change),
                 [Item::Sprite(i)] => sprite(ui, &level, i, &mut change),
@@ -87,6 +91,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             }
         });
 
+    app.copy_to = copy_to;
+    if copy {
+        app.add_level(copy_to, &edit::copy_of(&level));
+    }
     if delete {
         let label = if selection.len() == 1 {
             "Delete".to_string()
@@ -793,4 +801,26 @@ fn entrances(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>) {
                     });
             });
     }
+}
+
+/// Copying the level to a number the project does not list yet. The copy
+/// has no secondary entrances: those stay the original's.
+fn copy_level(ui: &mut egui::Ui, to: &mut u16, taken: &[bool]) -> bool {
+    section(ui, "Copy");
+    let mut copy = false;
+    ui.horizontal(|ui| {
+        ui.label("To level");
+        ui.add(
+            DragValue::new(to)
+                .range(0..=0x1FF)
+                .speed(0.1)
+                .hexadecimal(3, false, true),
+        );
+        let free = !taken[usize::from(*to)];
+        copy = ui
+            .add_enabled(free, egui::Button::new("Copy"))
+            .on_disabled_hover_text("The project has that level already.")
+            .clicked();
+    });
+    copy
 }

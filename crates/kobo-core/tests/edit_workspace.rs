@@ -71,3 +71,51 @@ fn an_edit_in_memory_renders_without_a_save() {
     assert_eq!(bush.map(|o| o.index), Some(10));
     assert!(document.is_modified(), "nothing was saved");
 }
+
+#[test]
+fn a_level_is_added_from_the_clean_rom_or_a_copy() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-add-level");
+    fs::write(dir.join("kobo.toml"), "# My hack.\nformat = 1\n").unwrap();
+    let mut workspace = Workspace::open(&dir, Arc::new(clean))
+        .unwrap()
+        .without_cache();
+    assert_eq!(workspace.levels().count(), 0);
+
+    let level = workspace.clean_level(0x105).unwrap();
+    let path = workspace.add_level(0x105, &level).unwrap();
+    assert_eq!(path, dir.join("levels/105.toml"));
+    assert_eq!(workspace.levels().collect::<Vec<_>>(), [0x105]);
+    let manifest = fs::read_to_string(dir.join("kobo.toml")).unwrap();
+    assert!(manifest.starts_with("# My hack.\n"), "{manifest}");
+    assert!(
+        manifest.contains("0x105 = \"levels/105.toml\""),
+        "{manifest}"
+    );
+    assert!(matches!(
+        workspace.add_level(0x105, &level),
+        Err(kobo_core::edit::WorkspaceError::HasLevel(0x105))
+    ));
+
+    // A copy draws as the original does. The secondary entrances into
+    // the original stay its own.
+    let copy = kobo_core::edit::copy_of(&level);
+    assert!(!level.entrances.is_empty() && copy.entrances.is_empty());
+    workspace.add_level(0x106, &copy).unwrap();
+    let options = RenderOptions {
+        sprites: Sprites::Hidden,
+        player: false,
+    };
+    let draw = |n| {
+        workspace
+            .preview(n, options, &Operation::default())
+            .unwrap()
+            .render
+            .level
+            .tiles
+    };
+    let (a, b) = (draw(0x105), draw(0x106));
+    assert_eq!((a.low, a.high), (b.low, b.high));
+}

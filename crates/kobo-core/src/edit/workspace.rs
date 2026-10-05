@@ -20,6 +20,16 @@ pub enum WorkspaceError {
     Render(#[from] RenderError),
     #[error("the project has no level {0:03X}")]
     NoLevel(u16),
+    #[error("the project has level {0:03X} already")]
+    HasLevel(u16),
+    #[error(transparent)]
+    Import(Box<crate::import::ImportError>),
+}
+
+impl From<crate::import::ImportError> for WorkspaceError {
+    fn from(e: crate::import::ImportError) -> Self {
+        Self::Import(Box::new(e))
+    }
 }
 
 /// A project in memory, with the clean ROM it builds onto. Cloning one is
@@ -93,6 +103,30 @@ impl Workspace {
             .iter()
             .find(|(n, _)| *n == number)
             .map(|(_, level)| level)
+    }
+
+    /// A level as the clean ROM has it, which is what a level the project
+    /// does not list builds as.
+    pub fn clean_level(&self, number: u16) -> Result<Level, WorkspaceError> {
+        Ok(crate::import::read_level(&self.clean, number)?.0)
+    }
+
+    /// Adds level `number` to the project, as `level`: its file is
+    /// written and the manifest lists it ([`crate::import::add_level`]).
+    /// The rest of the project in memory stays as it is. Returns the
+    /// level's file.
+    pub fn add_level(&mut self, number: u16, level: &Level) -> Result<PathBuf, WorkspaceError> {
+        if self.project.manifest.levels.contains_key(&number) {
+            return Err(WorkspaceError::HasLevel(number));
+        }
+        let path = crate::import::add_level(&self.project.root, number, level)?;
+        let project = Arc::make_mut(&mut self.project);
+        let file = path
+            .strip_prefix(&project.root)
+            .map_or_else(|_| path.clone(), Path::to_path_buf);
+        project.manifest.levels.insert(number, file);
+        set(project, number, level.clone());
+        Ok(path)
     }
 
     /// Puts the level's state in the editor in the project, for the next
