@@ -68,6 +68,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         _ => None,
     };
     let mut go_to = false;
+    let mut select_only = None;
     // The game's palette for the level, to start one of its own from.
     let game_palette = app
         .workspace()
@@ -126,11 +127,43 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 }
                 [Item::Sprite(i)] => sprite(ui, &level, i, &mut change),
                 _ => {
-                    heading(ui, &format!("{} selected", selection.len()), "");
+                    let sprites = selection
+                        .iter()
+                        .filter(|i| matches!(i, Item::Sprite(_)))
+                        .count();
+                    let others = selection.len() - sprites;
+                    let count = |n: usize, one: &str| match n {
+                        1 => format!("1 {one}"),
+                        n => format!("{n} {one}s"),
+                    };
+                    let detail = match (others, sprites) {
+                        (0, s) => count(s, "sprite"),
+                        (o, 0) => count(o, "object"),
+                        (o, s) => format!("{}, {}", count(o, "object"), count(s, "sprite")),
+                    };
+                    heading(ui, &format!("{} selected", selection.len()), &detail);
                     ui.label(
-                        RichText::new("Drag them on the canvas, or use the arrow keys, to move them together.")
+                        RichText::new("Drag them on the canvas, or use the arrow keys, to move them together; Ctrl+drag copies them. A click here selects one alone.")
                             .color(theme::MUTED),
                     );
+                    ui.add_space(4.0);
+                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                        for &item in &selection {
+                            let name = selection::describe(&level, item);
+                            let place = match item {
+                                Item::Object(o) => objects(&level, o.layer)
+                                    .and_then(|l| l.get(o.index))
+                                    .and_then(edit::object_position),
+                                Item::Sprite(i) => level.sprites.list.get(i).map(|s| (s.x, s.y)),
+                            };
+                            let place = place.map_or_else(String::new, |(x, y)| format!("{x}, {y}"));
+                            let row = egui::Button::selectable(false, RichText::new(name).color(crate::app::color_for(item)))
+                                .right_text(RichText::new(place).size(12.0).color(theme::MUTED));
+                            if ui.add(row).clicked() {
+                                select_only = Some(item);
+                            }
+                        }
+                    });
                 }
             }
             if !selection.is_empty() {
@@ -168,6 +201,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         });
 
     app.copy_to = copy_to;
+    if let Some(item) = select_only
+        && let Some(open) = app.current_mut()
+    {
+        open.selection = vec![item];
+        open.focus = true;
+    }
     if let Some(table) = show_table {
         app.view.source = true;
         if let Some(open) = app.current_mut() {

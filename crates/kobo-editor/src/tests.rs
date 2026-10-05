@@ -1422,3 +1422,23 @@ fn dragging_with_ctrl_held_copies() {
     assert_eq!(object_place(harness.state(), copy.index), Some((63, 19)));
     assert_eq!(open.document.undo_label(), Some("Copy 1 object"));
 }
+
+#[test]
+fn several_selected_are_listed_and_one_chosen_alone() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "several");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().current_mut().unwrap().selection =
+        vec![Item::object(ObjectLayer::One, 10), Item::Sprite(0)];
+    harness.run_steps(2);
+    harness.get_by_label("1 object, 1 sprite");
+    harness.get_by_label_contains("Ground ledge").click();
+    harness.run_steps(2);
+    assert_eq!(
+        harness.state().current().unwrap().selection,
+        [Item::object(ObjectLayer::One, 10)]
+    );
+}
