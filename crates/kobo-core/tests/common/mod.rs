@@ -1,11 +1,21 @@
-//! Shared helpers for ROM-backed integration tests.
+//! Shared helpers for ROM-backed integration tests: the tiers' gates
+//! ([`kobo_core::tiers`]), the bases builds go onto, and the helpers
+//! several test files share. Each test binary uses some of them.
+#![allow(dead_code)]
 
+pub mod failures;
+pub mod fixtures;
+pub mod lm;
+pub mod temp;
+
+use std::path::{Path, PathBuf};
+
+use kobo_core::tiers::{self, Tier};
 use kobo_core::tools::{Tool, ToolError};
 use kobo_core::{Rom, RomIdentity, SnesAddr, bps, config};
 
 /// `f` of every item, in their order, on every core: a corpus test's
 /// levels are independent, and one core takes it most of a full run.
-#[allow(dead_code)]
 pub fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -32,9 +42,88 @@ pub fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec
         .collect()
 }
 
-/// The configured vanilla ROM, or `None` (after printing why) so the
-/// calling test can return early and pass.
-#[allow(dead_code)]
+/// Records that the running test skips for want of `tier`, after printing
+/// why, or fails if the tier is required (`KOBO_REQUIRE_<TIER>`,
+/// `KOBO_REQUIRE_ALL`). With `KOBO_SKIP_LOG` set, the skip is appended to
+/// that file, which `cargo xtask verify` reports: libtest hides a passing
+/// test's output, so a skip is otherwise invisible.
+pub fn skip(tier: Tier, why: impl std::fmt::Display) {
+    assert!(
+        !tier.required(),
+        "{} is set, and the {} tier is missing: {why}",
+        if std::env::var_os(tier.require_var()).is_some() {
+            tier.require_var()
+        } else {
+            tiers::REQUIRE_ALL_ENV_VAR.to_owned()
+        },
+        tier.name()
+    );
+    eprintln!("skipping: {why}");
+    log_skip(tier.name(), &why.to_string());
+}
+
+/// Appends a skip to `KOBO_SKIP_LOG`: the test, the tier, and why.
+fn log_skip(tier: &str, why: &str) {
+    use std::io::Write;
+    let Some(log) = std::env::var_os(tiers::SKIP_LOG_ENV_VAR) else {
+        return;
+    };
+    let binary = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .map(|s| {
+            s.rsplit_once('-')
+                .map_or(s.clone(), |(name, _)| name.to_owned())
+        })
+        .unwrap_or_default();
+    let thread = std::thread::current();
+    let test = thread.name().unwrap_or("?");
+    let line = format!(
+        "{binary}::{test}\t{tier}\t{}\n",
+        why.replace(['\t', '\n'], " ")
+    );
+    // One write of one short line: appends from parallel tests do not mix.
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)
+    {
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
+/// A tier's paths, or `None` (after [`skip`]) when it is not set.
+pub fn tier_paths(tier: Tier) -> Option<Vec<PathBuf>> {
+    match tier.resolve() {
+        Ok(Some((paths, _))) => Some(paths),
+        Ok(None) => {
+            skip(
+                tier,
+                format_args!("{} is not set, nor `{}`", tier.env_var(), tier.key()),
+            );
+            None
+        }
+        Err(e) => panic!("invalid {} configuration: {e}", tier.name()),
+    }
+}
+
+/// A tier's path, or `None` (after [`skip`]) when it is not set.
+pub fn tier_path(tier: Tier) -> Option<PathBuf> {
+    tier_paths(tier).map(|paths| paths.into_iter().next().unwrap())
+}
+
+/// A test that found nothing to check in its tier (no hack of the corpus
+/// in a fixture, say) says so, which fails it when the tier is required:
+/// a test that checked nothing has not passed.
+/// A tier that is not set has said so already.
+pub fn none_checked(tier: Tier, checked: usize, what: impl std::fmt::Display) {
+    if checked == 0 && tier.resolve().is_ok_and(|r| r.is_some()) {
+        skip(tier, format_args!("nothing to check: {what}"));
+    }
+}
+
+/// The configured vanilla ROM, or `None` (after [`skip`]) so the calling
+/// test can return early and pass.
 pub fn vanilla() -> Option<Rom> {
     match config::vanilla_rom_path() {
         Ok(path) => {
@@ -48,11 +137,7 @@ pub fn vanilla() -> Option<Rom> {
             Some(rom)
         }
         Err(config::ConfigError::NoVanillaRom) => {
-            assert!(
-                std::env::var_os("KOBO_REQUIRE_ROM").is_none(),
-                "strict validation requires a vanilla ROM"
-            );
-            eprintln!("skipping: no vanilla ROM configured");
+            skip(Tier::Rom, "no vanilla ROM configured");
             None
         }
         Err(e) => panic!("invalid ROM configuration: {e}"),
@@ -60,54 +145,129 @@ pub fn vanilla() -> Option<Rom> {
 }
 
 /// The ROM the emulator dumps being compared against were made from:
-/// `KOBO_ORACLE_ROM`, or else the vanilla ROM.
-#[allow(dead_code)]
+/// `KOBO_ORACLE_ROM` (`tests.oracle_rom`), or else the vanilla ROM.
 pub fn oracle_rom() -> Option<Rom> {
-    match std::env::var_os("KOBO_ORACLE_ROM") {
-        Some(path) => Some(Rom::load(path).expect("KOBO_ORACLE_ROM must load")),
+    match tiers::oracle_rom().expect("valid configuration") {
+        Some(path) => Some(Rom::load(&path).expect("the oracle ROM must load")),
         None => vanilla(),
     }
 }
 
-/// Lunar Magic hack ROMs to exercise, from the `:`-separated paths in
-/// `KOBO_LM_ROMS`, loaded one at a time. Empty (after printing why) when the
-/// variable is unset. A `.bps` entry is a patch, applied to the configured
-/// vanilla ROM.
-#[allow(dead_code)]
-pub fn lunar_magic_roms() -> impl Iterator<Item = (std::path::PathBuf, Rom)> {
-    let paths: Vec<_> = match std::env::var_os("KOBO_LM_ROMS") {
-        None => {
-            eprintln!("skipping Lunar Magic ROMs: KOBO_LM_ROMS is not set");
-            Vec::new()
-        }
-        Some(list) => {
-            assert!(!list.is_empty(), "KOBO_LM_ROMS is set but empty");
-            std::env::split_paths(&list).collect()
-        }
-    };
+/// Lunar Magic 3.70's folder, or `None` (after [`skip`]): its tests run
+/// it under Wine and `xvfb-run`, so on Linux only.
+pub fn lunar_magic() -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") {
+        skip(
+            Tier::LunarMagic,
+            "Lunar Magic's tests run it under Wine, on Linux only",
+        );
+        return None;
+    }
+    tier_path(Tier::LunarMagic)
+}
+
+/// Lunar Magic hack ROMs to exercise, from `KOBO_LM_ROMS` or
+/// `tests.lm_roms` ([`kobo_core::tiers::expand_roms`]), loaded one at a
+/// time, the vanilla ROM left out. Empty (after [`skip`]) when neither is
+/// set. A `.bps` entry is a patch, applied to the configured vanilla ROM.
+pub fn lunar_magic_roms() -> impl Iterator<Item = (PathBuf, Rom)> {
+    let paths = tier_paths(Tier::LmRoms).unwrap_or_default();
     let mut clean = None;
-    paths.into_iter().map(move |p| {
-        let is_patch = p.extension().is_some_and(|e| e.eq_ignore_ascii_case("bps"));
-        let rom = if is_patch {
-            let clean = clean.get_or_insert_with(|| {
-                vanilla().expect("a .bps entry in KOBO_LM_ROMS needs the vanilla ROM")
-            });
-            let patch = std::fs::read(&p).expect("listed BPS patch must be readable");
-            let patched =
-                bps::apply_to_rom(&patch, clean).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
-            Rom::from_bytes(patched.data).expect("patched Lunar Magic ROM must load")
-        } else {
-            Rom::load(&p).expect("listed Lunar Magic ROM must load")
-        };
-        (p, rom)
+    paths.into_iter().filter_map(move |p| {
+        let rom = load_corpus_rom(&p, &mut clean);
+        (rom.identify() != RomIdentity::VanillaUsa).then_some((p, rom))
     })
+}
+
+/// The corpus's paths, unloaded: for a test that loads them on every core
+/// ([`par_map`] and [`load_corpus_rom`]).
+pub fn lunar_magic_rom_paths() -> Vec<PathBuf> {
+    tier_paths(Tier::LmRoms).unwrap_or_default()
+}
+
+/// A corpus entry: a ROM, or a `.bps` patch applied to the vanilla ROM,
+/// which `clean` keeps once loaded.
+pub fn load_corpus_rom(path: &Path, clean: &mut Option<Rom>) -> Rom {
+    let is_patch = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("bps"));
+    if is_patch {
+        let clean = clean.get_or_insert_with(|| {
+            vanilla().expect("a .bps entry in the corpus needs the vanilla ROM")
+        });
+        let patch = std::fs::read(path).expect("listed BPS patch must be readable");
+        let patched =
+            bps::apply_to_rom(&patch, clean).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        Rom::from_bytes(patched.data).expect("patched Lunar Magic ROM must load")
+    } else {
+        Rom::load(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    }
+}
+
+/// Corpus hacks some tests are written around: (name, headerless SHA-1).
+pub mod hacks {
+    pub const GRAND_POO_WORLD_2: (&str, &str) = (
+        "Grand Poo World 2",
+        "390583d5faa0cc02e0c4f414f7638228661b2dc9",
+    );
+    pub const INVICTUS: (&str, &str) = ("Invictus 1.0", "6dd24c31b5d8c568aab0de6d68855f609cbe8f08");
+}
+
+/// The corpus hack with headerless SHA-1 `sha1`, for a test written
+/// around one hack's content; `None` (after [`skip`]) when the corpus
+/// does not hold it, which fails the test when the corpus is required.
+pub fn corpus_hack((name, sha1): (&str, &str)) -> Option<(PathBuf, Rom)> {
+    let found = lunar_magic_roms().find(|(_, rom)| rom.sha1_hex() == sha1);
+    // Without a corpus, lunar_magic_roms has said so already.
+    if found.is_none() && Tier::LmRoms.resolve().is_ok_and(|r| r.is_some()) {
+        skip(
+            Tier::LmRoms,
+            format_args!("the corpus does not hold {name} ({sha1})"),
+        );
+    }
+    found
+}
+
+/// A small deterministic generator for seeded scenarios: a failure names
+/// its seed, and the same seed gives the same cases on every platform.
+pub struct Lcg(pub u64);
+
+impl Lcg {
+    /// A number below `n`.
+    pub fn next(&mut self, n: u32) -> u32 {
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((self.0 >> 33) % n as u64) as u32
+    }
+
+    /// True `percent` times in a hundred.
+    pub fn chance(&mut self, percent: u32) -> bool {
+        self.next(100) < percent
+    }
+
+    /// One of `list`.
+    pub fn pick<T: Copy>(&mut self, list: &[T]) -> T {
+        list[self.next(list.len() as u32) as usize]
+    }
+}
+
+/// A number from the environment variable `var` (a seed or a count of
+/// cases), or `default` when it is not set.
+pub fn env_number<T: std::str::FromStr>(var: &str, default: T) -> T {
+    match std::env::var(var) {
+        Ok(value) => value
+            .parse()
+            .unwrap_or_else(|_| panic!("{var} must be a number, not {value:?}")),
+        Err(_) => default,
+    }
 }
 
 /// A 512 KiB LoROM image laid out as the vanilla ROM is where a build
 /// reads it, with no game data: every level's layer data is an empty list
 /// and every sprite list empty, the unused space in bank `$07` is `$FF`,
 /// and Lunar Magic's gate is clear.
-#[allow(dead_code)]
 pub fn synthetic_base() -> Rom {
     use kobo_core::level::{LEVEL_COUNT, tables};
     let mut data = vec![0xFF; 0x8_0000];
@@ -138,21 +298,15 @@ pub fn synthetic_base() -> Rom {
 /// makes it, or `None` (after printing why): it needs SA-1 Pack
 /// (`KOBO_SA1PACK`, or `tools.sa1pack` in the configuration file) and
 /// Asar. `KOBO_REQUIRE_SA1PACK` makes a missing SA-1 Pack a failure.
-#[allow(dead_code)]
 pub fn sa1_base(clean: &Rom) -> Option<Rom> {
-    tool(Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK")?;
+    tool(Tool::Sa1Pack)?;
     asar()?;
-    let manifest = kobo_core::source::project::Manifest {
-        sa1: true,
-        ..Default::default()
-    };
-    Some(kobo_core::build::base_image(clean, &manifest).expect("SA-1 Pack must apply"))
+    Some(base_as(clean, true))
 }
 
 /// `project` built onto the clean ROM, and again as an SA-1 project when
 /// SA-1 Pack is configured: each build with the base it went onto, which
 /// is what its levels that the project leaves alone draw as.
-#[allow(dead_code)]
 pub fn builds(clean: &Rom, project: &kobo_core::build::Project) -> Vec<(Rom, Rom)> {
     let mut out = vec![(
         kobo_core::build::base_image(clean, &project.manifest).unwrap(),
@@ -171,7 +325,6 @@ pub fn builds(clean: &Rom, project: &kobo_core::build::Project) -> Vec<(Rom, Rom
 
 /// Whether a test runs as an SA-1 project too: when SA-1 Pack is
 /// configured.
-#[allow(dead_code)]
 pub fn sa1_variants(clean: &Rom) -> Vec<bool> {
     std::iter::once(false)
         .chain(sa1_base(clean).map(|_| true))
@@ -179,18 +332,27 @@ pub fn sa1_variants(clean: &Rom) -> Vec<bool> {
 }
 
 /// The image a project builds onto, SA-1 Pack's with `sa1`: what its
-/// levels are read from and the levels it leaves alone draw as.
-#[allow(dead_code)]
+/// levels are read from and the levels it leaves alone draw as. Each is
+/// made once a process: SA-1 Pack takes Asar a while.
 pub fn base_as(clean: &Rom, sa1: bool) -> Rom {
+    use std::sync::Mutex;
+    type Key = ([u8; 20], bool);
+    static BASES: Mutex<Vec<(Key, Vec<u8>)>> = Mutex::new(Vec::new());
+    let key = (clean.sha1(), sa1);
+    let copy = |bytes: &[u8]| Rom::from_headerless(bytes.to_vec()).unwrap();
+    if let Some((_, base)) = BASES.lock().unwrap().iter().find(|(k, _)| *k == key) {
+        return copy(base);
+    }
     let manifest = kobo_core::source::project::Manifest {
         sa1,
         ..Default::default()
     };
-    kobo_core::build::base_image(clean, &manifest).unwrap()
+    let base = kobo_core::build::base_image(clean, &manifest).expect("the base must build");
+    BASES.lock().unwrap().push((key, base.data().to_vec()));
+    base
 }
 
 /// `project` built onto the clean ROM, as an SA-1 project with `sa1`.
-#[allow(dead_code)]
 pub fn build_as(
     clean: &Rom,
     project: &kobo_core::build::Project,
@@ -205,9 +367,8 @@ pub fn build_as(
 /// can return early and pass: the configured one, or the pinned build if
 /// the cache has it (`kobo tools fetch`). Tests never download it.
 /// `KOBO_REQUIRE_ASAR` makes a missing library a failure.
-#[allow(dead_code)]
 pub fn asar() -> Option<kobo_core::asar::Asar> {
-    let path = tool(Tool::Asar, "KOBO_REQUIRE_ASAR")?;
+    let path = tool(Tool::Asar)?;
     Some(
         kobo_core::asar::Asar::load(&path)
             .unwrap_or_else(|e| panic!("Asar at {} must load: {e}", path.display())),
@@ -215,20 +376,14 @@ pub fn asar() -> Option<kobo_core::asar::Asar> {
 }
 
 /// A tool's path, configured or the pinned build already in the cache, or
-/// `None` (after printing why). The variable `require` makes its absence
-/// a failure.
-#[allow(dead_code)]
-pub fn tool(tool: Tool, require: &str) -> Option<std::path::PathBuf> {
-    tool_version(tool, None, require)
+/// `None` (after [`skip`]). `KOBO_REQUIRE_<TOOL>` makes its absence a
+/// failure.
+pub fn tool(tool: Tool) -> Option<PathBuf> {
+    tool_version(tool, None)
 }
 
 /// [`tool`] at `version`, one kobo-tools builds beside the default.
-#[allow(dead_code)]
-pub fn tool_version(
-    tool: Tool,
-    version: Option<&str>,
-    require: &str,
-) -> Option<std::path::PathBuf> {
+pub fn tool_version(tool: Tool, version: Option<&str>) -> Option<PathBuf> {
     match tool.locate_version_offline(version) {
         Ok(located) => Some(located.path),
         Err(
@@ -237,38 +392,9 @@ pub fn tool_version(
             | ToolError::NoBuild { .. }
             | ToolError::NoCache),
         ) => {
-            assert!(
-                std::env::var_os(require).is_none(),
-                "{require} is set, and {tool} is missing: {e}"
-            );
-            eprintln!("skipping: {e}");
+            skip(Tier::Tool(tool), e);
             None
         }
         Err(e) => panic!("invalid {tool} configuration: {e}"),
     }
-}
-
-/// Lunar Magic's `-ExportAllMap16` file of a copy of `rom`.
-#[allow(dead_code)]
-pub fn export_map16(lunar_magic: &std::path::Path, rom: &Rom, name: &str) -> Vec<u8> {
-    let dir = std::env::temp_dir().join(format!("kobo-lm-map16-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let mut headered = vec![0; 0x200];
-    headered.extend_from_slice(rom.data());
-    std::fs::write(dir.join("rom.smc"), headered).unwrap();
-    let lm = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/lunar-magic/lm");
-    let status = std::process::Command::new(&lm)
-        .args(["-ExportAllMap16", "rom.smc", "all.map16"])
-        .current_dir(&dir)
-        .env("KOBO_LM_DIR", lunar_magic)
-        .output()
-        .unwrap();
-    assert!(
-        status.status.success(),
-        "Lunar Magic -ExportAllMap16: {status:?}"
-    );
-    let file = std::fs::read(dir.join("all.map16")).unwrap();
-    let _ = std::fs::remove_dir_all(&dir);
-    file
 }

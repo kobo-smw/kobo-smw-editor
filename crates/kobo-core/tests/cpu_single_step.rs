@@ -4,13 +4,17 @@
 //! state before and after. The ROM-backed tests only exercise the paths
 //! SMW takes; custom sprites and patches take others.
 //!
-//! Set `KOBO_65816_TESTS` to the suite's `v1` directory; only the
-//! `*.n.json` files are read. The suite is about 1.7 GiB, carries no
-//! licence, and is never committed. Without the variable the test prints
-//! `skipping` and passes.
+//! Set `KOBO_65816_TESTS` (or `tests.cpu_tests`) to the suite's `v1`
+//! directory; only the `*.n.json` files are read. The suite is about
+//! 1.7 GiB, carries no licence, and is never committed. Without it the
+//! test skips (`KOBO_REQUIRE_65816_TESTS` makes that a failure).
+
+mod common;
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+use kobo_core::tiers::Tier;
 
 use kobo_core::cpu::{Bus, Cpu};
 use serde::Deserialize;
@@ -135,8 +139,7 @@ fn run_file(path: &Path, opcode: u8) -> (usize, Option<String>) {
 
 #[test]
 fn core_matches_the_single_step_suite() {
-    let Some(dir) = std::env::var_os("KOBO_65816_TESTS").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_65816_TESTS is not set");
+    let Some(dir) = common::tier_path(Tier::Cpu) else {
         return;
     };
     let opcodes: Vec<u8> = (0..=255u8).filter(|op| !UNMODELLED.contains(op)).collect();

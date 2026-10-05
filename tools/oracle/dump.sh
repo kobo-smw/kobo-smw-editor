@@ -13,7 +13,8 @@ python3 "$(dirname "$0")/../clean_room.py" sites "$rom" 0096D5 05D8B7 05DA65
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 cp "$rom" "$tmp/rom.sfc"
-export KOBO_ORACLE_OUT=$(realpath "$out") KOBO_ORACLE_LEVELS=$levels
+KOBO_ORACLE_OUT=$(realpath "$out")
+export KOBO_ORACLE_OUT KOBO_ORACLE_LEVELS=$levels
 export LC_ALL=C.UTF-8
 script=$(realpath "$(dirname "$0")/dump_levels.lua")
 set +e

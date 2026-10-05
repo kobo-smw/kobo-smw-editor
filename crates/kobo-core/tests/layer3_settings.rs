@@ -505,7 +505,8 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
         return;
     };
     let mut hacks = 0;
-    let mut failures = Vec::new();
+    let failures =
+        common::failures::Failures::new("layer3_settings::kobos_layer3_code_plays_as_lunar_magics");
     let mut sa1 = None;
     for (path, hack) in common::lunar_magic_roms() {
         // Lunar Magic 3.0x and 2.x keep a position that scrolls below 0
@@ -537,6 +538,7 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
             );
             continue;
         };
+        failures.checked(&path, &hack);
         let mut levels = 0;
         for number in 0..0x200u16 {
             let Some(list) = exgfx::read_list(&hack, number).unwrap() else {
@@ -546,8 +548,12 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
                 continue;
             }
             let s = list.layer3();
-            let Ok((level, _)) = import::read_level(&hack, number) else {
-                continue;
+            let level = match import::read_level(&hack, number) {
+                Ok((level, _)) => level,
+                Err(e) => {
+                    eprintln!("{}: {number:03X} left out, import: {e}", path.display());
+                    continue;
+                }
             };
             // By the game's table, or as the level loads ($1403): a hack may
             // set a tide its own way.
@@ -570,7 +576,7 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
             // `06_Friday`'s level 106, docs/lunar-magic-install.md).
             for p in paths {
                 if let Some(d) = first_difference(&hack, &kobo, number, frames, p, tide) {
-                    failures.push(format!("{}: {number:03X} {p}: {d}", path.display()));
+                    failures.fail(&hack, Some(number), format!("{p}: {d}"));
                 }
             }
             levels += 1;
@@ -579,5 +585,10 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
         hacks += 1;
     }
     eprintln!("{hacks} hacks with Lunar Magic's layer 3 code");
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    common::none_checked(
+        kobo_core::tiers::Tier::LmRoms,
+        hacks,
+        "no corpus hack has Lunar Magic's layer 3 code from 3.10 on",
+    );
+    failures.finish();
 }

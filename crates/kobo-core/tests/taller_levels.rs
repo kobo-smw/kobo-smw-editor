@@ -11,6 +11,8 @@
 
 mod common;
 
+use kobo_core::tiers::Tier;
+
 use kobo_core::build::{self, Project};
 use kobo_core::level::LevelMode;
 use kobo_core::level::objects::Object;
@@ -233,10 +235,12 @@ fn a_size_a_level_cannot_take_is_refused() {
 
 #[test]
 fn every_lunar_magic_rom_keeps_its_size_table_where_the_layout_has_it() {
-    let Some(mwl_dir) = std::env::var_os("KOBO_MWL_DIR").map(std::path::PathBuf::from) else {
-        eprintln!("skipping: KOBO_MWL_DIR is not set");
+    let Some(mwl_dir) = common::tier_path(Tier::Mwl) else {
         return;
     };
+    let failures = common::failures::Failures::new(
+        "taller_levels::every_lunar_magic_rom_keeps_its_size_table_where_the_layout_has_it",
+    );
     let mut checked = 0;
     for (path, rom) in common::lunar_magic_roms() {
         let Some(table) = size::table(&rom) else {
@@ -245,8 +249,10 @@ fn every_lunar_magic_rom_keeps_its_size_table_where_the_layout_has_it() {
         let name = path.file_stem().unwrap().to_string_lossy().into_owned();
         let dir = mwl_dir.join(&name);
         if !dir.is_dir() {
+            eprintln!("{name}: no MWL export in {}", mwl_dir.display());
             continue;
         }
+        failures.checked(&path, &rom);
         for level in 0..0x200u16 {
             let file = dir.join(format!("level {level:03X}.mwl"));
             let Ok(bytes) = std::fs::read(&file) else {
@@ -257,18 +263,23 @@ fn every_lunar_magic_rom_keeps_its_size_table_where_the_layout_has_it() {
             let byte = rom.read_u8(table.add(level as u32)).unwrap();
             // The export writes T from the level; a level never saved keeps
             // 0 in the ROM.
-            assert_eq!(
-                byte & 0x7F,
-                exported & 0x7F,
-                "{name} level {level:03X}: size byte"
-            );
-            if byte & 0x1F != 0 {
-                assert_eq!(byte, exported, "{name} level {level:03X}: T");
+            if byte & 0x7F != exported & 0x7F || (byte & 0x1F != 0 && byte != exported) {
+                failures.fail(
+                    &rom,
+                    Some(level),
+                    format!("size byte ${byte:02X}, exported ${exported:02X}"),
+                );
             }
             checked += 1;
         }
     }
     eprintln!("{checked} levels' size bytes checked");
+    common::none_checked(
+        Tier::LmRoms,
+        checked,
+        "no corpus hack with taller levels has an MWL export",
+    );
+    failures.finish();
 }
 
 /// Choc Island 2's rooms (`asm/lunar-magic/choc-island.asm`): entered

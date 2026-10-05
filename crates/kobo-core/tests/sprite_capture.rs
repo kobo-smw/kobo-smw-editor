@@ -200,10 +200,7 @@ fn candle_flames_ride_on_layer_2() {
 #[test]
 fn passes_the_cpu_gives_up_on_are_reported() {
     use expand::Pass;
-    for (_, rom) in common::lunar_magic_roms() {
-        if rom.sha1_hex() != "6dd24c31b5d8c568aab0de6d68855f609cbe8f08" {
-            continue;
-        }
+    if let Some((_, rom)) = common::corpus_hack(common::hacks::INVICTUS) {
         let loaded = expand::expand_level(&rom, 0x136).unwrap();
         let (_, scene) = capture(&rom, 0x136);
         assert!(loaded.scene.player.is_empty());

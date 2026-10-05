@@ -6,26 +6,22 @@
 
 mod common;
 
+use kobo_core::tiers::Tier;
+
 use kobo_core::expand;
 use std::fs;
 use std::path::PathBuf;
 
 fn oracle_dir() -> Option<PathBuf> {
-    match std::env::var_os("KOBO_ORACLE_DIR") {
-        Some(d) => Some(PathBuf::from(d)),
-        None => {
-            eprintln!("skipping: KOBO_ORACLE_DIR is not set");
-            None
-        }
-    }
+    common::tier_path(Tier::Oracle)
 }
 
 #[test]
 fn tile_grids_match_emulator_dumps() {
+    let Some(dir) = oracle_dir() else { return };
     let Some(rom) = common::oracle_rom() else {
         return;
     };
-    let Some(dir) = oracle_dir() else { return };
     let mut checked = 0;
     let mut failures = Vec::new();
     let mut entries: Vec<_> = fs::read_dir(&dir)
@@ -69,10 +65,10 @@ fn sprite_slots_match_emulator_dumps() {
     use kobo_core::ram;
     /// Pixels a sprite may have moved by the time of the dump.
     const MOVED: i32 = 4;
+    let Some(dir) = oracle_dir() else { return };
     let Some(rom) = common::oracle_rom() else {
         return;
     };
-    let Some(dir) = oracle_dir() else { return };
     let tables = [
         ram::SPRITE_NUMBER,
         ram::SPRITE_STATUS,
@@ -127,8 +123,7 @@ fn sprite_slots_match_emulator_dumps() {
 #[test]
 fn boss_graphics_match_emulator_dumps() {
     let Some(rom) = common::vanilla() else { return };
-    let Some(dir) = std::env::var_os("KOBO_BOSS_ORACLE_DIR").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_BOSS_ORACLE_DIR is not set");
+    let Some(dir) = common::tier_path(Tier::BossOracle) else {
         return;
     };
     for level in [0x096, 0x0CC, 0x0D9, 0x1C7] {
@@ -158,10 +153,10 @@ fn boss_graphics_match_emulator_dumps() {
 /// the status bar rows the NMI handler rewrites every frame.
 #[test]
 fn layer3_tilemaps_match_emulator_dumps() {
+    let Some(dir) = oracle_dir() else { return };
     let Some(rom) = common::oracle_rom() else {
         return;
     };
-    let Some(dir) = oracle_dir() else { return };
     let mut failures = Vec::new();
     let mut checked = 0;
     for level in 0..0x200u16 {

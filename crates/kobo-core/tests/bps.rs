@@ -70,11 +70,16 @@ fn lunar_magic_hacks_round_trip_through_a_patch() {
     let Some(vanilla) = common::vanilla() else {
         return;
     };
+    let failures =
+        common::failures::Failures::new("bps::lunar_magic_hacks_round_trip_through_a_patch");
     for (path, rom) in common::lunar_magic_roms() {
+        failures.checked(&path, &rom);
         let patch = bps::create(vanilla.data(), rom.data());
-        let back = bps::apply(&patch, vanilla.data())
-            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-        assert!(back == rom.data(), "{}: round trip differs", path.display());
+        match bps::apply(&patch, vanilla.data()) {
+            Ok(back) if back == rom.data() => {}
+            Ok(_) => failures.fail(&rom, None, "round trip differs"),
+            Err(e) => failures.fail(&rom, None, e.to_string()),
+        }
         eprintln!(
             "{}: {} bytes for {} KiB",
             path.display(),
@@ -82,4 +87,5 @@ fn lunar_magic_hacks_round_trip_through_a_patch() {
             rom.len() / 1024
         );
     }
+    failures.finish();
 }

@@ -5,6 +5,8 @@
 //! `roms.smw` key in the user config file. A tool's path is found the same
 //! way (Asar's library from `KOBO_ASAR_LIB`, then `tools.asar`), and
 //! overrides the build Kobo pins of it ([`crate::tools::Tool::locate`]).
+//! The `[tests]` table is the test suite's: where its opt-in tiers find
+//! their data ([`crate::tiers`]). Kobo itself never reads it.
 
 use std::env;
 use std::fmt;
@@ -75,6 +77,8 @@ pub struct Config {
     pub roms: Roms,
     #[serde(default)]
     pub tools: Tools,
+    #[serde(default)]
+    pub tests: Tests,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -109,6 +113,35 @@ pub struct Tools {
     pub sa1pack: Option<PathBuf>,
 }
 
+/// Where the test suite's opt-in tiers find their data, each overridden
+/// by an environment variable ([`crate::tiers::Tier`]). A path may start
+/// with `~/`. Kobo itself never reads these.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tests {
+    /// Lunar Magic hacks (`KOBO_LM_ROMS`): ROMs, `.bps` patches of the
+    /// vanilla ROM, or folders of either.
+    pub lm_roms: Option<Vec<PathBuf>>,
+    /// Lunar Magic 3.70's folder (`KOBO_LUNAR_MAGIC`).
+    pub lunar_magic: Option<PathBuf>,
+    /// Lunar Magic's MWL exports (`KOBO_MWL_DIR`).
+    pub mwl_dir: Option<PathBuf>,
+    /// Emulator dumps (`KOBO_ORACLE_DIR`).
+    pub oracle_dir: Option<PathBuf>,
+    /// The ROM the dumps are of, if not the vanilla ROM (`KOBO_ORACLE_ROM`).
+    pub oracle_rom: Option<PathBuf>,
+    /// Emulator dumps of the boss arenas (`KOBO_BOSS_ORACLE_DIR`).
+    pub boss_oracle_dir: Option<PathBuf>,
+    /// Folders of emulator frames (`KOBO_VIDEO_ORACLE_DIRS`).
+    pub video_oracle_dirs: Option<Vec<PathBuf>>,
+    /// SingleStepTests' 65816 `v1` folder (`KOBO_65816_TESTS`).
+    pub cpu_tests: Option<PathBuf>,
+    /// The SA-1 reference ROM (`KOBO_SA1_REFERENCE`, docs/sa1.md).
+    pub sa1_reference: Option<PathBuf>,
+    /// Whether the slow checks of every level run (`KOBO_FULL_RENDER`).
+    pub full_render: Option<bool>,
+}
+
 impl Tools {
     fn get(&self, key: &str) -> Option<&PathBuf> {
         match key {
@@ -128,15 +161,15 @@ impl Tools {
 pub enum Setting {
     /// An environment variable.
     Env(&'static str),
-    /// `tools.<key>` in the config file at `path`.
-    File { key: &'static str, path: PathBuf },
+    /// A key (`tools.asar`) in the config file at `path`.
+    File { key: String, path: PathBuf },
 }
 
 impl fmt::Display for Setting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Setting::Env(var) => write!(f, "{var}"),
-            Setting::File { key, path } => write!(f, "`tools.{key}` in {}", path.display()),
+            Setting::File { key, path } => write!(f, "`{key}` in {}", path.display()),
         }
     }
 }
@@ -180,7 +213,7 @@ pub fn tool_path(
     let config = load()?;
     Ok(config.tools.get(key).map(|p| {
         let setting = Setting::File {
-            key,
+            key: format!("tools.{key}"),
             path: config_path().unwrap_or_default(),
         };
         (p.clone(), setting)

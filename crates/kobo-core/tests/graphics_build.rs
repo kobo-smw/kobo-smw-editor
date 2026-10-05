@@ -330,6 +330,9 @@ fn the_corpus_graphics_build_as_the_hacks_have_them() {
     if common::asar().is_none() {
         return;
     }
+    let failures = common::failures::Failures::new(
+        "graphics_build::the_corpus_graphics_build_as_the_hacks_have_them",
+    );
     let mut checked = 0;
     for (path, hack) in common::lunar_magic_roms() {
         if !exgfx::has_exgfx(&hack) || gfx::is_locked(&hack) {
@@ -337,9 +340,10 @@ fn the_corpus_graphics_build_as_the_hacks_have_them() {
         }
         // An SA-1 hack builds as an SA-1 project, which needs SA-1 Pack.
         let sa1 = hack.mapping().is_sa1();
-        if sa1 && common::tool(kobo_core::tools::Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
+        if sa1 && common::tool(kobo_core::tools::Tool::Sa1Pack).is_none() {
             continue;
         }
+        failures.checked(&path, &hack);
         let name = path.display();
         let (files, _) = import::read_exgfx_files(&hack).unwrap();
         let exgfx = exgfx_bytes(&files);
@@ -387,21 +391,38 @@ fn the_corpus_graphics_build_as_the_hacks_have_them() {
         });
         p.levels = levels;
         p.exgfx = exgfx;
-        let built = build::build(&clean, &p).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let built = match build::build(&clean, &p) {
+            Ok(built) => built,
+            Err(e) => {
+                failures.fail(&hack, None, format!("build: {e}"));
+                continue;
+            }
+        };
         // As bytes: which lists the build took decides PNG or bytes.
         let (again, _) = import::read_exgfx_files(&built).unwrap();
-        assert!(exgfx_bytes(&again) == p.exgfx, "{name}: ExGFX files");
-        assert_eq!(
+        if exgfx_bytes(&again) != p.exgfx {
+            failures.fail(&hack, None, "ExGFX files differ");
+        }
+        let (old, want) = (
             exgfx::read_old_lists(&built).unwrap(),
             exgfx::read_old_lists(&hack).unwrap(),
-            "{name}: older lists"
         );
-        for (number, level) in &p.levels {
-            assert_eq!(
-                exgfx::read_list(&built, *number).unwrap(),
-                level.graphics,
-                "{name}: level {number:03X}'s list"
+        if old != want {
+            failures.fail(
+                &hack,
+                None,
+                format!("older lists {old:?}, expected {want:?}"),
             );
+        }
+        for (number, level) in &p.levels {
+            let got = exgfx::read_list(&built, *number).unwrap();
+            if got != level.graphics {
+                failures.fail(
+                    &hack,
+                    Some(*number),
+                    format!("list {got:?}, expected {:?}", level.graphics),
+                );
+            }
         }
         eprintln!(
             "{name}: {} ExGFX files, {} lists",
@@ -411,6 +432,12 @@ fn the_corpus_graphics_build_as_the_hacks_have_them() {
         checked += 1;
     }
     eprintln!("{checked} hacks with ExGFX");
+    common::none_checked(
+        kobo_core::tiers::Tier::LmRoms,
+        checked,
+        "no hack of the corpus has ExGFX",
+    );
+    failures.finish();
 }
 
 /// A `$2000`-byte layer 3 tilemap runs past the buffer over

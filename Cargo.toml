@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/kobo-core", "crates/kobo-cli"]
+members = ["crates/kobo-core", "crates/kobo-cli", "crates/xtask"]
 
 [workspace.package]
 version = "0.0.1"

@@ -4,6 +4,8 @@
 
 mod common;
 
+use common::temp::TempDir;
+
 use std::fs;
 use std::path::Path;
 
@@ -79,8 +81,7 @@ fn a_callisto_project_imports_and_builds() {
     let Some(clean) = common::vanilla() else {
         return;
     };
-    let base = std::env::temp_dir().join(format!("kobo-callisto-test-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&base);
+    let base = TempDir::new("callisto");
     let source = base.join("hack");
     let config = source.join("tools").join("callisto");
     write(
@@ -149,8 +150,7 @@ fn a_callisto_project_imports_and_builds() {
     assert!(page.contains("0x200 = { acts = 0x025"), "{page}");
 
     // The build needs Asar for the patch.
-    if common::tool(Tool::Asar, "KOBO_REQUIRE_ASAR").is_none() {
-        let _ = fs::remove_dir_all(&base);
+    if common::tool(Tool::Asar).is_none() {
         return;
     }
     let project = Project::load(&dir).unwrap();
@@ -164,5 +164,4 @@ fn a_callisto_project_imports_and_builds() {
         Map16Tile::from_bytes(built.read(tile, 8).unwrap().try_into().unwrap()),
         Map16Tile::from_bytes([1, 2, 3, 4, 5, 6, 7, 8])
     );
-    let _ = fs::remove_dir_all(&base);
 }

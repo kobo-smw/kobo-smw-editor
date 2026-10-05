@@ -5,6 +5,8 @@
 
 mod common;
 
+use common::temp::TempDir;
+
 use std::path::PathBuf;
 
 use kobo_core::asar::{self, AsarError, Patch};
@@ -257,7 +259,7 @@ fn includes_come_from_disk_or_memory() {
     let rom = image(MIB);
     let main = "lorom\norg $008000\nincsrc \"near.asm\"\nincsrc \"far.asm\"\n";
 
-    let dir = std::env::temp_dir().join(format!("kobo-asar-{}", std::process::id()));
+    let dir = TempDir::new("asar");
     let lib = dir.join("lib");
     std::fs::create_dir_all(&lib).unwrap();
     std::fs::write(dir.join("main.asm"), main).unwrap();
@@ -270,7 +272,7 @@ fn includes_come_from_disk_or_memory() {
             .define("a", "$11")
             .define("!b", "$22"),
     );
-    std::fs::remove_dir_all(&dir).unwrap();
+    drop(dir);
     let from_disk = from_disk.unwrap();
     assert_eq!(
         read(&from_disk.rom, SnesAddr::new(0x008000), 2),

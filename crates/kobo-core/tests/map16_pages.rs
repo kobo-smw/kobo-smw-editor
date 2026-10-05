@@ -6,6 +6,10 @@
 
 mod common;
 
+use common::temp::TempDir;
+
+use common::failures::{Failures, catch};
+
 use std::path::PathBuf;
 
 use kobo_core::build::{self, Project};
@@ -102,9 +106,8 @@ fn cached_builds_equal_clean_ones() {
     }
     let base = common::synthetic_base();
     let mut project = project();
-    let dir = std::env::temp_dir().join(format!("kobo-map16-cache-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let cache = build::Cache::new(dir.clone());
+    let dir = TempDir::unmade("map16-cache");
+    let cache = build::Cache::new(dir.to_path_buf());
     let clean = build::build_on(&base, &project, None).unwrap();
     assert_eq!(
         build::build_on(&base, &project, Some(&cache))
@@ -128,7 +131,6 @@ fn cached_builds_equal_clean_ones() {
             .data(),
         changed.data()
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -379,11 +381,13 @@ fn the_corpus_pages_0_and_1_build_as_the_hacks_have_them() {
         return;
     }
     let game = GameTables::read(&clean).unwrap();
-    let mut failures = Vec::new();
+    let failures =
+        Failures::new("map16_pages::the_corpus_pages_0_and_1_build_as_the_hacks_have_them");
     for (path, hack) in common::lunar_magic_roms() {
         if hack.mapping().is_sa1() {
             continue;
         }
+        failures.checked(&path, &hack);
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
         let read = import::read_map16_game(&hack, &clean).unwrap();
         let project = Project {
@@ -391,7 +395,13 @@ fn the_corpus_pages_0_and_1_build_as_the_hacks_have_them() {
             map16_tileset: read.tilesets.clone(),
             ..Default::default()
         };
-        let built = build::build(&clean, &project).unwrap();
+        let built = match build::build(&clean, &project) {
+            Ok(built) => built,
+            Err(e) => {
+                failures.fail(&hack, None, format!("pages 0 and 1: build: {e}"));
+                continue;
+            }
+        };
         let mut differ = 0;
         for tileset in 0..kobo_core::map16::TILESET_COUNT {
             for tile in 0..0x200 {
@@ -424,10 +434,16 @@ fn the_corpus_pages_0_and_1_build_as_the_hacks_have_them() {
             read.notes.len()
         );
         if differ > 0 || acts_differ > 0 || !same {
-            failures.push(name);
+            failures.fail(
+                &hack,
+                None,
+                format!(
+                    "pages 0 and 1: definitions differing {differ}, acts {acts_differ}, re-import same {same}"
+                ),
+            );
         }
     }
-    assert!(failures.is_empty(), "{failures:?}");
+    failures.finish();
 }
 
 /// With `KOBO_LM_ROMS` and `KOBO_LUNAR_MAGIC`: a hack whose Map16 pages are
@@ -438,12 +454,12 @@ fn the_corpus_pages_0_and_1_build_as_the_hacks_have_them() {
 /// Locked hacks, which Lunar Magic will not export from, are skipped.
 #[test]
 fn older_layouts_import_as_lunar_magic_exports_them() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let lm_empty = [0x04, 0x10, 0x04, 0x10, 0x04, 0x10, 0x04, 0x10];
     let empty = |b: &[u8]| b == [0; 8] || b == lm_empty;
+    let failures = Failures::new("map16_pages::older_layouts_import_as_lunar_magic_exports_them");
     let mut checked = 0;
     for (path, rom) in common::lunar_magic_roms() {
         let Ok((pages, notes)) = import::read_map16(&rom) else {
@@ -465,34 +481,41 @@ fn older_layouts_import_as_lunar_magic_exports_them() {
             .unwrap()
             .to_string_lossy()
             .replace(' ', "_");
-        let file = common::export_map16(&lunar_magic, &rom, &name);
+        failures.checked(&path, &rom);
+        let file = common::lm::export_map16(&lunar_magic, &rom, &name);
         let word = |i: usize| u32::from_le_bytes(file[i..i + 4].try_into().unwrap()) as usize;
         let all = &file[word(0x70)..word(0x70) + word(0x74)];
         let acts = &file[word(0x78)..word(0x78) + word(0x7C)];
-        for tile in 0x200..0x8000u16 {
-            let entry = pages
-                .iter()
-                .find(|(p, _)| *p as u16 == tile >> 8)
-                .and_then(|(_, page)| page.tiles.get(&tile));
-            let ours = entry.map_or([0; 8], |e| e.gfx.to_bytes());
-            let theirs = &all[tile as usize * 8..tile as usize * 8 + 8];
-            assert!(
-                ours == theirs || (empty(&ours) && empty(theirs)),
-                "{}: tile {tile:04X}",
-                path.display()
-            );
-            if let Some(b) = acts.get(tile as usize * 2..tile as usize * 2 + 2) {
-                assert_eq!(
-                    entry.map_or(DEFAULT_ACTS, |e| e.acts),
-                    u16::from_le_bytes([b[0], b[1]]),
-                    "{}: what tile {tile:04X} acts like",
+        let check = || {
+            for tile in 0x200..0x8000u16 {
+                let entry = pages
+                    .iter()
+                    .find(|(p, _)| *p as u16 == tile >> 8)
+                    .and_then(|(_, page)| page.tiles.get(&tile));
+                let ours = entry.map_or([0; 8], |e| e.gfx.to_bytes());
+                let theirs = &all[tile as usize * 8..tile as usize * 8 + 8];
+                assert!(
+                    ours == theirs || (empty(&ours) && empty(theirs)),
+                    "{}: tile {tile:04X}",
                     path.display()
                 );
+                if let Some(b) = acts.get(tile as usize * 2..tile as usize * 2 + 2) {
+                    assert_eq!(
+                        entry.map_or(DEFAULT_ACTS, |e| e.acts),
+                        u16::from_le_bytes([b[0], b[1]]),
+                        "{}: what tile {tile:04X} acts like",
+                        path.display()
+                    );
+                }
             }
+        };
+        if let Err(e) = catch(check) {
+            failures.fail(&rom, None, format!("older layout: {e}"));
         }
         checked += 1;
     }
     eprintln!("{checked} hacks with an older layout checked");
+    failures.finish();
 }
 
 /// With `KOBO_LM_ROMS` and `KOBO_LUNAR_MAGIC`: Lunar Magic 3.70's full
@@ -504,19 +527,15 @@ fn older_layouts_import_as_lunar_magic_exports_them() {
 /// does. Locked hacks, which Lunar Magic will not export from, are skipped.
 #[test]
 fn map16_files_import_as_the_hacks_do() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
         return;
     };
+    let failures = Failures::new("map16_pages::map16_files_import_as_the_hacks_do");
     let roms: Vec<_> = common::lunar_magic_roms()
         .filter(|(_, rom)| pages::installed(rom) && !kobo_core::gfx::is_locked(rom))
-        // Its levels are hidden as a lock hides them (docs/lunar-magic.md),
-        // and so is page `40`'s group: the hack has a table for it, which
-        // Lunar Magic's export does not show.
-        .filter(|(path, _)| !path.ends_with("Grand Poo World 2.smc"))
         .filter(|(_, rom)| {
             import::read_map16(rom).is_ok_and(|(_, notes)| {
                 !notes
@@ -525,13 +544,14 @@ fn map16_files_import_as_the_hacks_do() {
             })
         })
         .collect();
-    let failures: Vec<String> = common::par_map(&roms, |(path, rom)| {
+    common::par_map(&roms, |(path, rom)| {
+        failures.checked(path, rom);
         let name = path
             .file_stem()
             .unwrap()
             .to_string_lossy()
             .replace(' ', "_");
-        let file = common::export_map16(&lunar_magic, rom, &name);
+        let file = common::lm::export_map16(&lunar_magic, rom, &name);
         let file = kobo_core::map16_file::AllMap16::parse(&file).unwrap();
         let ours = import::map16_from_file(&file, &clean).unwrap();
         let foreground = import::read_map16(rom).unwrap().0;
@@ -567,11 +587,14 @@ fn map16_files_import_as_the_hacks_do() {
                 ));
             }
         }
-        (!differ.is_empty()).then(|| format!("{}: {}", path.display(), differ.join("; ")))
-    })
-    .into_iter()
-    .flatten()
-    .collect();
+        if !differ.is_empty() {
+            failures.fail(
+                rom,
+                None,
+                format!("a .map16 file's import: {}", differ.join("; ")),
+            );
+        }
+    });
     eprintln!("{} hacks checked", roms.len());
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    failures.finish();
 }

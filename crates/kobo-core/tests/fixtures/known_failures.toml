@@ -1,0 +1,92 @@
+# What the corpus tests are known to fail, hack by hack (tests/common/failures.rs).
+#
+# A corpus test fails on a failure this list does not hold, and on one it
+# holds that did not happen on a hack the test ran on: take an entry out as
+# soon as its gap is fixed. Each entry is one hack (its headerless SHA-1;
+# `kobo rom info` prints it, after `kobo bps apply` for a patch), the tests
+# (`binary::test`, comma-separated), the levels (hex, or "all" for every
+# level and the ROM as a whole), and why.
+
+[[failure]]
+hack = "Smb2dx.smc"
+sha1 = "37ea8b33add914cb00983e41778d038d31b777f9"
+tests = "corpus_levels::lunar_magic_levels_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Lunar Magic 1.63: its mode $00 levels carry object layer 2 pointers, so 173 backgrounds do not match the upload."
+
+[[failure]]
+hack = "Grand Poo World 2.smc"
+sha1 = "390583d5faa0cc02e0c4f414f7638228661b2dc9"
+tests = "corpus_levels::lunar_magic_levels_load_as_the_hacks_have_them"
+levels = ["09F"]
+reason = "An unused slot with no background table: its definitions come from bank 0 work RAM as it stood at the upload, which the loaded level's RAM no longer is."
+
+[[failure]]
+hack = "QLDC 2021/34_idol.bps"
+sha1 = "4236c2f097677097e2395928b2454898af3b9f11"
+tests = "corpus_levels::lunar_magic_levels_load_as_the_hacks_have_them"
+levels = ["012", "016", "038", "08F", "090", "0B1", "0EB", "113", "13F"]
+reason = "Nine slots the hack itself cannot load: its object pre-scan runs over bank 0 (known-gaps.md)."
+
+[[failure]]
+hack = "QLDC 2021/34_idol.bps"
+sha1 = "4236c2f097677097e2395928b2454898af3b9f11"
+tests = "level_data::lunar_magic_levels_round_trip"
+levels = ["012", "016", "038", "0EB", "113", "13F"]
+reason = "Six of the nine slots the hack cannot load: their sprite lists (012's at $E38008) parse past their RATS blocks."
+
+[[failure]]
+hack = "QLDC 2021/76_Bench-kun.bps"
+sha1 = "68f34c7f16f201a37f1a3ecf784e00a9a302426c"
+tests = "corpus_levels::lunar_magic_levels_load_as_the_hacks_have_them"
+levels = ["095", "098", "099", "09A", "09B", "0CC", "0D5", "0D9", "0DF", "0E2", "0E5", "114", "195", "198", "199", "19A", "19B", "1C7", "1DE"]
+reason = "The Mode 7 boss rooms stop the load (eighteen levels; known-gaps.md, not checked in an emulator); level 114's background is missing entirely, with SA-1 $002FFF and $420B, $2130 reads reported unmodelled."
+
+[[failure]]
+hack = "QLDC 2021/70_DPBOX.bps"
+sha1 = "69c57cd8a3929a046b3b0136c0ff35bc90bc7e71"
+tests = "gfx_decompression::lunar_magic_files_decode_as_the_rom_decodes_them"
+levels = "all"
+reason = "GFX03 decompresses to 4095 bytes, so GfxReader refuses it; the ROM's own routine gives the same 4095."
+
+[[failure]]
+hack = "QLDC 2021/32_theunkaizoing.bps"
+sha1 = "685c844c3b2db78c6b2380f598a2f5a4f92329fe"
+tests = "corpus_levels::lunar_magic_levels_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Every level on vanilla's empty sprite list at $07E76D (about 275), which has a RATS tag in front that claims the rest of bank $07."
+
+[[failure]]
+hack = "QLDC 2021/62_Rykon-V73.bps"
+sha1 = "10daaf6f94242562125211e78e171fb09e4a4d0a"
+tests = "corpus_levels::lunar_magic_levels_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Every level on vanilla's empty sprite list at $07E76D (about 275), which has a RATS tag in front that claims the rest of bank $07."
+
+[[failure]]
+hack = "QLDC 2021/69_bebn legg+E-man38.bps"
+sha1 = "0de32fb50291ceaf361b61d93e998cbf779ebcfa"
+tests = "corpus_levels::lunar_magic_levels_load_as_the_hacks_have_them"
+levels = ["1CB"]
+reason = "A 13-byte sprite list in a 14-byte RATS block: the block is a byte longer than the list."
+
+[[failure]]
+hack = "QLDC 2021/77_NerDose.bps"
+sha1 = "fa811f2db3be9f772b41767cec6c6b2667c83015"
+tests = "corpus_levels::lunar_magic_levels_load_as_the_hacks_have_them"
+levels = ["136"]
+reason = "A 407-byte sprite list in a 408-byte RATS block: the block is a byte longer than the list."
+
+[[failure]]
+hack = "QLDC 2022/09_idol.bps"
+sha1 = "8731907bf62d3d7d7212e08b1997185b932ea7b3"
+tests = "corpus_levels::lunar_magic_levels_load_as_the_hacks_have_them"
+levels = ["105"]
+reason = "32 screens of 64 rows, more than the planes hold."
+
+[[failure]]
+hack = "Grand Poo World 2.smc"
+sha1 = "390583d5faa0cc02e0c4f414f7638228661b2dc9"
+tests = "map16_pages::map16_files_import_as_the_hacks_do"
+levels = "all"
+reason = "Its levels are hidden as a lock hides them (lunar-magic.md), and so is page 40's group: the hack has a table for it, which Lunar Magic's export does not show."

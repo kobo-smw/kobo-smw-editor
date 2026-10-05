@@ -18,7 +18,10 @@ mod common;
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use common::fixtures::sha1_hex;
+use common::temp::TempDir;
+use common::{Lcg, lm};
 
 use kobo_core::build::{self, Project};
 use kobo_core::entrance::{MidwayEntrance, SeparateMidway};
@@ -29,7 +32,6 @@ use kobo_core::palette::{Color15, CustomPalette, Palette};
 use kobo_core::source::map16::{DEFAULT_ACTS, GamePage, GameTile, Map16Entry, Map16Page};
 use kobo_core::tools::Tool;
 use kobo_core::{Rom, SnesAddr, clean_room, exanimation, import};
-use sha1::{Digest, Sha1};
 
 const LEVEL: u16 = 0x105;
 
@@ -72,26 +74,18 @@ fn save(lunar_magic: &Path, clean: &Rom, rom: &Rom, name: &str) -> Rom {
         !clean_room::saved_by_lunar_magic(rom),
         "{name}: a Kobo build taken for a ROM Lunar Magic saved"
     );
-    let dir = std::env::temp_dir().join(format!("kobo-lm-save-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(dir.join("sysLMRestore")).unwrap();
-    let mut original = vec![0; 0x200];
-    original.extend_from_slice(clean.data());
-    fs::write(dir.join("sysLMRestore/smwOrig.smc"), original).unwrap();
-    fs::write(dir.join("rom.smc"), rom.data()).unwrap();
-    let lm = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/lunar-magic/lm");
+    let ws = lm::Workspace::new(
+        lunar_magic,
+        &format!("save-{name}"),
+        rom,
+        Some(clean),
+        false,
+    );
     let level = format!("{LEVEL:X}");
     for command in ["-ExportLevel", "-ImportLevel"] {
-        let status = Command::new(&lm)
-            .args([command, "rom.smc", "level.mwl", &level])
-            .current_dir(&dir)
-            .env("KOBO_LM_DIR", lunar_magic)
-            .output()
-            .unwrap();
-        assert!(status.status.success(), "Lunar Magic {command}: {status:?}");
+        ws.run(&[command, "rom.smc", "level.mwl", &level]);
     }
-    let saved = Rom::load(dir.join("rom.smc")).unwrap();
-    let _ = fs::remove_dir_all(&dir);
+    let saved = ws.rom();
     assert_ne!(saved.data(), rom.data(), "Lunar Magic saved nothing");
     assert!(clean_room::saved_by_lunar_magic(&saved));
     let mut unmarked = Rom::from_headerless(saved.data().to_vec()).unwrap();
@@ -494,8 +488,7 @@ fn map16_export_mismatches(file: &[u8], rom: &Rom, project: &Project) -> Vec<Str
 
 #[test]
 fn lunar_magic_reads_the_map16_a_build_writes() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -509,13 +502,13 @@ fn lunar_magic_reads_the_map16_a_build_writes() {
         let base = common::base_as(&clean, sa1);
         let project = project(&base);
         let built = common::build_as(&clean, &project, sa1).unwrap();
-        let file = common::export_map16(&lunar_magic, &built, &tag("with", sa1));
+        let file = common::lm::export_map16(&lunar_magic, &built, &tag("with", sa1));
         let mismatches = map16_export_mismatches(&file, &built, &project);
         assert!(mismatches.is_empty(), "{mismatches:?}");
 
         // Without the marker at $06F5FC, Lunar Magic reads what tiles act like,
         // each tileset's page 2, and the pages past $0F from elsewhere.
-        let file = common::export_map16(
+        let file = common::lm::export_map16(
             &lunar_magic,
             &without_checked_bytes(&built),
             &tag("without", sa1),
@@ -530,8 +523,7 @@ fn lunar_magic_reads_the_map16_a_build_writes() {
 
 #[test]
 fn a_build_survives_a_lunar_magic_save() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -641,37 +633,17 @@ fn a_build_survives_a_lunar_magic_save() {
 /// Lunar Magic's `-ExportGFX` of a copy of `rom`: each file's SHA-1, by
 /// name.
 fn export_gfx(lunar_magic: &Path, rom: &Rom, name: &str) -> Vec<(String, String)> {
-    let dir = std::env::temp_dir().join(format!("kobo-lm-gfx-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    let mut headered = vec![0; 0x200];
-    headered.extend_from_slice(rom.data());
-    fs::write(dir.join("rom.smc"), headered).unwrap();
-    let lm = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/lunar-magic/lm");
-    let status = Command::new(&lm)
-        .args(["-ExportGFX", "rom.smc"])
-        .current_dir(&dir)
-        .env("KOBO_LM_DIR", lunar_magic)
-        .output()
-        .unwrap();
-    assert!(
-        status.status.success(),
-        "Lunar Magic -ExportGFX: {status:?}"
-    );
-    let mut files: Vec<(String, String)> = fs::read_dir(dir.join("Graphics"))
+    let ws = lm::Workspace::new(lunar_magic, &format!("gfx-{name}"), rom, None, true);
+    ws.run(&["-ExportGFX", "rom.smc"]);
+    let mut files: Vec<(String, String)> = fs::read_dir(ws.path().join("Graphics"))
         .unwrap()
         .map(|entry| {
             let path = entry.unwrap().path();
             let name = path.file_stem().unwrap().to_string_lossy().into_owned();
-            let hash = Sha1::digest(fs::read(&path).unwrap())
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect();
-            (name, hash)
+            (name, sha1_hex(&fs::read(&path).unwrap()))
         })
         .collect();
     files.sort();
-    let _ = fs::remove_dir_all(&dir);
     files
 }
 
@@ -683,11 +655,10 @@ fn export_gfx(lunar_magic: &Path, rom: &Rom, name: &str) -> Vec<(String, String)
 /// the files for LC_LZ2, and a save records LC_LZ2 over the setting.
 #[test]
 fn lunar_magic_reads_an_lz3_build() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
-    if common::tool(Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
+    if common::tool(Tool::Sa1Pack).is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {
@@ -745,19 +716,6 @@ const SPRITE_LOADER_RANGES: [(u32, u32); 18] = [
     (0x01C08C, 0x01C093),
     (0x01C0E2, 0x01C0E2),
 ];
-
-/// A small deterministic generator for the scenarios.
-struct Lcg(u64);
-
-impl Lcg {
-    fn next(&mut self, n: u32) -> u32 {
-        self.0 = self
-            .0
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        ((self.0 >> 33) % n as u64) as u32
-    }
-}
 
 /// `rom` with `sprites` as `level`'s list, at `$3F8000`, and the level's
 /// `tTT` byte set.
@@ -829,8 +787,7 @@ fn sprite_frames(rom: &Rom, level: u16, route: &[(u32, i32, i32)], clear: bool) 
 /// same (docs/lunar-magic-install.md, "Sprites").
 #[test]
 fn kobos_sprite_loader_spawns_as_lunar_magics() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -844,8 +801,7 @@ fn kobos_sprite_loader_spawns_as_lunar_magics() {
 /// work with SA-1 Pack's own changes to the game's (docs/sa1.md).
 #[test]
 fn kobos_sprite_loader_spawns_as_lunar_magics_on_sa1() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -888,9 +844,10 @@ fn loaders_spawn_alike(
         0x0D, 0x0F, 0x04, 0x05, 0x1C, 0x3E, 0x2F, 0x7B, 0xC9, 0xE0, 0xDE, 0xE2, 0x26, 0x10, 0x1D,
         0x09, 0xD5, 0x3F,
     ];
-    let seed = std::env::var("KOBO_LOADER_SEED").map_or(1, |s| s.parse().unwrap());
-    let count = std::env::var("KOBO_LOADER_CASES").map_or(24, |s| s.parse().unwrap());
+    let seed = common::env_number("KOBO_LOADER_SEED", 1);
+    let count = common::env_number("KOBO_LOADER_CASES", 24);
     let mut rng = Lcg(seed);
+    let mut ran = 0;
     for case in 0..count {
         let (level, vertical) = [
             (0x105, false),
@@ -935,9 +892,12 @@ fn loaders_spawn_alike(
         };
         let new = new || sprites.needs_new_system(vertical);
         let (header, entries) = sprites.to_entries(vertical, new);
+        // A list the format cannot hold (too many sprites to a screen) is
+        // left out; the cases that ran are counted below.
         let Ok(bytes) = kobo_core::sprites::encode(header, &entries, None) else {
             continue;
         };
+        ran += 1;
         let ttt = rng.next(8) as u8;
         let mut route = vec![(0, 48, 352)];
         let (mut frame, mut x, mut y) = (0u32, 48i32, 352i32);
@@ -961,6 +921,11 @@ fn loaders_spawn_alike(
             "case {case} (seed {seed}): level {level:03X}, tTT {ttt}, {n} sprites"
         );
     }
+    eprintln!("{ran} of {count} cases ran; the rest could not be encoded");
+    assert!(
+        ran > 0 || count == 0,
+        "no case of seed {seed} could be encoded"
+    );
 }
 
 /// Kobo's palette fade at a level's end (`palette.asm`) leaves the same
@@ -971,8 +936,7 @@ fn loaders_spawn_alike(
 /// leaves, sets, or blends each shows.
 #[test]
 fn kobos_end_fade_is_lunar_magics() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -1050,8 +1014,7 @@ fn kobos_end_fade_is_lunar_magics() {
 /// frame.
 #[test]
 fn kobos_layer2_interaction_and_camera_are_lunar_magics() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -1125,8 +1088,7 @@ fn kobos_layer2_interaction_and_camera_are_lunar_magics() {
 /// "Layer 2 scroll settings").
 #[test]
 fn kobos_layer2_offset_at_the_entrance_is_lunar_magics() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -1203,8 +1165,7 @@ fn kobos_layer2_offset_at_the_entrance_is_lunar_magics() {
 /// layer 1's and 2's positions every frame.
 #[test]
 fn kobos_first_camera_and_scrolling_off_are_lunar_magics() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -1330,8 +1291,7 @@ fn with_kobos_entrances(asar: &kobo_core::asar::Asar, lm: &Rom) -> Rom {
 /// on the exit's screen.
 #[test]
 fn kobos_special_exits_are_lunar_magics() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -1391,8 +1351,7 @@ fn kobos_special_exits_are_lunar_magics() {
 /// in play each writes, around the camera.
 #[test]
 fn kobos_vram_patch_lags_as_lunar_magics() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -1623,8 +1582,7 @@ fn graphics_differences(built: &Rom, saved: &Rom) -> Vec<String> {
 
 #[test]
 fn a_graphics_build_survives_a_lunar_magic_save() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -1692,8 +1650,7 @@ fn a_graphics_build_survives_a_lunar_magic_save() {
 #[test]
 fn a_layer3_build_survives_a_lunar_magic_save() {
     use kobo_core::exgfx::{self, GraphicsList, Layer3Settings};
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -1817,20 +1774,16 @@ fn secret_goal_tape(rom: &Rom) -> bool {
 /// sprite group over PIXI's goal tape hook at `$01C089`.
 #[test]
 fn a_pixi_build_survives_a_lunar_magic_save() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
         return;
     };
-    if common::asar().is_none()
-        || common::tool(kobo_core::tools::Tool::Pixi, "KOBO_REQUIRE_PIXI").is_none()
-    {
+    if common::asar().is_none() || common::tool(kobo_core::tools::Tool::Pixi).is_none() {
         return;
     }
-    let dir = std::env::temp_dir().join(format!("kobo-lm-pixi-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
+    let dir = TempDir::new("lm-pixi");
     for (file, text) in [
         ("pixi/list.txt", "00 test.cfg\n"),
         (
@@ -1863,7 +1816,7 @@ fn a_pixi_build_survives_a_lunar_magic_save() {
             },
         );
         let project = Project {
-            root: dir.clone(),
+            root: dir.to_path_buf(),
             manifest: kobo_core::source::project::Manifest {
                 pixi: Some(PathBuf::from("pixi")),
                 ..Default::default()
@@ -1906,7 +1859,6 @@ fn a_pixi_build_survives_a_lunar_magic_save() {
             "the secret goal tape after a save"
         );
     }
-    let _ = fs::remove_dir_all(&dir);
 }
 
 const TALL: u16 = 0x106;
@@ -1940,8 +1892,7 @@ fn taller_project(clean: &Rom) -> Project {
 
 #[test]
 fn a_taller_level_build_survives_a_lunar_magic_save() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -2011,8 +1962,7 @@ fn a_taller_level_build_survives_a_lunar_magic_save() {
 /// exit as Kobo wrote them.
 #[test]
 fn entrances_past_1ff_survive_a_lunar_magic_save() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -2072,8 +2022,7 @@ fn entrances_past_1ff_survive_a_lunar_magic_save() {
 /// `$0EF550`, and without each.
 #[test]
 fn the_background_and_level_number_checks() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {

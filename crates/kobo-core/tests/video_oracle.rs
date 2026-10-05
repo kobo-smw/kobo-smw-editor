@@ -8,8 +8,10 @@
 
 mod common;
 
+use kobo_core::tiers::Tier;
+
 use kobo_core::render;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// The status bar occupies the top of the picture with its own scroll.
 const STATUS_BAR_LINES: usize = 36;
@@ -70,18 +72,12 @@ fn levels_in(dir: &Path) -> Vec<u16> {
 
 #[test]
 fn rendered_levels_match_emulator_frames() {
+    let Some(dirs) = common::tier_paths(Tier::VideoOracle) else {
+        return;
+    };
     let Some(rom) = common::oracle_rom() else {
         return;
     };
-    let Some(list) = std::env::var_os("KOBO_VIDEO_ORACLE_DIRS") else {
-        eprintln!("skipping: KOBO_VIDEO_ORACLE_DIRS is not set");
-        return;
-    };
-    let dirs: Vec<PathBuf> = std::env::split_paths(&list).collect();
-    assert!(
-        !dirs.is_empty(),
-        "configured video oracle has no directories"
-    );
     let mut failures = Vec::new();
     for dir in &dirs {
         let levels = levels_in(dir);

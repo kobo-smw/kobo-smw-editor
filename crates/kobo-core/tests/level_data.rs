@@ -7,6 +7,8 @@
 
 mod common;
 
+use common::failures::{Failures, catch};
+
 use kobo_core::compress::rle1;
 use kobo_core::import;
 use kobo_core::level::objects::{self, Layout, ObjectData};
@@ -58,11 +60,32 @@ fn check_objects(
     counts.identical += (bytes[..] == rom.read(addr, data.len).unwrap()[..]) as usize;
 }
 
-fn check_rom(name: &str, rom: &Rom) -> Counts {
+/// Every level of `rom`, each level's failure recorded in `failures`, or
+/// on the first, with none, a panic.
+fn check_rom(name: &str, rom: &Rom, failures: Option<&Failures>) -> Counts {
     let mut counts = Counts::default();
-    let sizes = sprites::pixi_size_table(rom).unwrap();
     let mut backgrounds = std::collections::HashSet::new();
     for n in 0..level::LEVEL_COUNT {
+        let Some(failures) = failures else {
+            check_level(name, rom, n, &mut counts, &mut backgrounds);
+            continue;
+        };
+        if let Err(e) = catch(|| check_level(name, rom, n, &mut counts, &mut backgrounds)) {
+            failures.fail(rom, Some(n), e);
+        }
+    }
+    counts
+}
+
+fn check_level(
+    name: &str,
+    rom: &Rom,
+    n: u16,
+    counts: &mut Counts,
+    backgrounds: &mut std::collections::HashSet<SnesAddr>,
+) {
+    let sizes = sprites::pixi_size_table(rom).unwrap();
+    {
         let what = |layer: &str| format!("level {n:03X} {layer}");
         let objects =
             level::read_objects(rom, n).unwrap_or_else(|e| panic!("{name} level {n:03X}: {e}"));
@@ -83,13 +106,13 @@ fn check_rom(name: &str, rom: &Rom) -> Counts {
             layer1,
             &objects.layer1,
             layout1,
-            &mut counts,
+            counts,
         );
         if let Layer2::Objects(data) = &objects.layer2 {
             let (level::Layer2Data::Objects(addr) | level::Layer2Data::Tilemap(addr)) =
                 level::layer2_ptr(rom, n).unwrap();
             let layout = vertical(mode.layer2() == level::Layer2Kind::VerticalObjects);
-            check_objects(name, rom, &what("layer 2"), addr, data, layout, &mut counts);
+            check_objects(name, rom, &what("layer 2"), addr, data, layout, counts);
         }
 
         if let Some(bg) = level::read_background(rom, n).unwrap()
@@ -130,13 +153,12 @@ fn check_rom(name: &str, rom: &Rom) -> Counts {
         counts.lists += 1;
         counts.identical += (bytes[..] == rom.read(addr, list.len).unwrap()[..]) as usize;
     }
-    counts
 }
 
 #[test]
 fn vanilla_levels_round_trip() {
     let Some(rom) = common::vanilla() else { return };
-    let counts = check_rom("vanilla", &rom);
+    let counts = check_rom("vanilla", &rom, None);
     eprintln!("vanilla: {} backgrounds", counts.backgrounds);
     // 538 object lists and 512 sprite lists. Eighteen object lists have
     // a screen jump that changes nothing, or one a new-screen bit does.
@@ -146,16 +168,19 @@ fn vanilla_levels_round_trip() {
 
 #[test]
 fn lunar_magic_levels_round_trip() {
+    let failures = Failures::new("level_data::lunar_magic_levels_round_trip");
     for (path, rom) in common::lunar_magic_roms() {
         let name = path.file_name().unwrap().to_string_lossy();
         if gfx::is_locked(&rom) {
             eprintln!("{name}: locked, skipped");
             continue;
         }
-        let counts = check_rom(&name, &rom);
+        failures.checked(&path, &rom);
+        let counts = check_rom(&name, &rom, Some(&failures));
         eprintln!(
             "{name}: {} of {} lists byte for byte, {} backgrounds",
             counts.identical, counts.lists, counts.backgrounds
         );
     }
+    failures.finish();
 }

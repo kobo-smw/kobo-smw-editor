@@ -15,7 +15,8 @@
 //!   height the loader reported.
 //!
 //! The two were separate tests, each loading every level of the corpus on
-//! one core; together they took most of a full run.
+//! one core; together they took most of a full run. What a hack is known
+//! to fail is in `fixtures/known_failures.toml`.
 
 mod common;
 
@@ -144,33 +145,31 @@ struct LevelResult {
     failures: Vec<String>,
 }
 
-fn check_level(rom: &Rom, gpw2: bool, level: u16) -> LevelResult {
+fn check_level(rom: &Rom, level: u16) -> LevelResult {
     let mut out = LevelResult::default();
     let loaded = match expand::expand_level(rom, level) {
         Ok(t) => t,
         Err(e) => {
-            // A level the hack itself cannot load (34_idol's object
-            // pre-scan runs over bank 0 in nine of its slots, a known
-            // failure; docs/testing.md).
-            out.failures.push(format!("level {level:03X}: {e}"));
+            out.failures.push(format!("{e}"));
             return out;
         }
     };
-    // An unused slot of Grand Poo World 2 with no background table: its
-    // definitions come from bank 0 work RAM as it stood at the upload,
-    // which the loaded level's RAM no longer is.
-    if loaded.tiles.shows_background() && !(gpw2 && level == 0x09F) {
+    if loaded.tiles.shows_background() {
         out.background = true;
         let (words, bad) = check_background(&loaded);
         // At least 960 words, including when scrolling through the five
         // rows outside a 27-row buffer. Both background screens count.
         if words < 30 * 32 || !bad.is_empty() {
             out.failures.push(format!(
-                "level {level:03X} (mode {}, BG2SC ${:02X}): {} of {words} tilemap words missing or different\n  {}",
+                "mode {}, BG2SC ${:02X}: {} of {words} tilemap words missing or different\n  {}",
                 loaded.tiles.level_mode,
                 loaded.video.bg_sc[1],
                 bad.len(),
-                bad.iter().take(24).cloned().collect::<Vec<_>>().join("\n  ")
+                bad.iter()
+                    .take(24)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("\n  ")
             ));
         }
     }
@@ -178,8 +177,7 @@ fn check_level(rom: &Rom, gpw2: bool, level: u16) -> LevelResult {
     let list = match sprites::read_sprites_at(rom, start) {
         Ok(list) => list,
         Err(e) => {
-            out.failures
-                .push(format!("level {level:03X}: sprites: {e}"));
+            out.failures.push(format!("sprites: {e}"));
             return out;
         }
     };
@@ -193,7 +191,7 @@ fn check_level(rom: &Rom, gpw2: bool, level: u16) -> LevelResult {
         || loaded.tiles.screens == 0xFF)
     {
         out.failures.push(format!(
-            "level {level:03X}: {} screens of {} rows overflow the planes",
+            "{} screens of {} rows overflow the planes",
             loaded.tiles.screens, loaded.tiles.rows
         ));
     }
@@ -204,7 +202,7 @@ fn check_level(rom: &Rom, gpw2: bool, level: u16) -> LevelResult {
             let (x, y) = s.tile_position(false);
             if y >= h {
                 out.failures.push(format!(
-                    "level {level:03X} ({} rows): sprite {:02X} at ({x}, {y}) lies below {w}x{h}",
+                    "{} rows: sprite {:02X} at ({x}, {y}) lies below {w}x{h}",
                     loaded.tiles.rows, s.id
                 ));
             }
@@ -213,7 +211,7 @@ fn check_level(rom: &Rom, gpw2: bool, level: u16) -> LevelResult {
     if let Some(size) = rats_size(rom, start) {
         if list.len != size {
             out.failures.push(format!(
-                "level {level:03X}: parsed {} bytes of sprites at {start} but the RATS block holds {size}",
+                "parsed {} bytes of sprites at {start} but the RATS block holds {size}",
                 list.len
             ));
         }
@@ -223,18 +221,22 @@ fn check_level(rom: &Rom, gpw2: bool, level: u16) -> LevelResult {
 }
 
 /// Every level of `rom`: (backgrounds checked, sprite lists parsed, lists
-/// a RATS tag confirmed, failures).
-fn check_rom(rom: &Rom) -> (usize, usize, usize, Vec<String>) {
-    let gpw2 = rom.sha1_hex() == "390583d5faa0cc02e0c4f414f7638228661b2dc9";
+/// a RATS tag confirmed, each level's failures).
+fn check_rom(rom: &Rom) -> (usize, usize, usize, Vec<(u16, Vec<String>)>) {
     let levels: Vec<u16> = (0..0x200).collect();
-    let results = common::par_map(&levels, |&level| check_level(rom, gpw2, level));
+    let results = common::par_map(&levels, |&level| check_level(rom, level));
     let count = |f: fn(&LevelResult) -> bool| results.iter().filter(|r| f(r)).count();
     let (background, parsed, confirmed) = (
         count(|r| r.background),
         count(|r| r.parsed),
         count(|r| r.confirmed),
     );
-    let failures = results.into_iter().flat_map(|r| r.failures).collect();
+    let failures = levels
+        .into_iter()
+        .zip(results)
+        .filter(|(_, r)| !r.failures.is_empty())
+        .map(|(level, r)| (level, r.failures))
+        .collect();
     (background, parsed, confirmed, failures)
 }
 
@@ -245,28 +247,42 @@ fn vanilla_levels_load_as_the_game_has_them() {
     eprintln!("vanilla: {background} backgrounds checked, {parsed} sprite lists parsed");
     assert!(background > 0);
     assert_eq!(parsed, 0x200);
+    let failures: Vec<String> = failures
+        .into_iter()
+        .flat_map(|(level, f)| {
+            f.into_iter()
+                .map(move |f| format!("level {level:03X}: {f}"))
+        })
+        .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 /// Every hack is checked whatever an earlier one gave, and the failures
-/// are reported together.
+/// are reported together, against the known ones.
 #[test]
 fn lunar_magic_levels_load_as_the_hacks_have_them() {
-    let mut failures = Vec::new();
+    let failures = common::failures::Failures::new(
+        "corpus_levels::lunar_magic_levels_load_as_the_hacks_have_them",
+    );
     for (path, rom) in common::lunar_magic_roms() {
+        failures.checked(&path, &rom);
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        let (background, parsed, confirmed, mut found) = check_rom(&rom);
+        let (background, parsed, confirmed, found) = check_rom(&rom);
         eprintln!(
             "{name}: {background} backgrounds checked, {parsed} sprite lists parsed, \
              {confirmed} confirmed by RATS tags"
         );
         if background == 0 {
-            found.push("no background levels".into());
+            failures.fail(&rom, None, "no background levels");
         }
         if confirmed == 0 {
-            found.push("no RATS-wrapped sprite lists found".into());
+            failures.fail(&rom, None, "no RATS-wrapped sprite lists found");
         }
-        failures.extend(found.into_iter().map(|f| format!("{name}: {f}")));
+        for (level, found) in found {
+            for f in found {
+                failures.fail(&rom, Some(level), f);
+            }
+        }
     }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    failures.finish();
 }

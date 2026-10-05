@@ -6,6 +6,8 @@
 
 mod common;
 
+use common::temp::TempDir;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -14,11 +16,8 @@ use kobo_core::build::{self, Cache, Project};
 use kobo_core::source::project::Manifest;
 use kobo_core::tools::Tool;
 
-fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("kobo-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+fn temp_dir(name: &str) -> TempDir {
+    TempDir::new(name)
 }
 
 fn write(dir: &Path, file: &str, text: &str) {
@@ -46,7 +45,7 @@ fn patches_apply_early_and_late_in_order() {
         "lorom\nincsrc \"shared.asm\"\norg $0FF201\ndb !value\n",
     );
     let project = Project {
-        root: dir.clone(),
+        root: dir.to_path_buf(),
         manifest: Manifest {
             early_patches: vec![PathBuf::from("asm/early.asm")],
             late_patches: vec![PathBuf::from("asm/late.asm")],
@@ -76,7 +75,7 @@ fn patches_apply_early_and_late_in_order() {
 
     // An included file is an input: changing it changes the key.
     let cache_dir = temp_dir("patches-cache");
-    let cache = Cache::new(cache_dir.clone());
+    let cache = Cache::new(cache_dir.to_path_buf());
     build::build_on(&base, &project, Some(&cache)).unwrap();
     write(&dir, "asm/shared.asm", "!value = $43\n");
     let rebuilt = build::build_on(&base, &project, Some(&cache)).unwrap();
@@ -103,7 +102,6 @@ fn patches_apply_early_and_late_in_order() {
     write(&dir, "build.sfc", "a ROM");
     write(&dir, ".git/index", "a commit");
     assert_eq!(build::stage_keys(&base, &project).unwrap(), keys);
-    let _ = fs::remove_dir_all(&cache_dir);
 
     // A failing patch names itself.
     write(
@@ -115,16 +113,14 @@ fn patches_apply_early_and_late_in_order() {
         .unwrap_err()
         .to_string();
     assert!(error.contains("late.asm"), "{error}");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn addmusick_inserts_the_music() {
-    let Some(tool) = std::env::var_os("KOBO_ADDMUSICK") else {
-        eprintln!("skipping: KOBO_ADDMUSICK is not set");
+    let Some(tool) = common::tool(Tool::AddmusicK) else {
         return;
     };
-    assert!(Path::new(&tool).is_dir(), "KOBO_ADDMUSICK must be a folder");
+    assert!(tool.is_dir(), "AddmusicK must be a folder");
     let Some(clean) = common::vanilla() else {
         return;
     };
@@ -134,7 +130,7 @@ fn addmusick_inserts_the_music() {
     let dir = temp_dir("music");
     fs::create_dir_all(dir.join("music")).unwrap();
     let project = Project {
-        root: dir.clone(),
+        root: dir.to_path_buf(),
         manifest: Manifest {
             music: Some(PathBuf::from("music")),
             ..Manifest::default()
@@ -151,7 +147,6 @@ fn addmusick_inserts_the_music() {
     assert_eq!(built.read(SnesAddr::new(0x0E8000), 4).unwrap(), b"@AMK");
     assert_eq!(built.len(), 0x10_0000);
     assert_eq!(build::build(&clean, &project).unwrap().data(), built.data());
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// With SA-1 Pack (configured, or the pinned release in the cache), Asar,
@@ -160,7 +155,7 @@ fn addmusick_inserts_the_music() {
 /// The check of all 512 pictures is `render_hashes` (docs/testing.md).
 #[test]
 fn sa1_projects_build_onto_sa1_pack() {
-    if common::tool(Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
+    if common::tool(Tool::Sa1Pack).is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {
@@ -195,7 +190,6 @@ fn sa1_projects_build_onto_sa1_pack() {
         let b = kobo_core::render::render_level(&built, level, options).unwrap();
         assert!(a.image.pixels == b.image.pixels, "level {level:03X}");
     }
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// SA-1 Pack on an image with no game data, so it runs without a ROM: CI
@@ -203,7 +197,7 @@ fn sa1_projects_build_onto_sa1_pack() {
 /// every platform, which must give the same bytes.
 #[test]
 fn sa1_pack_applies_without_a_rom() {
-    if common::tool(Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
+    if common::tool(Tool::Sa1Pack).is_none() {
         return;
     }
     if common::asar().is_none() {
@@ -230,7 +224,7 @@ fn sa1_pack_applies_without_a_rom() {
 
 #[test]
 fn sa1_images_past_4m_take_sa1_packs_larger_patches() {
-    if common::tool(Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
+    if common::tool(Tool::Sa1Pack).is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {
@@ -267,7 +261,7 @@ fn sa1_images_past_4m_take_sa1_packs_larger_patches() {
 /// twice.
 #[test]
 fn uberasm_inserts_level_code() {
-    if common::tool(Tool::UberAsm, "KOBO_REQUIRE_UBERASM").is_none() {
+    if common::tool(Tool::UberAsm).is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {
@@ -292,7 +286,7 @@ fn uberasm_inserts_level_code() {
     // What keeps an empty folder in git is not a library file.
     write(&dir, "uberasm/library/.gitkeep", "");
     let project = Project {
-        root: dir.clone(),
+        root: dir.to_path_buf(),
         manifest: Manifest {
             uberasm: Some(PathBuf::from("uberasm")),
             ..Manifest::default()
@@ -318,7 +312,6 @@ fn uberasm_inserts_level_code() {
     fs::remove_file(dir.join("uberasm/list.txt")).unwrap();
     let error = build::build(&clean, &project).unwrap_err().to_string();
     assert!(error.contains("list.txt"), "{error}");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// UberASM Tool on an image with no game data, 1 MiB with the title it
@@ -326,10 +319,10 @@ fn uberasm_inserts_level_code() {
 /// every platform, with the pinned Asar beside it.
 #[test]
 fn uberasm_runs_without_a_rom() {
-    let Some(tool) = common::tool(Tool::UberAsm, "KOBO_REQUIRE_UBERASM") else {
+    let Some(tool) = common::tool(Tool::UberAsm) else {
         return;
     };
-    let Some(asar) = common::tool(Tool::Asar, "KOBO_REQUIRE_ASAR") else {
+    let Some(asar) = common::tool(Tool::Asar) else {
         return;
     };
     let mut data = vec![0; 0x10_0000];
@@ -353,16 +346,15 @@ fn uberasm_runs_without_a_rom() {
     let out = kobo_core::tools::uberasm(&rom, &tool, &dir, &asar, None).unwrap();
     let code = [0xA9, 0x42, 0x8D, 0xBF, 0x0D, 0x6B];
     assert!(out.data().windows(code.len()).any(|w| w == code));
-    let _ = fs::remove_dir_all(&dir);
 }
 
-/// With GPS (`KOBO_GPS`, a folder with the program built for the platform
-/// and its files), the blocks stage inserts a block into Kobo's acts-like
-/// chain: tile `$200` acts like `$025`, and its entries are GPS's.
+/// With GPS (`KOBO_GPS` or `tools.gps`, a folder with the program built
+/// for the platform and its files), the blocks stage inserts a block into
+/// Kobo's acts-like chain: tile `$200` acts like `$025`, and its entries
+/// are GPS's.
 #[test]
 fn gps_inserts_blocks() {
-    if std::env::var_os("KOBO_GPS").is_none() {
-        eprintln!("skipping: KOBO_GPS is not set");
+    if common::tool(Tool::Gps).is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {
@@ -380,7 +372,7 @@ fn gps_inserts_blocks() {
          JMP Done : JMP Done : JMP Done : JMP Done\nDone:\n    RTL\n",
     );
     let project = Project {
-        root: dir.clone(),
+        root: dir.to_path_buf(),
         manifest: Manifest {
             gps: Some(PathBuf::from("blocks")),
             ..Manifest::default()
@@ -415,7 +407,6 @@ fn gps_inserts_blocks() {
         installed.read(entry, 16).unwrap()
     );
     assert_eq!(build::build(&clean, &project).unwrap().data(), built.data());
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// With SA-1 Pack, Asar, and the vanilla ROM: an SA-1 project with `[rom]
@@ -427,7 +418,7 @@ fn gps_inserts_blocks() {
 /// `render_hashes` (docs/testing.md). A LoROM project may not ask for it.
 #[test]
 fn sa1_projects_store_gfx_as_lz3() {
-    if common::tool(Tool::Sa1Pack, "KOBO_REQUIRE_SA1PACK").is_none() {
+    if common::tool(Tool::Sa1Pack).is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {
@@ -512,7 +503,7 @@ fn pixi_files(dir: &Path) {
 /// levels stage sizes each sprite entry by the table PIXI left.
 #[test]
 fn pixi_inserts_sprites() {
-    if common::tool(Tool::Pixi, "KOBO_REQUIRE_PIXI").is_none() {
+    if common::tool(Tool::Pixi).is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {
@@ -537,7 +528,7 @@ fn pixi_inserts_sprites() {
         },
     );
     let project = Project {
-        root: dir.clone(),
+        root: dir.to_path_buf(),
         manifest: Manifest {
             pixi: Some(PathBuf::from("pixi")),
             ..Manifest::default()
@@ -569,7 +560,6 @@ fn pixi_inserts_sprites() {
     fs::remove_file(dir.join("pixi/list.txt")).unwrap();
     let error = build::build(&clean, &project).unwrap_err().to_string();
     assert!(error.contains("list.txt"), "{error}");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// PIXI on an image with no game data, 1 MiB with the bytes it checks for
@@ -582,8 +572,7 @@ fn pixi_inserts_sprites() {
 #[test]
 fn pixi_runs_without_a_rom() {
     for version in Tool::Pixi.pinned_versions() {
-        let Some(tool) = common::tool_version(Tool::Pixi, Some(version), "KOBO_REQUIRE_PIXI")
-        else {
+        let Some(tool) = common::tool_version(Tool::Pixi, Some(version)) else {
             continue;
         };
         pixi_runs_on_an_image(&tool, version);
@@ -591,7 +580,7 @@ fn pixi_runs_without_a_rom() {
 }
 
 fn pixi_runs_on_an_image(tool: &std::path::Path, version: &str) {
-    let Some(asar) = common::tool(Tool::Asar, "KOBO_REQUIRE_ASAR") else {
+    let Some(asar) = common::tool(Tool::Asar) else {
         return;
     };
     let mut data = vec![0; 0x10_0000];
@@ -611,7 +600,6 @@ fn pixi_runs_on_an_image(tool: &std::path::Path, version: &str) {
     let code = [0xA9, 0x42, 0x8D, 0xBF, 0x0D, 0x6B];
     assert!(out.data().windows(code.len()).any(|w| w == code));
     assert!(kobo_core::sprites::pixi_size_table(&out).unwrap().is_some());
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// PIXI's 255-sprite option, on unless `-d255spl`, moves the load flags to
@@ -620,7 +608,7 @@ fn pixi_runs_on_an_image(tool: &std::path::Path, version: &str) {
 /// setting PIXI's flags. Without PIXI, 129 are refused.
 #[test]
 fn pixi_lets_a_level_have_255_sprites() {
-    if common::tool(Tool::Pixi, "KOBO_REQUIRE_PIXI").is_none() {
+    if common::tool(Tool::Pixi).is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {
@@ -643,7 +631,7 @@ fn pixi_lets_a_level_have_255_sprites() {
         })
         .collect();
     let project = Project {
-        root: dir.clone(),
+        root: dir.to_path_buf(),
         manifest: Manifest {
             pixi: Some(PathBuf::from("pixi")),
             ..Manifest::default()
@@ -679,7 +667,6 @@ fn pixi_lets_a_level_have_255_sprites() {
     };
     let error = build::build(&clean, &without).unwrap_err().to_string();
     assert!(error.contains("255-sprite loader"), "{error}");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// A PIXI folder with one of each kind of thing PIXI inserts: a normal
@@ -723,10 +710,10 @@ fn pixi_files_of_every_kind(dir: &Path) {
 /// PIXI's image again: an import carries a hack's sprites whole.
 #[test]
 fn pixi_insert_is_read_whole() {
-    let Some(tool) = common::tool(Tool::Pixi, "KOBO_REQUIRE_PIXI") else {
+    let Some(tool) = common::tool(Tool::Pixi) else {
         return;
     };
-    let Some(asar) = common::tool(Tool::Asar, "KOBO_REQUIRE_ASAR") else {
+    let Some(asar) = common::tool(Tool::Asar) else {
         return;
     };
     let mut data = vec![0; 0x10_0000];
@@ -771,7 +758,6 @@ fn pixi_insert_is_read_whole() {
         differ.len(),
         differ.first()
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// A hack made with PIXI imports with its sprites carried as the compiled
@@ -780,7 +766,7 @@ fn pixi_insert_is_read_whole() {
 /// with the PIXI folder instead, the project builds the sprites from it.
 #[test]
 fn pixi_sprites_carry_through_an_import() {
-    if common::tool(Tool::Pixi, "KOBO_REQUIRE_PIXI").is_none() {
+    if common::tool(Tool::Pixi).is_none() {
         return;
     }
     let Some(clean) = common::vanilla() else {
@@ -805,7 +791,7 @@ fn pixi_sprites_carry_through_an_import() {
         },
     );
     let project = Project {
-        root: dir.clone(),
+        root: dir.to_path_buf(),
         manifest: Manifest {
             pixi: Some(PathBuf::from("pixi")),
             ..Manifest::default()

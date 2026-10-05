@@ -35,6 +35,7 @@ pub mod rom;
 pub mod source;
 pub mod sprites;
 pub mod template;
+pub mod tiers;
 pub mod tools;
 pub mod video;
 

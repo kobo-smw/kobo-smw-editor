@@ -11,7 +11,6 @@ mod common;
 use kobo_core::gfx::{self, Compression, GFX_FILE_COUNT, GfxError};
 use kobo_core::{Rom, expand};
 use sha1::{Digest, Sha1};
-use std::collections::HashMap;
 
 /// Files of the pointer tables, which is what `PrepareGraphicsFile` takes.
 const TABLE_FILES: u8 = 0x32;
@@ -53,42 +52,36 @@ fn vanilla_files_decode_as_the_rom_decodes_them() {
 
 #[test]
 fn lunar_magic_files_decode_as_the_rom_decodes_them() {
+    let failures = common::failures::Failures::new(
+        "gfx_decompression::lunar_magic_files_decode_as_the_rom_decodes_them",
+    );
     for (path, rom) in common::lunar_magic_roms() {
         match check_rom(&rom) {
-            Ok((compression, failures)) => {
+            Ok((compression, found)) => {
+                failures.checked(&path, &rom);
                 eprintln!("{}: {compression}", path.display());
-                assert!(
-                    failures.is_empty(),
-                    "{}:\n{}",
-                    path.display(),
-                    failures.join("\n")
-                );
+                for f in found {
+                    failures.fail(&rom, None, f);
+                }
             }
             // Its files cannot be read by number, which is the point.
             Err(GfxError::Locked) => eprintln!("skipping {}: locked", path.display()),
-            Err(e) => panic!("{}: {e}", path.display()),
+            Err(e) => {
+                failures.checked(&path, &rom);
+                failures.fail(&rom, None, e.to_string());
+            }
         }
     }
-}
-
-/// Headerless ROM SHA-1 to the SHA-1 of its exported files, concatenated.
-fn load_fixture() -> HashMap<String, String> {
-    include_str!("fixtures/lunar_magic_gfx_export.txt")
-        .lines()
-        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
-        .map(|l| {
-            let mut p = l.split_whitespace();
-            (p.next().unwrap().to_string(), p.next().unwrap().to_string())
-        })
-        .collect()
+    failures.finish();
 }
 
 #[test]
 fn lunar_magic_files_match_lunar_magic_export() {
-    let fixture = load_fixture();
+    // Headerless ROM SHA-1 to the SHA-1 of its exported files, concatenated.
+    let fixture = common::fixtures::pairs(include_str!("fixtures/lunar_magic_gfx_export.txt"));
+    let mut checked = 0;
     for (path, rom) in common::lunar_magic_roms() {
         let Some(want) = fixture.get(&rom.sha1_hex()) else {
-            eprintln!("skipping {}: no export hash in fixture", path.display());
             continue;
         };
         let mut hash = Sha1::new();
@@ -98,5 +91,11 @@ fn lunar_magic_files_match_lunar_magic_export() {
         }
         let got: String = hash.finalize().iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(&got, want, "{}", path.display());
+        checked += 1;
     }
+    common::none_checked(
+        kobo_core::tiers::Tier::LmRoms,
+        checked,
+        "no hack of the corpus has a GFX export hash",
+    );
 }

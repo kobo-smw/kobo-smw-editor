@@ -5,6 +5,8 @@
 //! sample of level kinds.
 
 mod common;
+
+use common::temp::TempDir;
 #[path = "common/object_cases.rs"]
 mod object_cases;
 
@@ -19,10 +21,8 @@ use kobo_core::render::{self, RenderOptions};
 use kobo_core::source::level::{Comments, Layer2, Level};
 use kobo_core::{Rom, SnesAddr};
 
-fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("kobo-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    dir
+fn temp_dir(name: &str) -> TempDir {
+    TempDir::unmade(name)
 }
 
 fn level_files(dir: &Path) -> Vec<PathBuf> {
@@ -99,8 +99,6 @@ fn vanilla_imports_and_builds_back() {
             );
         }
     }
-    let _ = fs::remove_dir_all(&dir);
-    let _ = fs::remove_dir_all(&again);
     let _ = fs::remove_file(&built_path);
 }
 
@@ -465,7 +463,6 @@ fn a_background_changed_in_place_is_not_the_clean_roms() {
             .any(|d| d.level == 0x105 && d.parts == ["background"]),
         "{diffs:?}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -500,7 +497,6 @@ fn a_level_that_does_not_read_is_left_out_of_an_import() {
         "{:?}",
         report.notes
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -1076,7 +1072,7 @@ fn cached_builds_equal_clean_ones() {
         return;
     };
     let cache_dir = temp_dir("cache");
-    let cache = build::Cache::new(&cache_dir);
+    let cache = build::Cache::new(cache_dir.to_path_buf());
     let (level, _) = import::read_level(&clean, 0x105).unwrap();
     let mut project = Project {
         root: std::path::PathBuf::from("."),
@@ -1108,7 +1104,6 @@ fn cached_builds_equal_clean_ones() {
         fs::read_dir(&cache_dir).unwrap().count(),
         build::Stage::ALL.len() + 1
     );
-    let _ = fs::remove_dir_all(&cache_dir);
 }
 
 /// A build needs no ROM data to check that its output is the same on every

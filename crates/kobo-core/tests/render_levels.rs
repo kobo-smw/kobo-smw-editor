@@ -455,10 +455,7 @@ fn boss_preparation_does_not_replace_the_level_dimensions() {
 
 #[test]
 fn grand_poo_world_background_validation() {
-    for (_, rom) in common::lunar_magic_roms() {
-        if rom.sha1_hex() != "390583d5faa0cc02e0c4f414f7638228661b2dc9" {
-            continue;
-        }
+    if let Some((_, rom)) = common::corpus_hack(common::hacks::GRAND_POO_WORLD_2) {
         // An unused slot with no background table of its own: the upload
         // reads definitions from bank 0, as the game does.
         let unused = kobo_core::expand::expand_level(&rom, 0x09F).unwrap();

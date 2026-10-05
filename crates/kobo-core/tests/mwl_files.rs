@@ -8,6 +8,10 @@
 
 mod common;
 
+use common::temp::TempDir;
+
+use kobo_core::tiers::Tier;
+
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
@@ -408,12 +412,9 @@ fn load_fixture() -> HashMap<String, String> {
 
 /// The directories of `KOBO_MWL_DIR` that hold a ROM and MWL files.
 fn export_dirs() -> Option<Vec<(PathBuf, PathBuf)>> {
-    let Some(root) = std::env::var_os("KOBO_MWL_DIR") else {
-        eprintln!("skipping: KOBO_MWL_DIR is not set");
-        return None;
-    };
+    let root = common::tier_path(Tier::Mwl)?;
     let mut dirs: Vec<_> = std::fs::read_dir(&root)
-        .expect("KOBO_MWL_DIR must be a directory")
+        .expect("the MWL exports must be a directory")
         .map(|e| e.unwrap().path())
         .filter(|p| p.is_dir())
         .filter_map(|dir| {
@@ -425,7 +426,7 @@ fn export_dirs() -> Option<Vec<(PathBuf, PathBuf)>> {
         })
         .collect();
     dirs.sort();
-    assert!(!dirs.is_empty(), "KOBO_MWL_DIR holds no exported ROM");
+    assert!(!dirs.is_empty(), "the MWL exports hold no exported ROM");
     Some(dirs)
 }
 
@@ -516,11 +517,10 @@ fn vanilla_exports_import_and_build() {
     let Some((dir, _)) = dirs.into_iter().find(|(_, rom)| {
         kobo_core::Rom::load(rom).is_ok_and(|r| r.identify() == kobo_core::RomIdentity::VanillaUsa)
     }) else {
-        eprintln!("skipping: KOBO_MWL_DIR has no vanilla export");
+        common::skip(Tier::Mwl, "the MWL exports hold no vanilla export");
         return;
     };
-    let project_dir = std::env::temp_dir().join(format!("kobo-mwl-import-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&project_dir);
+    let project_dir = TempDir::unmade("mwl-import");
     for level in 0..0x200u16 {
         let file = dir.join(format!("level {level:03X}.mwl"));
         let bytes = std::fs::read(&file).unwrap();
@@ -573,7 +573,6 @@ fn vanilla_exports_import_and_build() {
     for n in 0..0x200u16 {
         assert_eq!(exits(&built, n), exits(&clean, n), "level {n:03X}'s exits");
     }
-    let _ = std::fs::remove_dir_all(&project_dir);
 }
 
 /// A background in Lunar Magic's layout imports from an MWL file as it

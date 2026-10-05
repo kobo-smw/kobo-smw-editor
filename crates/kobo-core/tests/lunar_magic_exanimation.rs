@@ -15,7 +15,8 @@ mod common;
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use common::Lcg;
 
 use kobo_core::mwl::MwlFile;
 use kobo_core::ram::{Ram, RamAddr};
@@ -25,62 +26,22 @@ const LEVEL: u16 = 0x105;
 /// The ExAnimation section of an MWL file.
 const ANIMATION_SECTION: usize = 6;
 
-/// A small deterministic generator for the scenarios.
-struct Lcg(u64);
-
-impl Lcg {
-    fn next(&mut self, n: u32) -> u32 {
-        self.0 = self
-            .0
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        ((self.0 >> 33) % n as u64) as u32
-    }
-
-    fn chance(&mut self, percent: u32) -> bool {
-        self.next(100) < percent
-    }
-
-    fn pick<T: Copy>(&mut self, list: &[T]) -> T {
-        list[self.next(list.len() as u32) as usize]
-    }
-}
-
-/// Runs Lunar Magic's command line in `dir` on `rom.smc`.
-fn lunar_magic(lunar_magic: &Path, dir: &Path, args: &[&str]) {
-    let lm = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/lunar-magic/lm");
-    let status = Command::new(&lm)
-        .args(args)
-        .current_dir(dir)
-        .env("KOBO_LM_DIR", lunar_magic)
-        .output()
-        .unwrap();
-    assert!(status.status.success(), "Lunar Magic {args:?}: {status:?}");
-}
-
 /// `base` (the clean ROM, or it with SA-1 Pack) after Lunar Magic imports
 /// level 105 with `animation` as its ExAnimation list: Lunar Magic's own
 /// ExAnimation code installed.
 fn lunar_magic_install(lm: &Path, clean: &Rom, base: &Rom, animation: &[u8]) -> Rom {
     let sa1 = if base.mapping().is_sa1() { "-sa1" } else { "" };
-    let dir = std::env::temp_dir().join(format!("kobo-lm-exanim{sa1}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(dir.join("sysLMRestore")).unwrap();
-    let mut original = vec![0; 0x200];
-    original.extend_from_slice(clean.data());
-    fs::write(dir.join("sysLMRestore/smwOrig.smc"), original).unwrap();
-    fs::write(dir.join("rom.smc"), base.data()).unwrap();
+    let ws = common::lm::Workspace::new(lm, &format!("exanim{sa1}"), base, Some(clean), false);
     let level = format!("{LEVEL:X}");
-    lunar_magic(lm, &dir, &["-ExportLevel", "rom.smc", "level.mwl", &level]);
-    let mut file = MwlFile::parse(&fs::read(dir.join("level.mwl")).unwrap()).unwrap();
+    let mwl = ws.path().join("level.mwl");
+    ws.run(&["-ExportLevel", "rom.smc", "level.mwl", &level]);
+    let mut file = MwlFile::parse(&fs::read(&mwl).unwrap()).unwrap();
     let mut section = vec![0; 8];
     section.extend_from_slice(animation);
     file.sections[ANIMATION_SECTION] = section;
-    fs::write(dir.join("level.mwl"), file.to_bytes()).unwrap();
-    lunar_magic(lm, &dir, &["-ImportLevel", "rom.smc", "level.mwl", &level]);
-    let rom = Rom::load(dir.join("rom.smc")).unwrap();
-    let _ = fs::remove_dir_all(&dir);
-    rom
+    fs::write(&mwl, file.to_bytes()).unwrap();
+    ws.run(&["-ImportLevel", "rom.smc", "level.mwl", &level]);
+    ws.rom()
 }
 
 fn target(rom: &Rom) -> u32 {
@@ -466,8 +427,7 @@ fn play(rom: &Rom, s: &Scenario, frames: u32) -> Vec<Vec<u8>> {
 
 #[test]
 fn kobos_exanimation_runs_as_lunar_magics() {
-    let Some(lunar_magic) = std::env::var_os("KOBO_LUNAR_MAGIC").map(PathBuf::from) else {
-        eprintln!("skipping: KOBO_LUNAR_MAGIC is not set");
+    let Some(lunar_magic) = common::lunar_magic() else {
         return;
     };
     let Some(clean) = common::vanilla() else {
@@ -495,8 +455,8 @@ fn kobos_exanimation_runs_as_lunar_magics() {
             fs::write(dir.join(format!("lm{sa1}.sfc")), lm.data()).unwrap();
             fs::write(dir.join(format!("kobo{sa1}.sfc")), kobo.data()).unwrap();
         }
-        let seed = std::env::var("KOBO_EXANIM_SEED").map_or(1, |s| s.parse().unwrap());
-        let count = std::env::var("KOBO_EXANIM_CASES").map_or(16, |s| s.parse().unwrap());
+        let seed = common::env_number("KOBO_EXANIM_SEED", 1);
+        let count = common::env_number("KOBO_EXANIM_CASES", 16);
         let frames = 96;
         let mut rng = Lcg(seed);
         for case in 0..count {
