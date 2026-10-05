@@ -808,3 +808,40 @@ fn the_command_palette_finds_and_runs_by_name() {
         "the best match for `add coin` is object 05, Coin"
     );
 }
+
+#[test]
+fn a_map16_tile_is_placed_directly_and_drawn() {
+    use crate::palette::Placing;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "map16");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    look_at(&mut harness, 60, 20);
+    harness.state_mut().placing = Some(Placing::Map16(0x130));
+    click_tile(&mut harness, 64, 10);
+    let objects = harness
+        .state()
+        .current()
+        .unwrap()
+        .document
+        .level()
+        .layer1
+        .len();
+    let placed = harness.state().current().unwrap().document.level().layer1[objects - 1].clone();
+    assert_eq!(
+        kobo_core::edit::map16_object_parts(&placed),
+        Some((0x130, 1, 1))
+    );
+    wait_for(&mut harness, "the picture with it", drawn);
+    let open = harness.state().current().unwrap();
+    if let Some(error) = &open.render_error {
+        panic!("{error}");
+    }
+    let loaded = &open.geometry.as_ref().unwrap().loaded;
+    assert_eq!(loaded.tiles.tile_at(64, 10), 0x130);
+    let owner = loaded
+        .objects
+        .owner_at(&loaded.tiles, ObjectLayer::One, 64, 10);
+    assert_eq!(owner.map(|o| o.index), Some(objects - 1));
+}

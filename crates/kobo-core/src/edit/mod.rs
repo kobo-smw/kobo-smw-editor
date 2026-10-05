@@ -149,6 +149,57 @@ pub fn copy_of(level: &Level) -> Level {
     }
 }
 
+/// A Map16 tile placed directly at (`x`, `y`): Lunar Magic's object 27
+/// (pages `00`-`3F`) or 29 (`40`-`7F`) in its single-tile form, one tile
+/// wide and high. A build writes it with Kobo's code for Lunar Magic's
+/// objects (`asm/lunar-magic/objects.asm`, whose comments have the
+/// format).
+pub fn map16_object(tile: u16, x: u16, y: u16) -> Object {
+    let number = if tile >> 8 < 0x40 { 0x27 } else { 0x29 };
+    Object::Lunar {
+        number,
+        x,
+        y,
+        data: vec![0x00, ((tile >> 8) & 0x3F) as u8, tile as u8],
+    }
+}
+
+/// A direct Map16 object's tile and size in tiles, (tile, width, height):
+/// objects 22 and 23 (a tile of page 0 or 1), and 27 and 29 in their
+/// single-tile form. `None` for any other object.
+pub fn map16_object_parts(object: &Object) -> Option<(u16, u16, u16)> {
+    let Object::Lunar { number, data, .. } = object else {
+        return None;
+    };
+    let size = *data.first()?;
+    let (w, h) = (u16::from(size & 0x0F) + 1, u16::from(size >> 4) + 1);
+    let tile = match number {
+        0x22 | 0x23 => u16::from(number & 1) << 8 | u16::from(*data.get(1)?),
+        0x27 | 0x29 => {
+            let form = *data.get(1)?;
+            if form >> 6 != 0 {
+                return None;
+            }
+            let page = u16::from(form & 0x3F) | if *number == 0x29 { 0x40 } else { 0 };
+            page << 8 | u16::from(*data.get(2)?)
+        }
+        _ => return None,
+    };
+    Some((tile, w, h))
+}
+
+/// A direct Map16 object made `width` by `height` tiles (1 to 16 each).
+pub fn map16_object_sized(object: &Object, width: u16, height: u16) -> Object {
+    let mut object = object.clone();
+    if map16_object_parts(&object).is_some()
+        && let Object::Lunar { data, .. } = &mut object
+    {
+        let (w, h) = (width.clamp(1, 16) - 1, height.clamp(1, 16) - 1);
+        data[0] = (h << 4 | w) as u8;
+    }
+    object
+}
+
 /// What a screen exit leads to, whichever format it is kept in.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ExitTarget {

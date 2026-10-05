@@ -506,3 +506,38 @@ fn every_change_is_found_and_taken_back_one_at_a_time() {
     }
     assert_eq!(document.level(), &old);
 }
+
+#[test]
+fn direct_map16_objects_say_their_tile_and_size() {
+    let low = map16_object(0x1F3, 4, 5);
+    assert!(matches!(low, Object::Lunar { number: 0x27, .. }));
+    assert_eq!(map16_object_parts(&low), Some((0x1F3, 1, 1)));
+    let high = map16_object(0x4512, 0, 0);
+    assert!(matches!(high, Object::Lunar { number: 0x29, .. }));
+    assert_eq!(map16_object_parts(&high), Some((0x4512, 1, 1)));
+    let big = map16_object_sized(&low, 3, 2);
+    assert_eq!(map16_object_parts(&big), Some((0x1F3, 3, 2)));
+    // Object 23: a tile of page 1, its low byte in the fourth byte.
+    let page1 = Object::Lunar {
+        number: 0x23,
+        x: 0,
+        y: 0,
+        data: vec![0x10, 0x30],
+    };
+    assert_eq!(map16_object_parts(&page1), Some((0x130, 1, 2)));
+    // Encoded and decoded as any object is.
+    let bytes = crate::level::objects::encode(
+        [0; 5],
+        std::slice::from_ref(&low),
+        crate::level::objects::Layout::Horizontal,
+        crate::level::objects::Jumps::Vanilla,
+    )
+    .unwrap();
+    let back = crate::level::objects::decode(
+        &bytes,
+        crate::level::objects::Layout::Horizontal,
+        crate::level::objects::Jumps::Vanilla,
+    )
+    .unwrap();
+    assert_eq!(back.objects, [low]);
+}

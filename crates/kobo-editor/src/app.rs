@@ -280,7 +280,7 @@ impl App {
             adding: None,
             copy_to: 0,
             left: match (startup.palette, startup.tab.as_deref()) {
-                (true, _) | (_, Some("add" | "sprites")) => LeftTab::Add,
+                (true, _) | (_, Some("add" | "sprites" | "map16")) => LeftTab::Add,
                 (_, Some("outline")) => LeftTab::Outline,
                 (_, Some("changes")) => LeftTab::Changes,
                 _ => LeftTab::Levels,
@@ -322,8 +322,10 @@ impl App {
             }
         }
         app.overview.open = startup.tab.as_deref() == Some("overview");
-        if startup.tab.as_deref() == Some("sprites") {
-            app.palette.show_sprites();
+        match startup.tab.as_deref() {
+            Some("sprites") => app.palette.show(crate::palette::Kind::Sprites),
+            Some("map16") => app.palette.show(crate::palette::Kind::Map16),
+            _ => {}
         }
         if startup.build {
             crate::build::start(&mut app);
@@ -536,6 +538,11 @@ impl App {
 
     pub fn current_number(&self) -> Option<u16> {
         self.current
+    }
+
+    /// An open level and the palette, borrowed together.
+    pub fn level_and_palette(&mut self, number: u16) -> (Option<&OpenLevel>, &mut PaletteState) {
+        (self.open.get(&number), &mut self.palette)
     }
 
     pub fn open_mut(&mut self, number: u16) -> Option<&mut OpenLevel> {

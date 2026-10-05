@@ -266,6 +266,36 @@ fn object(
                 Object::ScreenExit(exit) => {
                     exit_fields(ui, number, *exit, &replace, change);
                 }
+                Object::Lunar { .. } if edit::map16_object_parts(object).is_some() => {
+                    let (tile, w, h) = edit::map16_object_parts(object).expect("checked");
+                    let (x, y) = edit::object_position(object).unwrap_or((0, 0));
+                    ui.label("Tile");
+                    let mut t = tile;
+                    let r = ui.add(
+                        DragValue::new(&mut t)
+                            .range(0..=0x7FFF)
+                            .speed(0.1)
+                            .hexadecimal(3, false, true),
+                    );
+                    if r.changed() {
+                        let changed = edit::map16_object_sized(&edit::map16_object(t, x, y), w, h);
+                        *change =
+                            Some(Change::new(&r, "Change Map16 tile", vec![replace(changed)]));
+                    }
+                    ui.end_row();
+                    for (label, value, is_width) in [("Width", w, true), ("Height", h, false)] {
+                        ui.label(label);
+                        let mut v = value;
+                        let r = number_field(ui, &mut v, 1, 16, false);
+                        if r.changed() {
+                            let (nw, nh) = if is_width { (v, h) } else { (w, v) };
+                            let changed = edit::map16_object_sized(object, nw, nh);
+                            *change =
+                                Some(Change::new(&r, "Resize object", vec![replace(changed)]));
+                        }
+                        ui.end_row();
+                    }
+                }
                 Object::Lunar { data, .. } => {
                     ui.label("Data");
                     let (r, bytes) = hex_field(ui, ("lunar", o.index), data);

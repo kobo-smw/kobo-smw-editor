@@ -22,6 +22,8 @@ pub enum Placing {
     /// An object, as a template: its place is where it is put.
     Object(Object),
     Sprite(u8),
+    /// A Map16 tile, placed directly (`edit::map16_object`).
+    Map16(u16),
 }
 
 impl Placing {
@@ -31,6 +33,7 @@ impl Placing {
                 .unwrap_or("Object")
                 .to_string(),
             Placing::Sprite(id) => names::sprite(*id).to_string(),
+            Placing::Map16(tile) => format!("Map16 tile {tile:03X}"),
         }
     }
 }
@@ -41,12 +44,17 @@ pub enum Kind {
     Objects,
     Extended,
     Sprites,
+    Map16,
 }
 
 #[derive(Default)]
 pub struct PaletteState {
     kind: Kind,
     filter: String,
+    /// The Map16 page shown, and its picture: for which level's picture
+    /// (its request), which page.
+    map16_page: u16,
+    map16_sheet: Option<((u64, u16), egui::TextureHandle)>,
     thumbnails: Thumbnails,
 }
 
@@ -132,14 +140,14 @@ impl Thumbnails {
                 .iter()
                 .filter_map(|p| match p {
                     Placing::Object(object) => Some(object.clone()),
-                    Placing::Sprite(_) => None,
+                    Placing::Sprite(_) | Placing::Map16(_) => None,
                 })
                 .collect();
             let sprites: Vec<u8> = entries
                 .iter()
                 .filter_map(|p| match p {
                     Placing::Sprite(id) => Some(*id),
-                    Placing::Object(_) => None,
+                    Placing::Object(_) | Placing::Map16(_) => None,
                 })
                 .collect();
             let pictures = if key.2 == Kind::Sprites {
@@ -167,9 +175,9 @@ impl Thumbnails {
 }
 
 impl PaletteState {
-    /// Lists the sprites.
-    pub fn show_sprites(&mut self) {
-        self.kind = Kind::Sprites;
+    /// Lists `kind`.
+    pub fn show(&mut self, kind: Kind) {
+        self.kind = kind;
     }
 
     /// Whether thumbnails are being drawn.
@@ -214,6 +222,7 @@ fn entries(kind: Kind, tileset: u8) -> Vec<(Placing, u8, &'static str)> {
                 Some((Placing::Object(object), n, name))
             })
             .collect(),
+        Kind::Map16 => Vec::new(),
         Kind::Sprites => (0x00..=0xFFu8)
             .filter_map(|n| {
                 let name = Some(names::sprite(n)).filter(used)?;
@@ -251,12 +260,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ui.selectable_value(&mut state.kind, Kind::Objects, "Objects");
         ui.selectable_value(&mut state.kind, Kind::Extended, "Extended");
         ui.selectable_value(&mut state.kind, Kind::Sprites, "Sprites");
+        ui.selectable_value(&mut state.kind, Kind::Map16, "Map16");
     });
-    ui.add(
-        egui::TextEdit::singleline(&mut state.filter)
-            .hint_text("Find by name or number")
-            .desired_width(f32::INFINITY),
-    );
+    if state.kind != Kind::Map16 {
+        ui.add(
+            egui::TextEdit::singleline(&mut state.filter)
+                .hint_text("Find by name or number")
+                .desired_width(f32::INFINITY),
+        );
+    }
     if let Some(placing) = &app.placing {
         ui.label(
             RichText::new(format!(
@@ -284,6 +296,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     }
     let state = &mut app.palette;
     let kind = state.kind;
+    if kind == Kind::Map16 {
+        map16(app, ui, number);
+        return;
+    }
+    let state = &mut app.palette;
     let all = entries(kind, tileset);
     let set = if kind == Kind::Sprites {
         level.header.sprite_tileset
@@ -379,5 +396,120 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         });
     if let Some(choice) = chosen {
         app.placing = choice;
+    }
+}
+
+/// The Map16 tab: a page of the level's own Map16 tiles, as its load
+/// resolved them (pages 0 to 3, and those its tiles use), to place
+/// directly as Lunar Magic's direct Map16 objects.
+fn map16(app: &mut App, ui: &mut egui::Ui, number: u16) {
+    let placing = app.placing.clone();
+    let (open, state) = app.level_and_palette(number);
+    let Some(open) = open else { return };
+    let Some(geometry) = &open.geometry else {
+        ui.label(RichText::new("Once the level is drawn.").color(theme::MUTED));
+        return;
+    };
+    let tiles = &geometry.loaded.tiles;
+    let definitions = tiles.foreground_map16();
+    let pages: Vec<u16> = (0..definitions.len() / 0x100)
+        .filter(|p| {
+            definitions[p * 0x100..(p + 1) * 0x100]
+                .iter()
+                .any(Option::is_some)
+        })
+        .map(|p| p as u16)
+        .collect();
+    let shown = open.shown;
+    if !pages.contains(&state.map16_page) {
+        state.map16_page = pages.first().copied().unwrap_or(0);
+    }
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("Page").color(theme::MUTED));
+        for &page in &pages {
+            ui.selectable_value(&mut state.map16_page, page, format!("{page:02X}"));
+        }
+    });
+    let page = state.map16_page;
+    let key = (shown, page);
+    if state.map16_sheet.as_ref().is_none_or(|(k, _)| *k != key) {
+        let start = usize::from(page) * 0x100;
+        let layer_tiles = kobo_core::render::LayerTiles::from_vram(&geometry.loaded.video.vram);
+        let palette = geometry.loaded.video.palette();
+        let background = [
+            theme::BACKGROUND.r(),
+            theme::BACKGROUND.g(),
+            theme::BACKGROUND.b(),
+        ];
+        let sheet = kobo_core::render::map16_sheet(
+            &definitions[start..(start + 0x100).min(definitions.len())],
+            &layer_tiles,
+            &palette,
+            background,
+            16,
+        );
+        let rgb: Vec<u8> = sheet.pixels.iter().flatten().copied().collect();
+        let image = egui::ColorImage::from_rgb([sheet.width as usize, sheet.height as usize], &rgb);
+        let texture = ui
+            .ctx()
+            .load_texture("map16-page", image, egui::TextureOptions::NEAREST);
+        state.map16_sheet = Some((key, texture));
+    }
+    ui.label(
+        RichText::new(
+            "Placed as Lunar Magic's direct Map16 objects; a build installs Kobo's code for them.",
+        )
+        .small()
+        .color(theme::MUTED),
+    );
+    let Some((_, texture)) = &state.map16_sheet else {
+        return;
+    };
+    let scale = ((ui.available_width() - 4.0) / 256.0).clamp(1.0, 2.0);
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(256.0, 256.0) * scale, egui::Sense::click());
+    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+    ui.painter()
+        .image(texture.id(), rect, uv, egui::Color32::WHITE);
+    let cell = 16.0 * scale;
+    let tile_at = |at: egui::Pos2| {
+        let local = (at - rect.min) / cell;
+        (local.x >= 0.0 && local.y >= 0.0 && local.x < 16.0 && local.y < 16.0)
+            .then(|| page * 0x100 + local.y as u16 * 16 + local.x as u16)
+    };
+    let mark = |tile: u16, color: egui::Color32| {
+        let i = tile - page * 0x100;
+        let r = egui::Rect::from_min_size(
+            rect.min + egui::vec2(f32::from(i % 16), f32::from(i / 16)) * cell,
+            egui::vec2(cell, cell),
+        );
+        ui.painter().rect_stroke(
+            r,
+            0,
+            egui::Stroke::new(2.0, color),
+            egui::StrokeKind::Inside,
+        );
+    };
+    if let Some(Placing::Map16(tile)) = &placing
+        && tile >> 8 == page
+    {
+        mark(*tile, theme::ACCENT);
+    }
+    if let Some(tile) = response.hover_pos().and_then(tile_at) {
+        mark(tile, egui::Color32::WHITE);
+        let defined = definitions
+            .get(usize::from(tile))
+            .is_some_and(Option::is_some);
+        let text = if defined {
+            format!("Map16 tile {tile:03X}")
+        } else {
+            format!("Map16 tile {tile:03X}: not defined")
+        };
+        response.clone().on_hover_text_at_pointer(text);
+    }
+    if response.clicked()
+        && let Some(tile) = response.interact_pointer_pos().and_then(tile_at)
+    {
+        app.placing = Some(Placing::Map16(tile));
     }
 }

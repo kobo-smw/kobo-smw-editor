@@ -127,15 +127,14 @@ fn resizable(open: &OpenLevel, geometry: &Geometry) -> Option<(ObjectRef, Rect)>
         return None;
     };
     let object = objects(open.document.level(), o.layer)?.get(o.index)?;
-    let Object::Standard {
-        number, settings, ..
-    } = object
-    else {
-        return None;
+    let sized = match object {
+        Object::Standard {
+            number, settings, ..
+        } => edit::setting_fields(*number, *settings)
+            .iter()
+            .any(|f| matches!(f.name, "width" | "height" | "length")),
+        _ => edit::map16_object_parts(object).is_some(),
     };
-    let sized = edit::setting_fields(*number, *settings)
-        .iter()
-        .any(|f| matches!(f.name, "width" | "height" | "length"));
     sized.then(|| Some((o, geometry.bounds(Item::Object(o))?)))?
 }
 
@@ -143,6 +142,16 @@ fn resizable(open: &OpenLevel, geometry: &Geometry) -> Option<(ObjectRef, Rect)>
 /// length across, its height down.
 fn resize_edit(level: &Level, o: ObjectRef, (dx, dy): (i32, i32)) -> Option<Edit> {
     let object = objects(level, o.layer)?.get(o.index)?;
+    if let Some((_, w, h)) = edit::map16_object_parts(object) {
+        let w = (i32::from(w) + dx).clamp(1, 16) as u16;
+        let h = (i32::from(h) + dy).clamp(1, 16) as u16;
+        let changed = edit::map16_object_sized(object, w, h);
+        return (changed != *object).then_some(Edit::ReplaceObject {
+            layer: o.layer,
+            index: o.index,
+            object: changed,
+        });
+    }
     let Object::Standard {
         number, settings, ..
     } = object
@@ -625,7 +634,7 @@ fn show_canvas(
                 && let Some(at) = pointer
             {
                 let layer = match placing {
-                    Some(Placing::Object(_)) => place_layer,
+                    Some(Placing::Object(_) | Placing::Map16(_)) => place_layer,
                     _ => ObjectLayer::One,
                 };
                 place_at = geometry.tile_at(layer, at);
@@ -790,7 +799,7 @@ fn show_canvas(
         }
         if let (Some(placing), Some(at)) = (&placing, pointer) {
             let layer = match placing {
-                Placing::Object(_) => place_layer,
+                Placing::Object(_) | Placing::Map16(_) => place_layer,
                 Placing::Sprite(_) => ObjectLayer::One,
             };
             let offset = geometry_ref(open).layer_offset(layer);
@@ -991,6 +1000,15 @@ fn place(app: &mut App, number: u16, placing: &Placing, layer: ObjectLayer, x: u
                 object: edit::object_at(template, x, y),
             };
             ("Add object", vec![edit], Item::object(layer, index))
+        }
+        Placing::Map16(tile) => {
+            let index = objects(level, layer).map_or(0, Vec::len);
+            let edit = Edit::InsertObject {
+                layer,
+                index,
+                object: edit::map16_object(*tile, x, y),
+            };
+            ("Add Map16 tile", vec![edit], Item::object(layer, index))
         }
         Placing::Sprite(id) => {
             let sprite = Sprite {
