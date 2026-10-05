@@ -41,6 +41,7 @@ enum Command {
     Place(Placing),
     Shortcuts,
     CloseProject,
+    Overview,
 }
 
 /// Every command there is now: its name, its keys, and what it does.
@@ -104,6 +105,7 @@ fn commands(app: &App) -> Vec<(String, &'static str, Command)> {
         ("Select everything".into(), "Ctrl+A", Command::SelectAll),
         ("Select nothing".into(), "Esc", Command::Deselect),
         ("Keyboard shortcuts".into(), "F1", Command::Shortcuts),
+        ("All levels as pictures".into(), "", Command::Overview),
         ("Close the project".into(), "", Command::CloseProject),
     ];
     if let Some(workspace) = app.workspace() {
@@ -227,6 +229,7 @@ fn run(app: &mut App, command: Command) {
         }
         Command::Shortcuts => app.commands.shortcuts = true,
         Command::CloseProject => app.switch_project(None),
+        Command::Overview => app.overview.open = true,
     }
 }
 

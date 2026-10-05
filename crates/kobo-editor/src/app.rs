@@ -206,6 +206,8 @@ pub struct App {
     pub(crate) left: LeftTab,
     /// The command palette and the shortcuts window.
     pub commands: crate::commands::CommandState,
+    /// Every level as a picture, in place of the canvas.
+    pub overview: crate::overview::Overview,
     /// What the outline is narrowed to.
     pub outline_filter: String,
     pub palette: PaletteState,
@@ -278,6 +280,7 @@ impl App {
             },
             outline_filter: String::new(),
             commands: Default::default(),
+            overview: Default::default(),
             palette: PaletteState::default(),
             placing: None,
             place_layer: edit::ObjectLayer::One,
@@ -311,6 +314,7 @@ impl App {
                 }
             }
         }
+        app.overview.open = startup.tab.as_deref() == Some("overview");
         if startup.tab.as_deref() == Some("sprites") {
             app.palette.show_sprites();
         }
@@ -342,6 +346,8 @@ impl App {
 
     /// Back to the start screen, dropping the open levels.
     pub(crate) fn close_project(&mut self) {
+        self.overview.forget();
+        self.overview.open = false;
         self.workspace = None;
         self.watcher = None;
         self.open.clear();
@@ -400,7 +406,15 @@ impl App {
 
     /// Puts the level's document in the workspace and asks for its
     /// picture.
+    /// Whether level `number` is open with unsaved edits.
+    pub fn is_modified(&self, number: u16) -> bool {
+        self.open
+            .get(&number)
+            .is_some_and(|o| o.document.is_modified())
+    }
+
     pub fn request_preview(&mut self, number: u16) {
+        self.overview.changed(number);
         let (Some(workspace), Some(open)) = (&mut self.workspace, self.open.get_mut(&number))
         else {
             return;
@@ -639,6 +653,7 @@ impl App {
                     Ok(()) => {
                         self.project_error = None;
                         self.palette.forget_pictures();
+                        self.overview.forget();
                         redraw.extend(self.current);
                     }
                     Err(e) => self.project_error = Some(e.to_string()),
@@ -826,6 +841,13 @@ impl App {
 
     fn level_list(&mut self, ui: &mut egui::Ui) {
         ui.add_space(6.0);
+        if ui
+            .button("All levels as pictures")
+            .on_hover_text("Every level of the project at a glance")
+            .clicked()
+        {
+            self.overview.open = true;
+        }
         ui.add(
             egui::TextEdit::singleline(&mut self.level_filter)
                 .hint_text("Find a level")
@@ -1118,7 +1140,11 @@ impl App {
             return;
         };
         let ready = self.current().is_some_and(|o| {
-            o.picture.is_some() && o.up_to_date() && !self.palette.busy() && !self.build.busy()
+            o.picture.is_some()
+                && o.up_to_date()
+                && !self.palette.busy()
+                && !self.build.busy()
+                && !(self.overview.open && self.overview.busy())
         }) || matches!(self.clean, Clean::Missing(_))
             || self.workspace.is_none();
         match &mut self.screenshot_frames {
@@ -1250,6 +1276,10 @@ impl eframe::App for App {
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(theme::CANVAS))
             .show(ui, |ui| {
+                if self.overview.open {
+                    crate::overview::show(self, ui);
+                    return;
+                }
                 self.banners(ui);
                 self.view_bar(ui);
                 canvas::show(self, ui);

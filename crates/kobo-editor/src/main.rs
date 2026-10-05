@@ -9,6 +9,7 @@ mod clipboard;
 mod commands;
 mod inspector;
 mod outline;
+mod overview;
 mod palette;
 mod picture;
 mod preview;
