@@ -525,6 +525,8 @@ fn show_canvas(
     let mut stop_placing = false;
     let mut finished: Option<Finished> = None;
     let mut context_edit: Option<(String, Vec<Edit>)> = None;
+    // A screen exit's label double-clicked: go where it leads.
+    let mut follow: Option<kobo_core::level::objects::ScreenExit> = None;
     let mut clip: Option<(crate::clipboard::Action, Option<(u16, u16)>)> = None;
     let can_paste = !app.clipboard.is_empty();
     let mut hover = None;
@@ -583,6 +585,15 @@ fn show_canvas(
         if camera.fit_height {
             camera.fit(level_size, canvas.size(), vertical);
         }
+        if let Some(kind) = open.look_at
+            && let Some(entry) = open.entries.iter().find(|e| e.kind == kind)
+        {
+            open.look_at = None;
+            let seen = canvas.size() / camera.zoom;
+            let at = Vec2::new(entry.x as f32, entry.y as f32);
+            let most = (level_size - seen).max(Vec2::ZERO);
+            camera.offset = (at - seen / 2.0).clamp(Vec2::ZERO, most);
+        }
         if open.focus {
             open.focus = false;
             let bounds = open
@@ -625,10 +636,17 @@ fn show_canvas(
         let pointer = response.hover_pos().map(|p| camera.to_level(canvas, p));
         let pills = exit_pills(&painter, canvas, &camera, open, geometry);
         let on_pill = |at: Pos2| pills.iter().find(|p| p.rect.contains(at)).map(|p| p.item);
+        let on_exit = response.hover_pos().and_then(on_pill).is_some();
         let hovered_item = match response.hover_pos().and_then(on_pill) {
             Some(item) => Some(item),
             None => pointer.and_then(|p| geometry.item_at(p, sprites_on)),
         };
+        if response.double_clicked()
+            && let Some(Item::Object(o)) = response.hover_pos().and_then(on_pill)
+            && let Some(Object::ScreenExit(exit)) = open.document.level().layer1.get(o.index)
+        {
+            follow = Some(*exit);
+        }
         if response.secondary_clicked() {
             open.menu_at = pointer;
             // The menu acts on what was right-clicked.
@@ -960,6 +978,13 @@ fn show_canvas(
                         .small()
                         .color(theme::MUTED),
                 );
+                if on_exit {
+                    ui.label(
+                        RichText::new("Drag to another screen; double-click to go where it leads")
+                            .small()
+                            .color(theme::MUTED),
+                    );
+                }
             });
         }
         if let Some(at) = pointer {
@@ -1011,6 +1036,11 @@ fn show_canvas(
     }
     if let Some((label, edits)) = context_edit {
         app.apply(&label, edits);
+    }
+    if let Some(exit) = follow
+        && let Some(leads) = app.exit_leads(number, exit)
+    {
+        app.follow_exit(leads);
     }
     if let Some((action, at)) = clip {
         let ctx = ui.ctx().clone();

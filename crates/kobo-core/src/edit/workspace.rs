@@ -114,6 +114,24 @@ impl Workspace {
             .map(|(_, level)| level)
     }
 
+    /// The level secondary entrance `id` leads into: the project's level
+    /// that has it, else the clean ROM's destination for it, if it uses it.
+    pub fn entrance_level(&self, id: u16) -> Option<u16> {
+        let listed = self
+            .project
+            .levels
+            .iter()
+            .find(|(_, level)| level.entrances.iter().any(|e| e.id == id));
+        if let Some((number, _)) = listed {
+            return Some(*number);
+        }
+        let format = crate::level::LevelFormat::of(&self.clean);
+        let bytes = *crate::level::read_entrances(&self.clean)
+            .ok()?
+            .get(usize::from(id))?;
+        bytes.in_use(format).then(|| bytes.destination(id, format))
+    }
+
     /// A secondary entrance number for a new entrance into level `level`:
     /// one the clean ROM's tables do not use, nor any level of the
     /// project, and in the game's format (Kobo's builds write entrances

@@ -57,6 +57,17 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let mut copy_to = app.copy_to;
     let taken: Vec<bool> = (0..0x200).map(|n| app.has_level(n)).collect();
     let free_entrance = app.workspace().and_then(|w| w.free_entrance(number));
+    // Where a selected screen exit leads: the level, and the entrance.
+    let exit_leads = match selection[..] {
+        [Item::Object(o)] => objects(&level, o.layer)
+            .and_then(|l| l.get(o.index))
+            .and_then(|object| match object {
+                Object::ScreenExit(exit) => app.exit_leads(number, *exit),
+                _ => None,
+            }),
+        _ => None,
+    };
+    let mut go_to = false;
     // Propose the first free number after this level.
     if taken[usize::from(copy_to) & 0x1FF] {
         copy_to = (1..0x200u16)
@@ -76,7 +87,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     entrances(ui, &level, free_entrance, &mut change);
                     level_action = copy_level(ui, &mut copy_to, &taken);
                 }
-                [Item::Object(o)] => object(ui, &level, number, o, &mut change),
+                [Item::Object(o)] => {
+                    object(ui, &level, number, o, &mut change, exit_leads, &mut go_to)
+                }
                 [Item::Sprite(i)] => sprite(ui, &level, i, &mut change),
                 _ => {
                     heading(ui, &format!("{} selected", selection.len()), "");
@@ -121,6 +134,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         });
 
     app.copy_to = copy_to;
+    if go_to && let Some(leads) = exit_leads {
+        app.follow_exit(leads);
+    }
     match level_action {
         Some(LevelAction::Copy) => app.add_level(copy_to, &edit::copy_of(&level)),
         Some(LevelAction::Empty) => {
@@ -202,6 +218,8 @@ fn object(
     number: u16,
     o: kobo_core::expand::ObjectRef,
     change: &mut Option<Change>,
+    exit_leads: Option<(u16, Option<u16>)>,
+    go_to: &mut bool,
 ) {
     let Some(object) = objects(level, o.layer).and_then(|l| l.get(o.index)) else {
         return;
@@ -318,6 +336,21 @@ fn object(
                 }
                 Object::ScreenExit(exit) => {
                     exit_fields(ui, number, *exit, &replace, change);
+                    ui.label("");
+                    match exit_leads {
+                        Some((level, _)) => {
+                            *go_to = ui
+                                .button(format!("Go to level {level:03X}"))
+                                .on_hover_text("Open the level it leads to, where it comes in")
+                                .clicked();
+                        }
+                        None => {
+                            ui.label(
+                                RichText::new("No level has that entrance.").color(theme::WARNING),
+                            );
+                        }
+                    }
+                    ui.end_row();
                 }
                 Object::Lunar { .. } if edit::map16_object_parts(object).is_some() => {
                     let (tile, w, h) = edit::map16_object_parts(object).expect("checked");

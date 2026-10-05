@@ -1155,3 +1155,47 @@ fn a_sprite_is_changed_to_another_by_name() {
     assert_eq!(after.id, 0x11);
     assert_eq!((after.x, after.y), (before.x, before.y));
 }
+
+#[test]
+fn a_screen_exit_goes_to_the_level_it_leads_to() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "go-to");
+    // Level 105's pipe leads to entrance 1CB, which is into 105 itself;
+    // an exit to level 106 leads there instead.
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    let level = harness.state().current().unwrap().document.level().clone();
+    let index = level
+        .layer1
+        .iter()
+        .position(|o| matches!(o, kobo_core::level::objects::Object::ScreenExit(_)))
+        .expect("level 105 has a screen exit");
+    harness.state_mut().current_mut().unwrap().selection =
+        vec![Item::object(ObjectLayer::One, index)];
+    harness.run_steps(2);
+    let workspace = harness.state().workspace().unwrap().clone();
+    let target = match &level.layer1[index] {
+        kobo_core::level::objects::Object::ScreenExit(exit) => edit::ExitTarget::of(*exit, 0x105),
+        _ => unreachable!(),
+    };
+    let to = if target.secondary {
+        workspace.entrance_level(target.destination).unwrap()
+    } else {
+        target.destination
+    };
+    harness
+        .get_by_label(&format!("Go to level {to:03X}"))
+        .click();
+    harness.run_steps(2);
+    // The project lists 105 alone: the other is offered to add first.
+    assert_eq!(harness.state().adding, Some(to));
+    harness.get_by_label("Add to the project").click();
+    harness.run_steps(2);
+    assert_eq!(harness.state().current_number(), Some(to));
+    wait_for(&mut harness, "the entrance in view", |app| {
+        app.current()
+            .is_some_and(|o| o.look_at.is_none() && o.camera.is_some())
+    });
+}

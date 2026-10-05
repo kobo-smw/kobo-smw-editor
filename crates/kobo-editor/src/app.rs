@@ -95,6 +95,8 @@ pub struct OpenLevel {
     pub pending: Option<Pending>,
     /// Bring the selection into view on the next frame.
     pub focus: bool,
+    /// Bring this entrance into view once the picture has it.
+    pub look_at: Option<crate::preview::EntryKind>,
     /// The selection the outline last scrolled to.
     pub outline_scrolled_to: Option<Item>,
     /// The file changed on disk while the document had unsaved edits:
@@ -131,6 +133,7 @@ impl OpenLevel {
             drag: None,
             pending: None,
             focus: false,
+            look_at: None,
             outline_scrolled_to: None,
             conflict: None,
             disk_error: None,
@@ -214,6 +217,8 @@ pub struct App {
     all_levels: bool,
     /// A level the user asked to add from the game's own, to confirm.
     pub(crate) adding: Option<u16>,
+    /// An entrance to bring into view when its level is opened next.
+    pub(crate) look_at: Option<(u16, crate::preview::EntryKind)>,
     /// A level the user asked to take out of the project, to confirm.
     pub(crate) removing: Option<u16>,
     /// Where the level panel's copy goes.
@@ -296,6 +301,7 @@ impl App {
             level_filter: String::new(),
             all_levels: false,
             adding: None,
+            look_at: None,
             removing: None,
             copy_to: 0,
             left: match (startup.palette, startup.tab.as_deref()) {
@@ -450,11 +456,46 @@ impl App {
         if !has_layer2 {
             self.place_layer = edit::ObjectLayer::One;
         }
+        if let Some((_, kind)) = self.look_at.take_if(|(n, _)| *n == number)
+            && let Some(open) = self.open.get_mut(&number)
+        {
+            open.look_at = Some(kind);
+        }
         self.request_preview(number);
     }
 
-    /// Puts the level's document in the workspace and asks for its
-    /// picture.
+    /// Where a screen exit of level `number` leads: the level, and the
+    /// secondary entrance it comes in by, if one. `None` for an entrance no
+    /// level has.
+    pub fn exit_leads(
+        &self,
+        number: u16,
+        exit: kobo_core::level::objects::ScreenExit,
+    ) -> Option<(u16, Option<u16>)> {
+        let target = edit::ExitTarget::of(exit, number);
+        if target.secondary {
+            let level = self.workspace()?.entrance_level(target.destination)?;
+            Some((level, Some(target.destination)))
+        } else {
+            Some((target.destination, None))
+        }
+    }
+
+    /// Opens the level a screen exit leads to, its entrance in view. A
+    /// level the project does not list is offered to add first.
+    pub fn follow_exit(&mut self, (level, entrance): (u16, Option<u16>)) {
+        let kind = match entrance {
+            Some(id) => crate::preview::EntryKind::Secondary(id),
+            None => crate::preview::EntryKind::Main,
+        };
+        self.look_at = Some((level, kind));
+        if self.workspace().and_then(|w| w.level_path(level)).is_none() {
+            self.adding = Some(level);
+        } else {
+            self.open_level(level);
+        }
+    }
+
     /// Whether level `number` is open with unsaved edits.
     pub fn is_modified(&self, number: u16) -> bool {
         self.open
@@ -462,6 +503,8 @@ impl App {
             .is_some_and(|o| o.document.is_modified())
     }
 
+    /// Puts the level's document in the workspace and asks for its
+    /// picture.
     pub fn request_preview(&mut self, number: u16) {
         self.overview.changed(number);
         let (Some(workspace), Some(open)) = (&mut self.workspace, self.open.get_mut(&number))

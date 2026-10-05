@@ -64,8 +64,9 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
   Shift, to the back and the front.
 - **Clipboard**: Ctrl+C, Ctrl+X, Ctrl+V (where the mouse is), Ctrl+D (duplicate), within
   a level or across levels.
-- **Screen exits**: each has a label at the top of its screen; drag it to another screen.
-  The canvas's menu adds one to a screen without.
+- **Screen exits**: each has a label at the top of its screen; drag it to another screen,
+  or double-click it (or *Go to level* in the inspector) to open where it leads, the
+  entrance it comes in by in view. The canvas's menu adds one to a screen without.
 - **Entrances**: drag the start, the midway, or a secondary entrance; it snaps to where its
   settings can put the player (the game's table of places, or with Lunar Magic's position
   method 2 any tile). The game's own midway entrance moves from screen to screen. The
