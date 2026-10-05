@@ -8,6 +8,7 @@ mod canvas;
 mod changes;
 mod clipboard;
 mod commands;
+mod find;
 mod inspector;
 mod outline;
 mod overview;

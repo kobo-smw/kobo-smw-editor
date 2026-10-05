@@ -10,6 +10,7 @@
 
 pub mod diff;
 mod document;
+pub mod find;
 mod previews;
 mod workspace;
 

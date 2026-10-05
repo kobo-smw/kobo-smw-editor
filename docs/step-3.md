@@ -149,6 +149,8 @@ Since (2026-10-05 and 06, on master):
 - The sprite header (`Edit::SetSpriteSettings`), and layer 2's background chosen from
   pictures of every one of the game's (`level::game_backgrounds`, named in `names.toml`,
   `edit::background_preview`, `Edit::SetLayer2`).
+- Following a screen exit to where it leads (`Workspace::entrance_level`), back and forward
+  between levels, and finding objects and sprites in every level (`edit::find`).
 - Every entrance's position by the game's places or by tile, and its camera at the game's
   positions or rows from the player (`entrance::Camera`).
 

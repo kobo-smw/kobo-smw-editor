@@ -1233,3 +1233,48 @@ fn back_and_forward_go_between_the_levels_shown() {
             .is_none()
     );
 }
+
+#[test]
+fn find_lists_what_every_level_has_and_opens_one() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "find");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    let level = harness
+        .state()
+        .workspace()
+        .unwrap()
+        .clean_level(0x106)
+        .unwrap();
+    harness.state_mut().add_level(0x106, &level);
+    harness.run_steps(2);
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::F);
+    harness.run_steps(2);
+    harness
+        .get_all_by_role(egui::accesskit::Role::TextInput)
+        .find(|n| n.is_focused())
+        .expect("the search field has the focus")
+        .type_text("dragon coin");
+    harness.run_steps(2);
+    let found = kobo_core::edit::find::find(harness.state().workspace().unwrap(), "dragon coin");
+    assert!(found.iter().any(|f| f.level == 0x105));
+    assert!(found.iter().any(|f| f.level == 0x106));
+    assert!(found.iter().all(|f| f.name == "Dragon coin"));
+    // The first, in 105, opens 105 with it selected.
+    let first = &found[0];
+    assert_eq!(first.level, 0x105);
+    harness
+        .get_all_by_label_contains("Dragon coin")
+        .next()
+        .expect("the results list them")
+        .click();
+    harness.run_steps(2);
+    let open = harness.state().current().unwrap();
+    assert_eq!(open.number, 0x105);
+    let kobo_core::edit::find::Entry::Object(layer, index) = first.entry else {
+        panic!("a Dragon coin is an object");
+    };
+    assert_eq!(open.selection, [Item::object(layer, index)]);
+}

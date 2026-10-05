@@ -24,7 +24,7 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
 
 - **Top bar**: the Project, Edit, and View menus; Commands (Ctrl+K); Undo, Redo, Save, and
   Build.
-- **Left**: four tabs.
+- **Left**: five tabs.
   - *Levels*: the project's levels (and with the box ticked, the game's own, which are added
     when chosen); *All levels as pictures* shows every level as a card.
   - *Add*: the palette. Objects, extended objects, and sprites, each drawn as the open level
@@ -37,6 +37,9 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
   - *Changes*: what differs from the level's file in git's last commit, each change taken
     back on its own; the canvas marks them while the tab is open (green added, amber
     changed with where it was, red removed).
+  - *Find* (Ctrl+Shift+F): every object and sprite of every level in the project that a
+    search names, by name or number (`goomba`, `sprite 0F`, `extended 41`, `exit`), by
+    level; choosing one opens its level with it selected.
 - **Canvas**: the level, with screen boundaries, the grid (G), markers where the player
   enters (the start, the midway, each secondary entrance), and a minimap below.
   The view bar and the View menu show or hide layers 1, 2, and 3, the sprites, and the
@@ -102,6 +105,7 @@ leaves it out, as the game's own, and says so above the canvas.
 ## Running without a display
 
 `--screenshot out.png` saves the window once the level is drawn and quits, with `--tab`
-(`levels`, `add`, `sprites`, `map16`, `outline`, `changes`, `overview`, `backgrounds`), `--select`, and
+(`levels`, `add`, `sprites`, `map16`, `outline`, `changes`, `find`, `overview`,
+`backgrounds`), `--select`, and
 `--build` to set it up; under `xvfb-run -a` it needs no display. docs/step-3.md has what
 the development server needs for it.

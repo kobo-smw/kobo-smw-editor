@@ -76,7 +76,8 @@ Early stage: roadmap steps 1 and 2 are complete; step 3, the GUI level editor, i
     shell: it holds what is on screen, and changes a project only through
     `kobo_core::edit`. Its tests drive the window headlessly (`egui_kittest`).
     `docs/editor.md` is how to use it; each module of it says what it holds (`canvas`,
-    `inspector`, `palette`, `outline`, `changes`, `build`, `start`, `commands`, `backgrounds`,
+    `inspector`, `palette`, `outline`, `changes`, `find`, `build`, `start`, `commands`,
+    `backgrounds`,
     `preview` for the worker that draws, `selection` for what is under the mouse).
 - `kobo_core::addr` is the only place that knows how SNES addresses map to file offsets.
   Every ROM read takes a `SnesAddr` and goes through the ROM's `Mapping` (LoROM, SA-1, or

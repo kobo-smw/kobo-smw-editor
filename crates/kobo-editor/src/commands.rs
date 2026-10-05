@@ -86,6 +86,11 @@ fn commands(app: &App) -> Vec<(String, &'static str, Command)> {
             "",
             Command::Tab(LeftTab::Changes),
         ),
+        (
+            "Find objects and sprites in every level".into(),
+            "Ctrl+Shift+F",
+            Command::Tab(LeftTab::Find),
+        ),
         ("Show or hide the source pane".into(), "", Command::Source),
         ("Show or hide the grid".into(), "G", Command::Grid),
         (
@@ -383,6 +388,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                         ("Ctrl+S", "Save every changed level"),
                         ("Ctrl+Z, Ctrl+Shift+Z", "Undo, redo"),
                         ("Ctrl+B", "Build"),
+                        ("Ctrl+Shift+F", "Find in every level"),
                         ("Click, Shift+click", "Select, add to the selection"),
                         ("Drag", "Move the selection, or select what a box meets"),
                         ("Arrow keys (Shift)", "Move the selection a tile (a screen)"),

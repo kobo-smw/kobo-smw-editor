@@ -172,6 +172,7 @@ pub(crate) enum LeftTab {
     Add,
     Outline,
     Changes,
+    Find,
 }
 
 /// Where the clean ROM comes from, or why it could not be loaded.
@@ -235,6 +236,7 @@ pub struct App {
     pub overview: crate::overview::Overview,
     /// What the outline is narrowed to.
     pub outline_filter: String,
+    pub find: crate::find::FindState,
     pub palette: PaletteState,
     /// What a click on the canvas places, while choosing from the palette.
     pub placing: Option<Placing>,
@@ -315,9 +317,11 @@ impl App {
                 (true, _) | (_, Some("add" | "sprites" | "map16")) => LeftTab::Add,
                 (_, Some("outline")) => LeftTab::Outline,
                 (_, Some("changes")) => LeftTab::Changes,
+                (_, Some("find")) => LeftTab::Find,
                 _ => LeftTab::Levels,
             },
             outline_filter: String::new(),
+            find: Default::default(),
             commands: Default::default(),
             overview: Default::default(),
             palette: PaletteState::default(),
@@ -558,6 +562,7 @@ impl App {
     /// picture.
     pub fn request_preview(&mut self, number: u16) {
         self.overview.changed(number);
+        self.find.changed();
         let (Some(workspace), Some(open)) = (&mut self.workspace, self.open.get_mut(&number))
         else {
             return;
@@ -931,15 +936,19 @@ impl App {
         }
         let command = |key| KeyboardShortcut::new(Modifiers::COMMAND, key);
         let shift_command = |key| KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, key);
-        let (save, undo, redo, redo_y, build) = ctx.input_mut(|i| {
+        let (save, undo, redo, redo_y, build, find) = ctx.input_mut(|i| {
             (
                 i.consume_shortcut(&command(Key::S)),
                 i.consume_shortcut(&command(Key::Z)),
                 i.consume_shortcut(&shift_command(Key::Z)),
                 i.consume_shortcut(&command(Key::Y)),
                 i.consume_shortcut(&command(Key::B)),
+                i.consume_shortcut(&shift_command(Key::F)),
             )
         });
+        if find {
+            self.left = LeftTab::Find;
+        }
         if save {
             self.save_all();
         }
@@ -1799,6 +1808,8 @@ impl eframe::App for App {
                     ui.selectable_value(&mut self.left, LeftTab::Outline, "Outline");
                     ui.selectable_value(&mut self.left, LeftTab::Changes, "Changes")
                         .on_hover_text("What differs from the last commit");
+                    ui.selectable_value(&mut self.left, LeftTab::Find, "Find")
+                        .on_hover_text("Objects and sprites in every level (Ctrl+Shift+F)");
                 });
                 ui.separator();
                 self.view.changes = self.left == LeftTab::Changes;
@@ -1807,6 +1818,7 @@ impl eframe::App for App {
                     LeftTab::Add => palette::show(self, ui),
                     LeftTab::Outline => outline::show(self, ui),
                     LeftTab::Changes => crate::changes::show(self, ui),
+                    LeftTab::Find => crate::find::show(self, ui),
                 }
             });
         egui::Panel::right("inspector")
