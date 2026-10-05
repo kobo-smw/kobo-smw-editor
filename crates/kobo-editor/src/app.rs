@@ -246,6 +246,9 @@ pub struct App {
     screenshot_frames: Option<u32>,
     /// The window's title as last set.
     shown_title: String,
+    /// The levels shown last, newest first: only these keep their
+    /// pictures, which are large.
+    viewed: std::collections::VecDeque<u16>,
 }
 
 impl App {
@@ -312,6 +315,7 @@ impl App {
             startup: startup.clone(),
             screenshot_frames: None,
             shown_title: String::new(),
+            viewed: Default::default(),
         };
         if let Clean::Loaded(rom) = &app.clean {
             app.entrance_tables = kobo_core::entrance::MainEntranceTables::read(rom).ok();
@@ -417,6 +421,19 @@ impl App {
             }
         }
         self.current = Some(number);
+        // Pictures are kept for the levels shown last; another one's goes,
+        // and is drawn again when it is shown again.
+        self.viewed.retain(|&n| n != number);
+        self.viewed.push_front(number);
+        while self.viewed.len() > KEPT_PICTURES {
+            if let Some(old) = self.viewed.pop_back()
+                && let Some(open) = self.open.get_mut(&old)
+            {
+                open.picture = None;
+                open.image = None;
+                open.requested = u64::MAX;
+            }
+        }
         let has_layer2 = self.open.get(&number).is_some_and(|o| {
             matches!(
                 o.document.level().layer2,
@@ -1569,6 +1586,9 @@ fn same_file(a: &Path, b: &Path) -> bool {
             _ => false,
         }
 }
+
+/// How many levels keep their pictures while others are shown.
+const KEPT_PICTURES: usize = 4;
 
 /// Where the recent projects are kept in the editor's storage.
 const RECENT_KEY: &str = "kobo-recent-projects";
