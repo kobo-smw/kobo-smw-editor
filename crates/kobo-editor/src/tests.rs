@@ -1488,3 +1488,26 @@ fn f_centres_the_view_on_the_selection() {
         camera.offset.x
     );
 }
+
+#[test]
+fn a_level_goes_back_to_its_saved_file_as_one_step() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "back-to-saved");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    let saved = harness.state().current().unwrap().document.level().clone();
+    look_at(&mut harness, 60, 20);
+    click_tile(&mut harness, 65, 22);
+    harness.key_press(Key::Delete);
+    harness.step();
+    assert!(harness.state().is_modified(0x105));
+    harness.state_mut().back_to_saved();
+    harness.step();
+    let open = harness.state().current().unwrap();
+    assert_eq!(open.document.level(), &saved);
+    assert!(!harness.state().is_modified(0x105));
+    // Undo brings the edit back.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    assert!(harness.state().is_modified(0x105));
+}

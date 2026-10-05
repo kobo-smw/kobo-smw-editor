@@ -95,7 +95,8 @@ The arrows beside the project's name (Alt+Left and Alt+Right, or the mouse's bac
 forward buttons) go back to the level shown before and forward again.
 
 Undo (Ctrl+Z) and redo (Ctrl+Shift+Z) work per level; the Edit menu undoes back several
-steps at once. Ctrl+S saves every changed level.
+steps at once, and puts the level back as its file has it (one step, which undo takes
+back). Ctrl+S saves every changed level.
 
 ## The project
 

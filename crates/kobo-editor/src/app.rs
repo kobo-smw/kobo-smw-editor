@@ -582,6 +582,29 @@ impl App {
         names.get(usize::from(number))?.as_deref()
     }
 
+    /// Puts the open level back as its file has it, as one undo step.
+    pub fn back_to_saved(&mut self) {
+        let Some(number) = self.current else { return };
+        let Some(open) = self.open.get_mut(&number) else {
+            return;
+        };
+        let path = open.document.path().to_path_buf();
+        let result = std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|text| {
+                open.document
+                    .set_text("Back to the saved file", &text)
+                    .map_err(|e| e.to_string())
+            });
+        match result {
+            Ok(()) => {
+                open.keep_valid_selection();
+                self.request_preview(number);
+            }
+            Err(e) => self.say(format!("Could not go back to {}: {e}", path.display())),
+        }
+    }
+
     /// Whether level `number` is open with unsaved edits.
     pub fn is_modified(&self, number: u16) -> bool {
         self.open
@@ -1499,6 +1522,15 @@ impl App {
                     }
                 });
             });
+            let modified = self.current().is_some_and(|o| o.document.is_modified());
+            if ui
+                .add_enabled(modified, egui::Button::new("Back to the saved file"))
+                .on_hover_text("The level as its file has it, as one step that undo takes back")
+                .clicked()
+            {
+                self.back_to_saved();
+                ui.close();
+            }
             ui.separator();
             let selected = self.current().is_some_and(|o| !o.selection.is_empty());
             let ctx = ui.ctx().clone();
