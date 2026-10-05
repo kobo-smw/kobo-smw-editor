@@ -1276,11 +1276,25 @@ fn entrances(
                         ),
                     );
                     placed_change = placed_fields(ui, "main", placed, vertical);
-                    let fields: [Field<SecondaryHeader>; 3] = [
-                        ("Action", e.entrance_action, 7, |h, v| SecondaryHeader {
-                            entrance_action: v,
-                            ..h
-                        }),
+                    ui.label("Action");
+                    let mut action = e.entrance_action;
+                    let r = choice(
+                        ui,
+                        "main-action",
+                        &mut action,
+                        0..=7,
+                        names::entrance_action,
+                    );
+                    set(
+                        &r,
+                        "Change entrance action",
+                        SecondaryHeader {
+                            entrance_action: action,
+                            ..e
+                        },
+                    );
+                    ui.end_row();
+                    let fields: [Field<SecondaryHeader>; 2] = [
                         ("Layer 2 scroll", e.layer2_scroll, 15, |h, v| {
                             SecondaryHeader {
                                 layer2_scroll: v,
@@ -1426,21 +1440,23 @@ fn entrances(
                             let edit = Edit::ReplaceEntrance { index, entrance };
                             *change = Some(Change::new(&r, "Change entrance", vec![edit]));
                         }
-                        let fields: [Field<Entrance>; 1] =
-                            [("Action", e.action, 7, |e, v| Entrance { action: v, ..e })];
-                        for (label, value, max, with) in fields {
-                            ui.label(label);
-                            let mut v = u16::from(value);
-                            let r = number_field(ui, &mut v, 0, max, false);
-                            if r.changed() {
-                                let edit = Edit::ReplaceEntrance {
-                                    index,
-                                    entrance: with(e, v as u8),
-                                };
-                                *change = Some(Change::new(&r, "Change entrance", vec![edit]));
-                            }
-                            ui.end_row();
+                        ui.label("Action");
+                        let mut action = e.action;
+                        let r = choice(
+                            ui,
+                            &format!("action-{index}"),
+                            &mut action,
+                            0..=7,
+                            names::entrance_action,
+                        );
+                        if r.changed() {
+                            let edit = Edit::ReplaceEntrance {
+                                index,
+                                entrance: Entrance { action, ..e },
+                            };
+                            *change = Some(Change::new(&r, "Change entrance", vec![edit]));
                         }
+                        ui.end_row();
                     });
                 let remove = ui.button("Remove this entrance");
                 if remove.clicked() {
@@ -2004,10 +2020,9 @@ fn lunar_settings(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>)
                                 s.midway.separate = Some(SeparateMidway::Entrance(m));
                                 s
                             };
-                            let fields: [MidwayField; 3] = [
+                            let fields: [MidwayField; 2] = [
                                 ("Its X tile", u16::from(m.x), 31, |m, v| MidwayEntrance { x: v as u8, ..m }),
                                 ("Its Y tile", m.y, 1023, |m, v| MidwayEntrance { y: v, ..m }),
-                                ("Its action", u16::from(m.action), 7, |m, v| MidwayEntrance { action: v as u8, ..m }),
                             ];
                             for (label, value, max, change_to) in fields {
                                 ui.label(label);
@@ -2016,6 +2031,11 @@ fn lunar_settings(ui: &mut egui::Ui, level: &Level, change: &mut Option<Change>)
                                 set(&r, "Change midway entrance", with(change_to(m, v)), change);
                                 ui.end_row();
                             }
+                            ui.label("Its action");
+                            let mut action = m.action;
+                            let r = choice(ui, "midway-action", &mut action, 0..=7, names::entrance_action);
+                            set(&r, "Change midway entrance", with(MidwayEntrance { action, ..m }), change);
+                            ui.end_row();
                             let camera = Camera::from_bits(m.fg_position, m.bg_position, m.relative, false);
                             if let Some((r, camera)) = camera_fields(ui, "midway", camera) {
                                 let (fg_position, bg_position, relative) = camera.to_bits(false);

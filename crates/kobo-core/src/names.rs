@@ -145,6 +145,7 @@ struct Source {
     exanimation_types: BTreeMap<String, String>,
     exanimation_triggers: BTreeMap<String, String>,
     layer3_scroll: BTreeMap<String, String>,
+    entrance_actions: BTreeMap<String, String>,
     backgrounds: BTreeMap<String, String>,
 }
 
@@ -160,6 +161,7 @@ struct Names {
     exanimation_types: Table,
     exanimation_triggers: Table,
     layer3_scroll: Table,
+    entrance_actions: Table,
     /// The game's backgrounds, by address.
     backgrounds: BTreeMap<u32, String>,
 }
@@ -191,6 +193,7 @@ static NAMES: LazyLock<Names> = LazyLock::new(|| {
         exanimation_types: Table::parse("exanimation_types", source.exanimation_types),
         exanimation_triggers: Table::parse("exanimation_triggers", source.exanimation_triggers),
         layer3_scroll: Table::parse("layer3_scroll", source.layer3_scroll),
+        entrance_actions: Table::parse("entrance_actions", source.entrance_actions),
         backgrounds: source
             .backgrounds
             .into_iter()
@@ -280,6 +283,11 @@ pub fn layer3_scroll(setting: u8) -> Option<&'static str> {
     NAMES.layer3_scroll.get(setting)
 }
 
+/// An entrance's action (`0`-`7`): how the player comes in.
+pub fn entrance_action(action: u8) -> Option<&'static str> {
+    NAMES.entrance_actions.get(action)
+}
+
 /// The name of a decoded object in a level of this object tileset:
 /// whichever table its kind and number belong to.
 pub fn object(object: &Object, tileset: u8) -> Option<&'static str> {
@@ -337,6 +345,11 @@ mod tests {
                 ids(0x00..=0x4F),
             ),
             ("layer3_scroll", &NAMES.layer3_scroll, ids(0x00..=0x1F)),
+            (
+                "entrance_actions",
+                &NAMES.entrance_actions,
+                ids(0x00..=0x07),
+            ),
         ];
         for set in ObjectSet::ALL {
             all.push((

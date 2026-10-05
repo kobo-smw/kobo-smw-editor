@@ -909,6 +909,20 @@ FF = "Unused"
 1E = "Unused"
 1F = "Unused"
 
+# An entrance's action, how the player comes in: what the entrance code
+# (`CODE_00A6CC` and after) does with `$192A`'s value. 1 to 4 are pipe exits,
+# the value plus 3 being the pipe action (`$89`); 7 is one downwards in a water
+# level, unless the player comes back from a midway point or a keyhole.
+[entrance_actions]
+00 = "Normal"
+01 = "Out of a pipe, leftwards"
+02 = "Out of a pipe, rightwards"
+03 = "Out of a pipe, upwards"
+04 = "Out of a pipe, downwards"
+05 = "Normal, slippery"
+06 = "Shot out of a slanted pipe"
+07 = "Water level, out of a pipe downwards"
+
 # The game's background tilemaps in bank $0C, by address: what each shows,
 # drawn in a level that uses it (`level::game_backgrounds`). A level's
 # tileset and palette colour them, so the names say what they picture.
