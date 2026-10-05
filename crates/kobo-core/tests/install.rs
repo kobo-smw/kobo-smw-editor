@@ -16,18 +16,24 @@ use kobo_core::{Rom, SnesAddr, expand, install, level};
 /// Each base the patches go on, and the same with them: the vanilla ROM
 /// expanded to 1 MiB, and with SA-1 Pack applied (if it is configured).
 fn installs(clean: &Rom) -> Vec<(Rom, Rom)> {
+    use std::sync::Mutex;
+    // Made once a process: a dozen tests take them, and each install runs
+    // every patch through Asar on both bases.
+    static MADE: Mutex<Vec<(Vec<u8>, Vec<u8>)>> = Mutex::new(Vec::new());
     let Some(asar) = common::asar() else {
         return Vec::new();
     };
-    let mut lorom = Rom::from_bytes(clean.data().to_vec()).unwrap();
-    lorom.expand(0x10_0000).unwrap();
-    std::iter::once(lorom)
-        .chain(common::sa1_base(clean))
-        .map(|base| {
+    let copy = |bytes: &[u8]| Rom::from_headerless(bytes.to_vec()).unwrap();
+    let mut made = MADE.lock().unwrap();
+    if made.is_empty() {
+        let mut lorom = Rom::from_bytes(clean.data().to_vec()).unwrap();
+        lorom.expand(0x10_0000).unwrap();
+        for base in std::iter::once(lorom).chain(common::sa1_base(clean)) {
             let rom = install::apply_lunar_magic(&asar, &base).unwrap();
-            (base, rom)
-        })
-        .collect()
+            made.push((base.data().to_vec(), rom.data().to_vec()));
+        }
+    }
+    made.iter().map(|(b, r)| (copy(b), copy(r))).collect()
 }
 
 /// Where the log patches below keep their log: work RAM the game does not

@@ -1,2 +1,15 @@
 [tools]
 rust = "1.98.1"
+
+# The same as `cargo xtask <task>` (crates/xtask), for `mise run <task>`.
+[tasks.verify]
+run = "cargo xtask verify"
+description = "fmt, clippy, the scripts in tools/, the tests, and what skipped"
+
+[tasks.tiers]
+run = "cargo xtask tiers"
+description = "what this machine has for each test tier"
+
+[tasks.baseline]
+run = "cargo xtask baseline"
+description = "write every level's picture hashes for tests/render_baselines.rs"

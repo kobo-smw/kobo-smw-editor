@@ -125,7 +125,7 @@ At revision `25cca50e847ee679c500e2a287ef3e71faf3322f`, the release CLI attempte
 enabled. Of 88,576 attempts, 88,522 produced PNGs and 54 failed; 209 of the produced
 PNGs carried diagnostics. Ten hacks had failures or warnings; 163 had neither.
 Counts of warnings here mean affected level slots, not individual failed passes.
-See [testing.md](testing.md#full-hack-render-sweep) for the inputs, logs and reproduction.
+See [testing-log.md](testing-log.md#full-hack-render-sweep-2026-09-22) for the inputs, logs and reproduction.
 
 These are execution results, not a visual accuracy assessment. All slots were attempted,
 including unused, test and unchanged vanilla rooms. A PNG with warnings may omit or

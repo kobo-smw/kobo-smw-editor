@@ -26,7 +26,9 @@ impl TempDir {
     pub fn unmade(name: &str) -> TempDir {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("kobo-{name}-{}-{n}", std::process::id()));
+        // `kobo-test-`: the library's own scratch folders are `kobo-<name>-`,
+        // and one of the same name would empty this one.
+        let dir = std::env::temp_dir().join(format!("kobo-test-{name}-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         TempDir(dir)
     }

@@ -4,16 +4,17 @@
 //!
 //! - `tiers [--list TIER]`: what this machine has for each test tier
 //!   ([`kobo_core::tiers`]), or one tier's paths, a line each, for scripts.
-//! - `verify [--quick] [--strict] [--require-all] [--full] [-- TEST ARGS]`:
-//!   formatting, clippy, the scripts in `tools/`, then the tests in a
-//!   release build, and a report of every test that skipped, by tier.
-//!   `--quick` is CI's run (a debug build, no ROM needed); `--strict`
-//!   requires every tier this machine has set (`KOBO_REQUIRE_<TIER>`), so
-//!   a test that still skips fails; `--require-all` requires every tier
-//!   (`KOBO_REQUIRE_ALL`); `--full` turns on the checks of every level
-//!   (`KOBO_FULL_RENDER`).
+//! - `verify [--strict] [--require-all] [--full] [-- TEST ARGS]`:
+//!   formatting, clippy, the scripts in `tools/`, what this machine has
+//!   for each tier, then the tests, and a report of every test that
+//!   skipped, by tier. `--strict` requires every tier this machine has set
+//!   (`KOBO_REQUIRE_<TIER>`), so a test that still skips fails;
+//!   `--require-all` requires every tier (`KOBO_REQUIRE_ALL`); `--full`
+//!   turns on the checks of every level (`KOBO_FULL_RENDER`).
 //! - `lint-tools`: `bash -n` and shellcheck on the shell scripts in
-//!   `tools/`, Python's compiler on the Python ones, `luac -p` on the Lua.
+//!   `tools/`, Python's parser on the Python ones, `luac -p` on the Lua.
+//! - `skips FILE`: the skips a test run appended to `KOBO_SKIP_LOG`, by
+//!   tier (`verify` prints them itself).
 //! - `baseline`: the picture hashes of every level of the vanilla ROM
 //!   and the SA-1 reference ROM, written to
 //!   `tests/fixtures/render_hashes/` for `tests/render_baselines.rs`.
@@ -35,6 +36,13 @@ fn main() -> ExitCode {
         "tiers" => tiers::run(rest),
         "verify" => verify(rest),
         "baseline" => baseline::run_task(rest),
+        "skips" => match rest {
+            [log] => {
+                tiers::report_skips(Path::new(log));
+                Ok(())
+            }
+            _ => Err("usage: cargo xtask skips KOBO_SKIP_LOG-file".into()),
+        },
         "lint-tools" => lint::run(rest.iter().any(|a| a == "--strict")),
         "help" | "-h" | "--help" => {
             println!("{}", HELP.trim());
@@ -55,10 +63,11 @@ const HELP: &str = "
 cargo xtask <task>
 
   tiers [--list TIER]       what this machine has for each test tier
-  verify [--quick] [--strict] [--require-all] [--full] [-- TEST ARGS]
+  verify [--strict] [--require-all] [--full] [-- TEST ARGS]
                             fmt, clippy, lint-tools, the tests, and what skipped
   lint-tools [--strict]     syntax-check the scripts in tools/ (and shellcheck them)
   baseline                  write every level's picture hashes for render_baselines
+  skips FILE                what the tests that wrote FILE (KOBO_SKIP_LOG) skipped, by tier
 
 docs/testing.md has what each tier checks.
 ";
@@ -97,14 +106,11 @@ fn verify(args: &[String]) -> Result<(), String> {
     };
     let flag = |f: &str| ours.iter().any(|a| a == f);
     for a in ours {
-        if !matches!(
-            a.as_str(),
-            "--quick" | "--strict" | "--require-all" | "--full"
-        ) {
+        if !matches!(a.as_str(), "--strict" | "--require-all" | "--full") {
             return Err(format!("verify: unknown option `{a}`"));
         }
     }
-    let (quick, strict, full) = (flag("--quick"), flag("--strict"), flag("--full"));
+    let (strict, full) = (flag("--strict"), flag("--full"));
     let require_all = flag("--require-all");
     run(
         "cargo fmt --check",
@@ -122,16 +128,13 @@ fn verify(args: &[String]) -> Result<(), String> {
         ]),
     )?;
     lint::run(strict || require_all)?;
-    if !quick {
-        tiers::run(&[])?;
-    }
+    tiers::run(&[])?;
     let log = root().join("target").join("kobo-skips.txt");
     let _ = std::fs::remove_file(&log);
     let mut test = cargo();
+    // A dev build: kobo-core is optimised there (Cargo.toml), and keeps its
+    // debug assertions and overflow checks, which a release build drops.
     test.args(["test", "--workspace", "--no-fail-fast"]);
-    if !quick {
-        test.arg("--release");
-    }
     if !test_args.is_empty() {
         test.arg("--").args(test_args);
     }

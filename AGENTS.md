@@ -209,7 +209,7 @@ Early stage: roadmap step 1 is complete; step 2 is next, planned in `docs/step-2
   copied in, Asar's library beside it, and the project's files laid over it. `Tool::locate` is the
   one way to find a tool: a configured path (`KOBO_UBERASM`, `tools.uberasm` in the config
   file, and so on) wins; else Asar, PIXI (`tools::pixi()`), and UberASM Tool come from the
-  builds `tools/pinned.toml` pins (PIXI 1.43, and 1.42 for a project that asks with
+  builds `crates/kobo-core/src/tools/pinned.toml` pins (PIXI 1.43, and 1.42 for a project that asks with
   `[pixi] version`: `Tool::locate_version`), downloaded from `kobo-smw/kobo-tools` on first use,
   checked by SHA-256, and cached per user (`KOBO_TOOL_CACHE`; `KOBO_OFFLINE` turns
   downloads off); SA-1 Pack comes the same way from its author's release
@@ -222,10 +222,13 @@ Early stage: roadmap step 1 is complete; step 2 is next, planned in `docs/step-2
 
 ```
 cargo build --workspace
-cargo test --workspace                       # ROM-backed tests skip if no ROM is configured
-cargo test --release --workspace             # with a ROM configured: the emulator is too slow unoptimised
+cargo test --workspace                       # tests whose tier is not configured skip
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
+cargo xtask verify [--strict] [--full]       # fmt, clippy, lint-tools, the tests, and what skipped, by tier
+cargo xtask tiers                            # what this machine has for each test tier
+cargo xtask baseline                         # write every level's picture hashes (tests/render_baselines.rs)
+cargo xtask lint-tools                       # bash -n, shellcheck, and Python's parser on tools/
 cargo run -- rom info [-r rom]               # header, checksum, hash, identity
 cargo run -- rom expand 2M out.sfc [-r rom]  # a copy expanded, with the checksum fixed
 cargo run -- rom rats [-r rom]               # RATS blocks from $108000 on, and free space
@@ -234,10 +237,12 @@ cargo run -- import level.mwl dir [--level 105] [--sizes-from hack.smc]  # an MW
 cargo run -- import callisto-project/ dir     # a Callisto project as a new project
 cargo run -- new dir --template rhr           # a project from a baserom template (--list names them)
 cargo run -- build [dir] [-o out.sfc] [--bps out.bps]  # a project onto the clean ROM (and as a patch)
+                                             # rom info, import, build, diff: --json for scripts
 cargo run -- fmt [dir] [--check]             # rewrite a project's files in Kobo's format
 cargo run -- diff a.sfc b.sfc [--project dir] # levels that differ, however each ROM stores them
 tools/lunar-magic/save-check built.sfc       # Lunar Magic saves a copy; every level must survive
-tools/corpus-sweep out/ [--no-render]        # import, build, diff, and save every KOBO_LM_ROMS hack
+tools/corpus-sweep out/ [--baseline old/results.json]  # import, build, diff, and save every corpus hack
+tools/lunar-magic/fixture-lines vanilla-gfx rom.smc  # a Lunar Magic export fixture's lines (hashes) for a ROM
 cargo run -- asm patch.asm out.sfc [-r rom] [-I dir] [-D name=value]  # an Asar patch on a copy, checksum fixed
 cargo run -- gfx list|export|png [-r rom]    # GFX files: table, LM-layout .bin export, tile sheet
 cargo run -- level info 105                  # primary header and data pointers
@@ -257,7 +262,10 @@ cargo run --release --example sprite_census -- rom.smc  # sprite numbers that dr
 cargo run --release --example render_hashes -- rom.smc [level...]  # a hash per level picture, to diff across a change
 cargo run --release --example tiles_diff -- a.sfc b.sfc  # levels whose load resolves differently, graphics aside
 cargo run --release --example sprite_oracle -- rom.smc dumpdir...  # per-sprite scores against emulator frames
+cargo run --release --example swap -- vram lm.smc out.sfc  # Kobo's code for one piece in place of Lunar Magic's
 cargo run --release --example exanim_probe -- run rom.smc 105 64  # ExAnimation's VRAM/CGRAM/RAM, frame by frame
+cargo run --release --example gfx_probe|layer3_probe|exlevel_probe|entry_probe|sprite_probe|exit_probe|contact_probe -- ...
+                                             # compare two ROMs' memory as they play (docs/testing.md)
 cargo run --release --example fuzz_inputs -- 10000      # seeded parser mutation cases, no ROM needed
 ```
 
@@ -266,41 +274,49 @@ Lunar Magic runs headlessly under Wine for reference exports, e.g.
 `-ExportSharedPalette`, `-ExportLevel`). Always run it on a copy of the ROM. Export hashes, never the exported bytes,
 go in `crates/kobo-core/tests/fixtures/`.
 
-CI (`.github/workflows/ci.yml`) runs fmt, clippy with warnings denied, and tests on Linux,
-Windows, and macOS. Keep all three green.
+CI (`.github/workflows/ci.yml`) runs fmt, clippy with warnings denied, `cargo xtask
+lint-tools --strict`, and tests on Linux, Windows, and macOS, and prints the tests that
+skipped. Keep all three green.
 
 ## Test tiers and ROM configuration
 
-- **Unit tests** use synthetic data and always run.
-- **ROM-backed tests** (`crates/kobo-core/tests/`) load the vanilla ROM through
-  `kobo_core::config::vanilla_rom_path()`: the `KOBO_SMW_ROM` env var, else `roms.smw` in
-  `$XDG_CONFIG_HOME/kobo/config.toml`. They print `skipping: ...` and pass when no ROM is
-  configured, so CI never needs ROM data; `KOBO_REQUIRE_ROM=1` makes that a failure. A
-  configured ROM must be the vanilla reference. Run them locally before pushing, in a
-  release build (`cargo test --release --workspace`; docs/testing.md).
-- **Asar-backed tests** (`tests/asar.rs`) load `libasar` through
-  `Tool::Asar.locate_offline()`: `KOBO_ASAR_LIB`, else `tools.asar` in the same file, else
-  the pinned build if `kobo tools fetch` has cached it. Tests never download. They skip the
-  same way; `KOBO_REQUIRE_ASAR=1` makes that a failure (`KOBO_REQUIRE_UBERASM=1` for
-  UberASM Tool, `KOBO_REQUIRE_PIXI=1` for PIXI). CI fetches the pinned builds on all three
-  platforms, then runs the tests with `KOBO_OFFLINE=1` and requires all three.
+- **`cargo xtask verify`** runs fmt, clippy, `lint-tools`, a table of the tiers this
+  machine has, and the tests, then reports every test that skipped, by tier; run it before
+  pushing. `cargo xtask tiers` is the table alone. A plain `cargo test --workspace` works
+  too: kobo-core is optimised in dev builds, keeping debug assertions and overflow checks.
+- **Unit tests** and the synthetic tests use no ROM and always run.
+- **Every other test is in a tier** (`kobo_core::tiers::Tier`): the vanilla ROM, each
+  tool, Lunar Magic, the hack corpus, MWL exports, emulator dumps, SingleStepTests, the
+  SA-1 reference ROM. Each is set by its environment variable (`KOBO_SMW_ROM`,
+  `KOBO_LM_ROMS`, `KOBO_LUNAR_MAGIC`, ...), else by the config file
+  (`$XDG_CONFIG_HOME/kobo/config.toml`: `roms.smw`, `tools.<key>`, or the `[tests]`
+  table). A test whose tier is missing skips (`common::skip`, which writes `KOBO_SKIP_LOG`
+  for verify's report); `KOBO_REQUIRE_<TIER>` (`KOBO_REQUIRE_ROM`, `KOBO_REQUIRE_ASAR`,
+  `KOBO_REQUIRE_LUNAR_MAGIC`, ...) or `KOBO_REQUIRE_ALL` makes that a failure, and
+  `verify --strict` requires every tier the machine has set. A new test gates on a tier
+  through `tests/common` (`vanilla()`, `tool()`, `lunar_magic()`, `lunar_magic_roms()`,
+  `tier_path()`), never on an environment variable of its own. docs/testing.md has the
+  table of tiers, what each enables, and how each one's data is made.
+- Tools come from `Tool::locate_offline()`: the configured path, else the pinned build if
+  `kobo tools fetch` has cached it. Tests never download. CI fetches the pinned builds on
+  all three platforms, then runs the tests with `KOBO_OFFLINE=1` and requires Asar, PIXI,
+  UberASM Tool, and SA-1 Pack.
 - The vanilla reference is No-Intro "Super Mario World (USA)", headerless SHA-1
   `6b47bb75d16514b6a476aa0c73a683a2a4c18765`, checksum `$A0DA`.
-- **Oracle tiers** are opt-in by environment variable and compare against data that is never
-  committed: `KOBO_ORACLE_DIR` (Mesen 2 dumps of every vanilla level, `tools/oracle/`; of
-  another ROM, the SA-1 reference ROM say, with `KOBO_ORACLE_ROM`),
-  `KOBO_BOSS_ORACLE_DIR`, `KOBO_VIDEO_ORACLE_DIRS` (whole pictures), `KOBO_65816_TESTS`
-  (SingleStepTests), `KOBO_SA1PACK` (SA-1 Pack's folder, else the pinned release if
-  `kobo tools fetch` has cached it: the tests of Kobo's patches and builds run on its
-  SA-1 base too), `KOBO_LM_ROMS` (`:`-separated Lunar Magic hacks, ROMs or `.bps`
-  patches of the vanilla ROM), `KOBO_MWL_DIR`
-  (MWL exports, `tools/lunar-magic/export-mwl`), and `KOBO_LUNAR_MAGIC` (Lunar Magic 3.70's
-  folder: a build must survive its save). Lunar Magic exports (hashes in
-  `tests/fixtures/`) are the oracle for GFX, palette, Map16, and MWL files.
-  `docs/testing.md` has how each is produced, where the data lives, and the known exceptions.
-- A change to `expand` or `render` that should not change any picture is checked with
-  `examples/render_hashes.rs`: run it before and after on the vanilla ROM and a few hacks and
-  diff the output.
+- **Corpus tests report every failure** against `tests/fixtures/known_failures.toml` (by
+  hack SHA-1, test, and level, with why; `tests/common/failures.rs`): a failure not listed
+  fails the test, and so does a listed one that now passes, which comes off the list.
+- **Pictures are pinned**: `tests/fixtures/render_hashes/` holds every level's picture
+  hashes of the vanilla ROM and the SA-1 reference ROM (`tests/render_baselines.rs`). A
+  change that should not change a picture passes as it is; one that does runs `cargo
+  xtask baseline`, and the diff shows the levels. `KOBO_FULL_RENDER=1` (`verify --full`)
+  makes the tests that draw a few levels of a build draw all 512. For a hack, diff
+  `examples/render_hashes.rs` before and after, or sweep the corpus against an earlier
+  sweep (`tools/corpus-sweep --baseline`).
+- Lunar Magic exports (hashes in `tests/fixtures/`, `tools/lunar-magic/fixture-lines`) are
+  the oracle for GFX, palette, Map16, and MWL files. Kobo's code is compared with Lunar
+  Magic's by swapping one piece into a ROM Lunar Magic saved (`examples/swap.rs`, whose
+  sites `tests/common/swap.rs` holds for the tests too) and running a probe on both.
 
 ## Reference material
 
@@ -351,8 +367,10 @@ describes that module's code rather than the game). Do not grow this file with t
 - `docs/sa1.md`: SA-1 Pack. How its two processors hand work over and how the bus schedules
   them, the RAM it moves, MaxTile and the OAM, the work RAM port, SA-1 DMA, images over
   4 MiB, the reference ROM, what it changes in the vanilla levels, what is not modelled.
-- `docs/testing.md`: the emulator oracle and its capture modes, the video oracle, the CPU
-  suite, the Lunar Magic hack corpus checks and their known exceptions.
+- `docs/testing.md`: running the tests, the tiers and their configuration, known failures
+  and picture baselines, and each check: the emulator oracle and its capture modes, the
+  CPU suite, the corpus checks, the corpus sweep, Lunar Magic's save, and comparing Kobo's
+  code with Lunar Magic's. `docs/testing-log.md` holds past runs' results.
 - `docs/known-gaps.md`: what a rendered level does not reproduce.
 - `docs/toolchain.md`: what Asar, PIXI, GPS, UberASM Tool, AddmusicK, and SA-1 Pack require of a
   ROM, where they put things, what makes their output vary, their licences.
@@ -381,12 +399,13 @@ describes that module's code rather than the game). Do not grow this file with t
   central level table (`0x105 = "file.toml"`), `#RRGGBB` palettes (channels x8), indexed PNG
   graphics. Round-trip fidelity is semantic, not byte-exact.
 - **Builds run fixed stages**, rarely changed first and levels last, with a snapshot per
-  stage keyed by a chained input hash. Output is identical on all three platforms, except
+  stage keyed by a chained input hash (kept in the user's cache folder, `kobo/stages`, or
+  `KOBO_CACHE_DIR`). Output is identical on all three platforms, except
   where a tool orders files by directory listing, which may vary by file system.
 - **Tools come from pinned builds**: `kobo-smw/kobo-tools` builds Asar, PIXI, and UberASM
   Tool from pinned upstream commits for Linux x64, Windows x64, and macOS (arm64 and x64)
   and publishes them with their sources; Kobo pins a release's hashes
-  (`tools/pinned.toml`, written by its `build.py pins`) and fetches the build for its
+  (`crates/kobo-core/src/tools/pinned.toml`, written by its `build.py pins`) and fetches the build for its
   platform on first use. A `[tools]` path or environment variable overrides one, and the
   build report notes it. AddmusicK, SA-1 Pack, and GPS have no licence and are never
   bundled; SA-1 Pack is fetched by hash from its author's GitHub release

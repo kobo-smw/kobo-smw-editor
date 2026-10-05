@@ -1,3 +1,4 @@
 [alias]
-# Kobo's development tasks (crates/xtask): `cargo xtask help`.
-xtask = "run --quiet --release --package xtask --"
+# Kobo's development tasks (crates/xtask): `cargo xtask help`. A dev build,
+# which shares `cargo test`'s optimised kobo-core.
+xtask = "run --quiet --package xtask --"

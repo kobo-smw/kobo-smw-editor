@@ -196,3 +196,67 @@ fn the_scripts_find_settings_as_the_library_does() {
     assert_eq!(theirs, ours);
     assert_eq!(ours.len(), 5);
 }
+
+/// The scripts that refuse a ROM Lunar Magic saved (`tools/clean_room.py`,
+/// and `tools/oracle/trace_writes.lua`, which runs in Mesen) tell one as
+/// `kobo_core::clean_room` does: the same marker and save areas, and
+/// clean_room.py's verdict on a synthetic ROM either way.
+#[test]
+fn the_scripts_tell_a_rom_lunar_magic_saved_as_the_library_does() {
+    use kobo_core::clean_room::{MARKER, SAVE_AREAS};
+    let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools");
+    let python = std::fs::read_to_string(tools.join("clean_room.py")).unwrap();
+    let lua = std::fs::read_to_string(tools.join("oracle/trace_writes.lua")).unwrap();
+    let marker = format!("0x{:06X}", MARKER.raw());
+    let [(a, n), (b, m)] = SAVE_AREAS.map(|(at, len)| (at.raw(), len));
+    let py_areas = format!("SAVE_AREAS = [(0x{a:06X}, 0x{n:X}), (0x{b:06X}, 0x{m:X})]");
+    let lua_areas = format!("{{ {{ 0x{a:06X}, 0x{n:X} }}, {{ 0x{b:06X}, 0x{m:X} }} }}");
+    assert!(
+        python.contains(&format!("MARKER = {marker}")),
+        "clean_room.py's MARKER"
+    );
+    assert!(
+        python.contains(&py_areas),
+        "clean_room.py's SAVE_AREAS: {py_areas}"
+    );
+    assert!(
+        lua.contains(&format!("pc({marker})")),
+        "trace_writes.lua's marker"
+    );
+    assert!(
+        lua.contains(&lua_areas),
+        "trace_writes.lua's areas: {lua_areas}"
+    );
+    for text in [&python, &lua] {
+        assert!(text.contains("Lunar Magic Version "));
+    }
+    assert!(python.contains(&format!(
+        "VANILLA_SHA1 = '{}'",
+        "6b47bb75d16514b6a476aa0c73a683a2a4c18765"
+    )));
+
+    // Its verdict: 1 for a ROM Lunar Magic saved, 0 for a clean one.
+    let dir = TempDir::new("harness-clean-room");
+    let clean = common::synthetic_base();
+    let mut saved = clean.data().to_vec();
+    let at = clean.pc(SAVE_AREAS[1].0).unwrap().as_usize();
+    saved[at] = 0x6B;
+    std::fs::write(dir.join("clean.sfc"), clean.data()).unwrap();
+    std::fs::write(dir.join("saved.sfc"), &saved).unwrap();
+    let check = |file: &str| {
+        std::process::Command::new("python3")
+            .arg(tools.join("clean_room.py"))
+            .arg("check")
+            .arg(dir.join(file))
+            .output()
+            .ok()
+            .map(|o| o.status.code())
+    };
+    match (check("clean.sfc"), check("saved.sfc")) {
+        (Some(clean), Some(saved)) => {
+            assert_eq!(clean, Some(0), "clean_room.py on a clean ROM");
+            assert_eq!(saved, Some(1), "clean_room.py on a saved ROM");
+        }
+        _ => eprintln!("skipping clean_room.py's verdict: no Python 3.11"),
+    }
+}

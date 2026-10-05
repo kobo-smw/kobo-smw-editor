@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Prints the lines of a Lunar Magic export fixture (crates/kobo-core/tests/fixtures/)
+for a ROM: Lunar Magic exports from a copy, and only hashes are printed, never the
+exported bytes. Paste the lines into the fixture after checking them.
+
+    fixture-lines gfx ROM               lunar_magic_gfx_export.txt: the ROM's SHA-1 and
+                                        the SHA-1 of GFX00.bin-GFX33.bin concatenated
+    fixture-lines vanilla-gfx ROM       vanilla_gfx_lm_export.txt: each file's SHA-1 and size
+    fixture-lines vanilla-map16 ROM     vanilla_map16_lm_export.txt: fg0-fgE and bg
+    fixture-lines map16-bg ROM LEVEL    lunar_magic_map16_bg_export.txt
+    fixture-lines map16-fg ROM LEVEL TILE,TILE,...
+                                        lunar_magic_map16_fg_export.txt
+
+Lunar Magic is run through ./lm (KOBO_LUNAR_MAGIC or `tests.lunar_magic`). The
+fixtures were made with Lunar Magic 3.21, and 3.70's -ExportGFX of the vanilla ROM
+differs in GFX17 (docs/testing.md): a line that differs from the fixture says so, and
+is not to be pasted until it is explained. lunar_magic_mwl_export.txt comes from
+export-mwl and lunar_magic_objects.txt from examples/lm_objects.rs.
+"""
+
+import hashlib
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+
+def headerless(data):
+    return data[512:] if len(data) % 0x8000 == 512 else data
+
+
+def sha1(data):
+    return hashlib.sha1(data).hexdigest()
+
+
+def export(rom, *command, out=None):
+    """Runs `lm command rom.smc [out]` on a headered copy in a scratch folder;
+    returns the folder (the caller removes it)."""
+    work = Path(tempfile.mkdtemp(prefix="kobo-fixture-"))
+    data = headerless(Path(rom).read_bytes())
+    # Lunar Magic asks before it touches a headerless ROM, which a headless run never
+    # gets past.
+    (work / "rom.smc").write_bytes(bytes(512) + data)
+    args = [HERE / "lm", *command, "rom.smc"] + ([out] if out else [])
+    done = subprocess.run(args, cwd=work, capture_output=True, text=True)
+    if done.returncode:
+        shutil.rmtree(work)
+        sys.exit(f"Lunar Magic {' '.join(command)}: exit {done.returncode}\n{done.stdout}{done.stderr}")
+    return work, sha1(data)
+
+
+def gfx_files(rom):
+    work, rom_sha = export(rom, "-ExportGFX")
+    try:
+        return rom_sha, [(f"GFX{i:02X}", (work / "Graphics" / f"GFX{i:02X}.bin").read_bytes())
+                         for i in range(0x34)]
+    finally:
+        shutil.rmtree(work)
+
+
+def all_map16(rom):
+    work, rom_sha = export(rom, "-ExportAllMap16", out="all.map16")
+    try:
+        return rom_sha, (work / "all.map16").read_bytes()
+    finally:
+        shutil.rmtree(work)
+
+
+def tiles(file, first, count):
+    """`count` tile definitions from file tile index `first` (8 bytes each from $B0)."""
+    return file[0xB0 + first * 8:0xB0 + (first + count) * 8]
+
+
+def main(args):
+    if not args:
+        print(__doc__, file=sys.stderr)
+        return 2
+    match args:
+        case ["gfx", rom]:
+            rom_sha, files = gfx_files(rom)
+            print(rom_sha, sha1(b"".join(data for _, data in files)))
+        case ["vanilla-gfx", rom]:
+            _, files = gfx_files(rom)
+            for name, data in files:
+                print(name, sha1(data), len(data))
+        case ["vanilla-map16", rom]:
+            _, file = all_map16(rom)
+            for t in range(15):
+                block = file[0x900B0 + t * 0x1000:0x900B0 + (t + 1) * 0x1000]
+                print(f"fg{t:X}", sha1(block))
+            print("bg", sha1(tiles(file, 0x8000, 0x200)))
+        case ["map16-bg", rom, level]:
+            rom_sha, file = all_map16(rom)
+            print(rom_sha, level.upper(), sha1(tiles(file, 0x8000, 0x200)))
+        case ["map16-fg", rom, level, numbers]:
+            rom_sha, file = all_map16(rom)
+            definitions = b"".join(tiles(file, int(n, 16), 1) for n in numbers.split(","))
+            print(rom_sha, level.upper(), numbers.upper(), sha1(definitions))
+        case _:
+            print(__doc__, file=sys.stderr)
+            return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
