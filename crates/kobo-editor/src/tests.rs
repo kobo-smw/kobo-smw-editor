@@ -1377,3 +1377,48 @@ fn the_project_window_says_what_the_project_holds() {
     harness.get_by_label_contains("1 of 512");
     harness.get_by_label("not needed: the build keeps the game's");
 }
+
+#[test]
+fn dragging_with_ctrl_held_copies() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "copy-drag");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    look_at(&mut harness, 60, 20);
+    click_tile(&mut harness, 65, 22);
+    let before = harness
+        .state()
+        .current()
+        .unwrap()
+        .document
+        .level()
+        .layer1
+        .len();
+
+    let from = tile_on_screen(harness.state(), 65, 22);
+    let to = tile_on_screen(harness.state(), 68, 21);
+    harness.hover_at(from);
+    harness.step();
+    harness.event(egui::Event::ModifiersChanged(Modifiers::COMMAND));
+    harness.step();
+    press(&mut harness, from, true);
+    harness.step();
+    for i in 1..=8 {
+        harness.hover_at(from + (to - from) * (i as f32 / 8.0));
+        harness.step();
+    }
+    press(&mut harness, to, false);
+    harness.step();
+    harness.event(egui::Event::ModifiersChanged(Modifiers::NONE));
+    harness.step();
+
+    let open = harness.state().current().unwrap();
+    // The ledge stays, and a copy of it is three across and one up.
+    assert_eq!(open.document.level().layer1.len(), before + 1);
+    assert_eq!(object_place(harness.state(), 10), Some((60, 20)));
+    let [Item::Object(copy)] = open.selection[..] else {
+        panic!("the copy is selected: {:?}", open.selection);
+    };
+    assert_eq!(object_place(harness.state(), copy.index), Some((63, 19)));
+    assert_eq!(open.document.undo_label(), Some("Copy 1 object"));
+}

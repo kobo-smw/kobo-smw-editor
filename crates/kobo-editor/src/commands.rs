@@ -410,6 +410,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                         ("Ctrl+Shift+F", "Find in every level"),
                         ("Click, Shift+click", "Select, add to the selection"),
                         ("Drag", "Move the selection, or select what a box meets"),
+                        ("Ctrl+drag", "Copy the selection to where it is dropped"),
                         ("Arrow keys (Shift)", "Move the selection a tile (a screen)"),
                         ("Delete", "Delete the selection"),
                         (

@@ -66,7 +66,8 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
 - **Select**: click the tile an object drew (the editor knows which object drew each
   tile, from watching the loader), or a sprite. Shift adds; a drag on empty space selects
   what a box meets; Ctrl+A everything, Escape nothing.
-- **Move**: drag, or the arrow keys (Shift: 16 tiles). The moved picture shows at once and
+- **Move**: drag (with Ctrl held, copy to where it is dropped), or the arrow keys (Shift:
+  16 tiles). The moved picture shows at once and
   the level is drawn again behind it. A sprite moved to another screen moves in the list
   too, since the game's loader needs the list in screen order (docs/smw.md).
 - **Resize**: the handle at a selected object's bottom right, for objects with a width,

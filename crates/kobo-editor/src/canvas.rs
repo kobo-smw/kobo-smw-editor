@@ -110,6 +110,8 @@ pub enum Drag {
         from: Pos2,
         items: Vec<Item>,
         delta: (i32, i32),
+        /// Ctrl was held when it began: drop copies, not the items.
+        copy: bool,
     },
     /// Selecting what a rectangle meets.
     Marquee { from: Pos2, to: Pos2, add: bool },
@@ -526,6 +528,7 @@ fn show_canvas(
     let mut finished: Option<Finished> = None;
     let mut context_edit: Option<(String, Vec<Edit>)> = None;
     let mut find_query: Option<String> = None;
+    let mut copy_drop: Option<(Vec<Item>, (i32, i32))> = None;
     let mut play: Option<kobo_core::playtest::Start> = None;
     let app_powerup = app.play.powerup;
     // A screen exit's label double-clicked: go where it leads.
@@ -766,6 +769,7 @@ fn show_canvas(
                             from,
                             items: open.selection.clone(),
                             delta: (0, 0),
+                            copy: ui.input(|i| i.modifiers.command),
                         });
                     }
                     None => {
@@ -800,6 +804,12 @@ fn show_canvas(
             }
             if response.drag_stopped() {
                 match open.drag.take() {
+                    Some(Drag::Move {
+                        items,
+                        delta,
+                        copy: true,
+                        ..
+                    }) if delta != (0, 0) => copy_drop = Some((items, delta)),
                     Some(Drag::Move { items, delta, .. }) if delta != (0, 0) => {
                         let (edits, moved) = move_edits(open.document.level(), &items, delta);
                         finished = Some(Finished {
@@ -1056,6 +1066,9 @@ fn show_canvas(
         && let Some(leads) = app.exit_leads(number, exit)
     {
         app.follow_exit(leads);
+    }
+    if let Some((items, delta)) = copy_drop {
+        crate::clipboard::copy_by(app, &items, delta);
     }
     if let Some(start) = play {
         crate::play::start(app, start);

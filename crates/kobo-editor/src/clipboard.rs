@@ -258,6 +258,21 @@ pub fn run(
     }
 }
 
+/// Copies `items` of the open level `delta` tiles away, as a drag with
+/// Ctrl held drops them: the copies selected, the originals where they
+/// were.
+pub fn copy_by(app: &mut App, items: &[Item], (dx, dy): (i32, i32)) {
+    let Some(open) = app.current() else { return };
+    let (clipboard, _) = Clipboard::take(open.document.level(), items);
+    if clipboard.is_empty() {
+        return;
+    }
+    let shift = |v: u16, d: i32| (i32::from(v) + d).clamp(0, i32::from(u16::MAX)) as u16;
+    let at = (shift(clipboard.origin.0, dx), shift(clipboard.origin.1, dy));
+    let label = format!("Copy {}", clipboard.describe());
+    paste_at(app, &clipboard, at, &label);
+}
+
 fn paste_at(app: &mut App, clipboard: &Clipboard, at: (u16, u16), label: &str) {
     let Some(open) = app.current() else { return };
     let (edits, items) = clipboard.paste(open.document.level(), at);
