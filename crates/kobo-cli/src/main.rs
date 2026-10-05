@@ -101,6 +101,9 @@ enum Command {
         /// holds.
         #[arg(long)]
         pixi: Option<PathBuf>,
+        /// Print the report as JSON, for scripts (an error as well).
+        #[arg(long)]
+        json: bool,
         /// The clean ROM. Defaults to the configured vanilla ROM.
         #[command(flatten)]
         rom: RomArg,
@@ -120,6 +123,9 @@ enum Command {
         /// Run every stage, without reading or keeping snapshots.
         #[arg(long)]
         no_cache: bool,
+        /// Print the result as JSON, for scripts (a refusal as well).
+        #[arg(long)]
+        json: bool,
         /// The clean ROM. Defaults to the configured vanilla ROM.
         #[command(flatten)]
         rom: RomArg,
@@ -132,6 +138,9 @@ enum Command {
         /// Compare only the levels this project defines.
         #[arg(long)]
         project: Option<PathBuf>,
+        /// Print the levels that differ as JSON, for scripts.
+        #[arg(long)]
+        json: bool,
     },
     /// Rewrite a project's level files in Kobo's format, keeping comments
     /// on lines of their own.
@@ -213,6 +222,9 @@ enum ToolsCommand {
 enum RomCommand {
     /// Print header and identification details.
     Info {
+        /// Print them as JSON, for scripts.
+        #[arg(long)]
+        json: bool,
         #[command(flatten)]
         rom: RomArg,
     },
@@ -508,7 +520,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Rom { command } => match command {
-            RomCommand::Info { rom } => rom_info(&rom.load()?),
+            RomCommand::Info { rom, json } => rom_info(&rom.load()?, json),
             RomCommand::Expand { rom, size, out } => rom_expand(rom.load()?, &size, &out),
             RomCommand::Rats { rom } => rom_rats(&rom.load()?),
         },
@@ -614,25 +626,38 @@ fn main() -> Result<()> {
             level,
             sizes_from,
             pixi,
+            json,
             rom,
-        } => import(
-            &from,
-            &dir,
-            all,
-            level.as_deref(),
-            sizes_from.as_deref(),
-            pixi.as_deref(),
-            &rom.load()?,
-        ),
+        } => json_errors(json, || {
+            let report = import(
+                &from,
+                &dir,
+                all,
+                level.as_deref(),
+                sizes_from.as_deref(),
+                pixi.as_deref(),
+                &rom.load()?,
+            )?;
+            print_report(&dir, &report, json);
+            Ok(())
+        }),
         Command::Build {
             dir,
             out,
             bps,
             no_cache,
+            json,
             rom,
-        } => build(&dir, &out, bps.as_deref(), no_cache, &rom.load()?),
+        } => json_errors(json, || {
+            build(&dir, &out, bps.as_deref(), no_cache, &rom.load()?, json)
+        }),
         Command::Fmt { dir, check } => fmt(&dir, check),
-        Command::Diff { a, b, project } => diff(&a, &b, project.as_deref()),
+        Command::Diff {
+            a,
+            b,
+            project,
+            json,
+        } => diff(&a, &b, project.as_deref(), json),
     }
 }
 
@@ -1206,9 +1231,35 @@ fn map16_png(
     Ok(())
 }
 
-fn rom_info(rom: &Rom) -> Result<()> {
+fn rom_info(rom: &Rom, json: bool) -> Result<()> {
     let h = rom.internal_header();
     let computed = rom.compute_checksum();
+    if json {
+        let value = serde_json::json!({
+            "path": rom.source().map(|p| p.display().to_string()),
+            "size": rom.len(),
+            "copier_header": rom.has_copier_header(),
+            "mapping": format!("{:?}", rom.mapping()),
+            "title": h.title,
+            "map_mode": h.map_mode,
+            "cartridge_type": h.cartridge_type,
+            "declared_size": h.rom_size()?,
+            "sram_size": h.sram_size()?,
+            "region": h.region,
+            "version": h.version,
+            "checksum": {
+                "header": h.checksum,
+                "complement": h.checksum_complement,
+                "computed": computed,
+                "ok": h.checksum_pair_valid() && computed == h.checksum,
+            },
+            "sha1": rom.sha1_hex(),
+            "identity": format!("{:?}", rom.identify()),
+            "lunar_magic": rom.lunar_magic_version(),
+        });
+        println!("{value:#}");
+        return Ok(());
+    }
     if let Some(path) = rom.source() {
         println!("path:            {}", path.display());
     }
@@ -1298,7 +1349,7 @@ fn import(
     sizes_from: Option<&Path>,
     pixi: Option<&Path>,
     clean: &Rom,
-) -> Result<()> {
+) -> Result<kobo_core::import::Report> {
     if from.is_dir() {
         if all || level.is_some() || sizes_from.is_some() || pixi.is_some() {
             bail!(
@@ -1313,9 +1364,9 @@ fn import(
         for tool in [Tool::Asar, Tool::Pixi] {
             announce_download(tool);
         }
-        let report = kobo_core::import::import_callisto(from, clean, dir, &options)?;
-        print_report(dir, &report);
-        return Ok(());
+        return Ok(kobo_core::import::import_callisto(
+            from, clean, dir, &options,
+        )?);
     }
     let is_mwl = from
         .extension()
@@ -1353,8 +1404,7 @@ fn import(
         let options = kobo_core::import::Options { all, pixi };
         kobo_core::import::import_rom_with(&rom, clean, dir, &options)?
     };
-    print_report(dir, &report);
-    Ok(())
+    Ok(report)
 }
 
 fn new_project(dir: Option<&Path>, template: Option<&str>, list: bool, rom: &RomArg) -> Result<()> {
@@ -1378,7 +1428,7 @@ fn new_project(dir: Option<&Path>, template: Option<&str>, list: bool, rom: &Rom
         recipe.title, recipe.version, recipe.url, recipe.build.file
     );
     let report = recipe.create(&clean, dir)?;
-    print_report(dir, &report);
+    print_report(dir, &report, false);
     println!(
         "{}",
         recipe
@@ -1390,7 +1440,24 @@ fn new_project(dir: Option<&Path>, template: Option<&str>, list: bool, rom: &Rom
     Ok(())
 }
 
-fn print_report(dir: &Path, report: &kobo_core::import::Report) {
+fn print_report(dir: &Path, report: &kobo_core::import::Report, json: bool) {
+    if json {
+        let value = serde_json::json!({
+            "ok": true,
+            "dir": dir.display().to_string(),
+            "levels": report.levels.iter().map(|l| format!("{l:03X}")).collect::<Vec<_>>(),
+            "map16_pages": report.map16.iter().map(|p| format!("{p:02X}")).collect::<Vec<_>>(),
+            "notes": report.notes,
+            "not_imported": {
+                "ranges": report.unmodelled.len(),
+                "range_bytes": report.unmodelled.iter().map(|(_, len)| len).sum::<usize>(),
+                "blocks": report.unread_blocks.len(),
+                "block_bytes": report.unread_blocks.iter().map(|b| b.len).sum::<usize>(),
+            },
+        });
+        println!("{value:#}");
+        return;
+    }
     for note in &report.notes {
         println!("note: {note}");
     }
@@ -1422,10 +1489,18 @@ fn print_report(dir: &Path, report: &kobo_core::import::Report) {
     );
 }
 
-fn build(dir: &Path, out: &Path, patch: Option<&Path>, no_cache: bool, clean: &Rom) -> Result<()> {
+fn build(
+    dir: &Path,
+    out: &Path,
+    patch: Option<&Path>,
+    no_cache: bool,
+    clean: &Rom,
+    json: bool,
+) -> Result<()> {
     use kobo_core::build::{self, Cache, Project};
     let project = Project::load(dir)?;
-    for warning in build::warnings(&project) {
+    let warnings = build::warnings(&project);
+    for warning in &warnings {
         eprintln!("warning: {warning}");
     }
     for tool in build::tools(&project) {
@@ -1433,14 +1508,39 @@ fn build(dir: &Path, out: &Path, patch: Option<&Path>, no_cache: bool, clean: &R
     }
     // Every tool is found before the build starts, so what it depends on
     // is said even if it fails.
+    let mut notes = Vec::new();
     for located in build::locate_tools(&project)? {
         if let Some(note) = located.note() {
             eprintln!("note: {note}");
+            notes.push(note.to_string());
         }
     }
     let cache = if no_cache { None } else { Cache::user() };
     let rom = build::build_cached(clean, &project, cache.as_ref())?;
     rom.save(out)?;
+    let patch_len = match patch {
+        Some(path) => {
+            let bytes = bps::create(clean.data(), rom.data());
+            fs::write(path, &bytes).with_context(|| format!("writing {}", path.display()))?;
+            Some(bytes.len())
+        }
+        None => None,
+    };
+    if json {
+        let value = serde_json::json!({
+            "ok": true,
+            "out": out.display().to_string(),
+            "size": rom.len(),
+            "levels": project.levels.len(),
+            "sha1": rom.sha1_hex(),
+            "warnings": warnings.iter().map(|w| w.to_string()).collect::<Vec<_>>(),
+            "notes": notes,
+            "bps": patch.map(|p| p.display().to_string()),
+            "bps_size": patch_len,
+        });
+        println!("{value:#}");
+        return Ok(());
+    }
     println!(
         "{}: {} KiB, {} levels, sha1 {}",
         out.display(),
@@ -1448,20 +1548,54 @@ fn build(dir: &Path, out: &Path, patch: Option<&Path>, no_cache: bool, clean: &R
         project.levels.len(),
         rom.sha1_hex()
     );
-    if let Some(path) = patch {
-        let bytes = bps::create(clean.data(), rom.data());
-        fs::write(path, &bytes).with_context(|| format!("writing {}", path.display()))?;
-        println!("{}: {} bytes", path.display(), bytes.len());
+    if let (Some(path), Some(len)) = (patch, patch_len) {
+        println!("{}: {len} bytes", path.display());
     }
     Ok(())
 }
 
-fn diff(a: &Path, b: &Path, project: Option<&Path>) -> Result<()> {
+/// Runs `f`; with `json`, an error is printed as JSON on standard output
+/// as well (`ok`, `error`, its `causes`, and for a level a build refuses,
+/// `level` and `message`), and still fails the command.
+fn json_errors(json: bool, f: impl FnOnce() -> Result<()>) -> Result<()> {
+    let result = f();
+    if let (true, Err(e)) = (json, &result) {
+        let mut value = serde_json::json!({
+            "ok": false,
+            "error": e.to_string(),
+            "causes": e.chain().skip(1).map(|c| c.to_string()).collect::<Vec<_>>(),
+        });
+        if let Some(kobo_core::build::BuildError::Level { level, message }) =
+            e.downcast_ref::<kobo_core::build::BuildError>()
+        {
+            value["level"] = format!("{level:03X}").into();
+            value["message"] = message.clone().into();
+        }
+        println!("{value:#}");
+    }
+    result
+}
+
+fn diff(a: &Path, b: &Path, project: Option<&Path>, json: bool) -> Result<()> {
     let load = |p: &Path| Rom::load(p).with_context(|| format!("loading {}", p.display()));
     let mut diffs = kobo_core::import::diff_levels(&load(a)?, &load(b)?);
     if let Some(dir) = project {
         let project = kobo_core::build::Project::load(dir)?;
         diffs.retain(|d| project.manifest.levels.contains_key(&d.level));
+    }
+    if json {
+        let value = serde_json::json!({
+            "same": diffs.is_empty(),
+            "levels": diffs
+                .iter()
+                .map(|d| serde_json::json!({ "level": format!("{:03X}", d.level), "parts": d.parts }))
+                .collect::<Vec<_>>(),
+        });
+        println!("{value:#}");
+        if !diffs.is_empty() {
+            bail!("{} levels differ", diffs.len());
+        }
+        return Ok(());
     }
     for d in &diffs {
         println!("{:03X}: {}", d.level, d.parts.join(", "));

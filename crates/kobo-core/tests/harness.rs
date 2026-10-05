@@ -138,3 +138,61 @@ fn a_scratch_folder_goes_away_with_its_test() {
         std::env::var_os(common::temp::KEEP_ENV_VAR).is_some()
     );
 }
+
+/// `tools/kobo_config.py`, which the scripts in `tools/` find their
+/// settings with, resolves every setting as `kobo_core::tiers` does, on
+/// this machine's configuration and on a corpus of folders.
+#[test]
+fn the_scripts_find_settings_as_the_library_does() {
+    use kobo_core::tiers::Tier;
+    use std::process::Command;
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/kobo_config.py");
+    let python = |name: &str, corpus: Option<&str>| {
+        let mut cmd = Command::new("python3");
+        cmd.arg(&script).arg(name);
+        if let Some(c) = corpus {
+            cmd.env("KOBO_LM_ROMS", c);
+        }
+        cmd.output().ok()
+    };
+    if python("rom", None).is_none_or(|o| String::from_utf8_lossy(&o.stderr).contains("tomllib")) {
+        eprintln!("skipping: no Python 3.11 to run tools/kobo_config.py");
+        return;
+    }
+    let tiers = Tier::ALL
+        .into_iter()
+        .filter(|t| !matches!(t, Tier::Tool(_)));
+    for tier in tiers {
+        let out = python(tier.name(), None).unwrap();
+        let theirs: Vec<String> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        let ours: Vec<String> = match tier.resolve() {
+            Ok(Some((paths, _))) => paths.iter().map(|p| p.display().to_string()).collect(),
+            _ => Vec::new(),
+        };
+        assert_eq!(theirs, ours, "{}", tier.name());
+    }
+    // Folders of ROMs and patches, as the corpus is laid out.
+    let dir = TempDir::new("harness-corpus");
+    for f in ["a/x.smc", "a/x.bps", "a/y.bps", "a/z.SFC", "b/p.bps"] {
+        std::fs::create_dir_all(dir.join(f).parent().unwrap()).unwrap();
+        std::fs::write(dir.join(f), b"").unwrap();
+    }
+    let corpus = std::env::join_paths([dir.join("a"), dir.join("b"), dir.join("one.smc")]).unwrap();
+    let corpus = corpus.to_str().unwrap();
+    let out = python("lm_roms", Some(corpus)).unwrap();
+    let theirs: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    let ours: Vec<String> =
+        kobo_core::tiers::expand_roms(&std::env::split_paths(corpus).collect::<Vec<_>>())
+            .unwrap()
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect();
+    assert_eq!(theirs, ours);
+    assert_eq!(ours.len(), 5);
+}

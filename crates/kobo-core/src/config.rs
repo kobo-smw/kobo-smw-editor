@@ -120,7 +120,7 @@ pub struct Tools {
 #[serde(deny_unknown_fields)]
 pub struct Tests {
     /// Lunar Magic hacks (`KOBO_LM_ROMS`): ROMs, `.bps` patches of the
-    /// vanilla ROM, or folders of either.
+    /// vanilla ROM, or folders of them ([`crate::tiers::expand_roms`]).
     pub lm_roms: Option<Vec<PathBuf>>,
     /// Lunar Magic 3.70's folder (`KOBO_LUNAR_MAGIC`).
     pub lunar_magic: Option<PathBuf>,

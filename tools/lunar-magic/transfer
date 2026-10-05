@@ -10,7 +10,7 @@
 set -euo pipefail
 here=$(dirname "$(realpath "$0")")
 hack=$(realpath "$1"); mwl=$(realpath "$2"); out=$(realpath -m "$3")
-vanilla=${KOBO_SMW_ROM:-$(sed -n 's/^smw *= *"\(.*\)"/\1/p' "${XDG_CONFIG_HOME:-$HOME/.config}/kobo/config.toml")}
+vanilla=$(python3 "$here/../kobo_config.py" rom)
 t=$(mktemp -d)
 trap 'rm -rf "$t"' EXIT
 mkdir "$t/sysLMRestore"

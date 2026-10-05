@@ -2,16 +2,26 @@
 """Imports and builds every hack of the corpus, and lists what blocks each.
 
     corpus-sweep out/ [hack.smc|patch.bps ...] [--no-render] [--no-save] [--only text]
+                      [--baseline old/results.json] [--no-build]
 
-Takes the hacks named, else those in KOBO_LM_ROMS. For each it imports the
-hack's changed levels into a project and builds it; a build refused for a
-level drops that level from the project and builds again, until the rest
-builds or a refusal names no level. The build that results is compared with
-the hack (`kobo diff`, and `render_hashes` over the levels it holds) and
-saved by Lunar Magic (`tools/lunar-magic/save-check`). Writes
-`out/<hack>/` (the project, the build, each step's output),
-`out/results.json`, and `out/summary.md`. Reads `kobo` and the
-`render_hashes` example from target/release: build both first.
+Takes the hacks named, else the corpus (KOBO_LM_ROMS or `tests.lm_roms`,
+tools/kobo_config.py). For each it imports the hack's changed levels into a
+project and builds it; a build refused for a level drops that level from the
+project and builds again, until the rest builds or a refusal names no level.
+The build that results is compared with the hack (`kobo diff`, and
+`render_hashes` over the levels it holds) and saved by Lunar Magic
+(`tools/lunar-magic/save-check`). Writes `out/<hack>/` (the project, the
+build, each step's output), `out/results.json` (each hack by its headerless
+SHA-1, with the revision swept), and `out/summary.md`.
+
+It builds `kobo` and the `render_hashes` example in release first
+(`--no-build` leaves them; KOBO_BIN names another `kobo`), and reads what
+they report as JSON. A sweep that stopped part way resumes from
+results.json, for hacks swept at the same revision. With `--baseline`, each
+hack is compared with its result in an earlier sweep, and what got worse
+(a stage not reached, more levels refused, a diff or a save that passed
+and fails, fewer pictures the same) is listed in summary.md and fails the
+sweep.
 """
 
 import argparse
@@ -28,10 +38,13 @@ ROOT = Path(__file__).resolve().parent.parent
 KOBO = Path(os.environ.get("KOBO_BIN", ROOT / "target/release/kobo"))
 RENDER = ROOT / "target/release/examples/render_hashes"
 SAVE_CHECK = ROOT / "tools/lunar-magic/save-check"
+sys.path.insert(0, str(ROOT / "tools"))
+import kobo_config  # noqa: E402
 
 
-def run(args, cwd=None, log=None, timeout=1800):
-    env = dict(os.environ, PATH=f"{KOBO.parent}:{os.environ['PATH']}")
+def run_split(args, cwd=None, log=None, timeout=1800):
+    """(exit code, standard output, standard error)."""
+    env = dict(os.environ, PATH=f"{KOBO.parent}{os.pathsep}{os.environ['PATH']}")
     try:
         p = subprocess.run(
             [str(a) for a in args],
@@ -42,13 +55,42 @@ def run(args, cwd=None, log=None, timeout=1800):
             errors="replace",
             timeout=timeout,
         )
-        out, code = p.stdout + p.stderr, p.returncode
+        out, err, code = p.stdout, p.stderr, p.returncode
     except subprocess.TimeoutExpired:
-        out, code = f"timed out after {timeout}s\n", -1
+        out, err, code = "", f"timed out after {timeout}s\n", -1
     if log:
         with open(log, "a") as f:
-            f.write(f"$ {' '.join(str(a) for a in args)}\n{out}(exit {code})\n\n")
-    return code, out
+            f.write(f"$ {' '.join(str(a) for a in args)}\n{out}{err}(exit {code})\n\n")
+    return code, out, err
+
+
+def run(args, cwd=None, log=None, timeout=1800):
+    code, out, err = run_split(args, cwd, log, timeout)
+    return code, out + err
+
+
+def run_json(args, log=None, timeout=1800):
+    """(exit code, the JSON a `--json` command printed, or None, its error output)."""
+    code, out, err = run_split([*args, "--json"], log=log, timeout=timeout)
+    try:
+        return code, json.loads(out), err
+    except json.JSONDecodeError:
+        return code, None, err or out
+
+
+def revision():
+    """The commit swept, `+` if the tree had changes."""
+    head = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short=12", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(["git", "-C", ROOT, "status", "--porcelain", "--untracked-files=no"],
+                           capture_output=True, text=True).stdout.strip()
+    return head + ("+" if dirty else "")
+
+
+def build_binaries():
+    for what in (["--package", "kobo-cli"], ["--package", "kobo-core", "--example", "render_hashes"]):
+        print(f"cargo build --release {' '.join(what)}", flush=True)
+        subprocess.run(["cargo", "build", "--release", "--quiet", *what], cwd=ROOT, check=True)
 
 
 def kind(message):
@@ -91,49 +133,49 @@ def drop_level(project, level):
     return n > 0
 
 
-def import_report(output):
+def import_report(value):
+    """The import's `--json` report, its notes grouped by kind."""
     report = {"notes": defaultdict(int), "note_levels": defaultdict(set)}
-    for line in output.splitlines():
-        if line.startswith("note: "):
-            note = line[len("note: ") :]
-            m = re.match(r"level ([0-9A-F]{3}): (.*)", note)
-            k = kind(m.group(2) if m else note)
-            report["notes"][k] += 1
-            if m:
-                report["note_levels"][k].add(m.group(1))
-        m = re.match(r"not imported: (\d+) ranges \((\d+) bytes\)", line)
+    for note in value.get("notes", []):
+        m = re.match(r"level ([0-9A-F]{3}): (.*)", note)
+        k = kind(m.group(2) if m else note)
+        report["notes"][k] += 1
         if m:
-            report["ranges"], report["range_bytes"] = int(m.group(1)), int(m.group(2))
-        m = re.match(r"not imported: (\d+) tagged blocks \((\d+) bytes\)", line)
-        if m:
-            report["blocks"], report["block_bytes"] = int(m.group(1)), int(m.group(2))
-        m = re.search(r": (\d+) levels and (\d+) Map16 pages imported", line)
-        if m:
-            report["levels"], report["pages"] = int(m.group(1)), int(m.group(2))
+            report["note_levels"][k].add(m.group(1))
+    not_imported = value.get("not_imported", {})
+    report["ranges"], report["range_bytes"] = not_imported.get("ranges", 0), not_imported.get("range_bytes", 0)
+    report["blocks"], report["block_bytes"] = not_imported.get("blocks", 0), not_imported.get("block_bytes", 0)
+    report["levels"], report["pages"] = len(value.get("levels", [])), len(value.get("map16_pages", []))
     report["notes"] = dict(report["notes"])
     report["note_levels"] = {k: len(v) for k, v in report["note_levels"].items()}
     return report
 
 
 def render_compare(hack, built, levels, log):
+    """The pictures of the levels built, in the hack and in the build: the
+    two picture hashes compared, the diagnostics column apart."""
     if not levels:
-        return {"levels": 0, "same": 0, "differ": [], "errors": []}
+        return {"levels": 0, "same": 0, "differ": [], "errors": [], "diagnostics_differ": []}
     hashes = []
     for rom in (hack, built):
-        code, out = run([RENDER, rom, *levels], timeout=7200)
+        code, out, err = run_split([RENDER, rom, *levels], timeout=7200)
         with open(log, "a") as f:
-            f.write(f"$ render_hashes {rom}\n{out}(exit {code})\n\n")
-        hashes.append({l.split()[0]: l.split(" ", 1)[1] for l in out.splitlines() if l.strip()})
+            f.write(f"$ render_hashes {rom}\n{out}{err}(exit {code})\n\n")
+        hashes.append({l.split()[0]: l.split(" ")[1:] for l in out.splitlines() if l.strip()})
     a, b = hashes
-    same, differ, errors = 0, [], []
+    same, differ, errors, diagnostics = 0, [], [], []
     for level in sorted(a):
-        if "error" in a[level] or "error" in b.get(level, "error"):
+        x, y = a[level], b.get(level, ["error:"])
+        if x[0].startswith("error") or y[0].startswith("error"):
             errors.append(level)
-        elif a[level] == b.get(level):
+        elif x[:2] == y[:2]:
             same += 1
+            if x[2:] != y[2:]:
+                diagnostics.append(level)
         else:
             differ.append(level)
-    return {"levels": len(a), "same": same, "differ": differ, "errors": errors}
+    return {"levels": len(a), "same": same, "differ": differ, "errors": errors,
+            "diagnostics_differ": diagnostics}
 
 
 def sweep(hack, out, render, save):
@@ -142,7 +184,7 @@ def sweep(hack, out, render, save):
     subprocess.run(["rm", "-rf", str(work)])
     work.mkdir(parents=True)
     log = work / "log.txt"
-    result = {"hack": name, "path": str(hack)}
+    result = {"hack": name, "path": str(hack), "revision": REVISION}
     started = time.time()
 
     rom = hack
@@ -153,55 +195,94 @@ def sweep(hack, out, render, save):
             result["stage"] = "patch"
             result["error"] = error_of(output)[0]
             return result
-    code, output = run([KOBO, "rom", "info", "-r", rom], log=log)
-    m = re.search(r"^mapping:\s*(.*)$", output, re.M | re.I)
-    result["mapping"] = m.group(1).strip() if m else None
-    m = re.search(r"^lunar magic:\s*(.*)$", output, re.M)
-    result["lunar_magic"] = m.group(1).strip() if m else None
+    code, info, err = run_json([KOBO, "rom", "info", "-r", rom], log=log)
+    if info is None:
+        result["stage"] = "rom"
+        result["error"] = error_of(err)[0]
+        return result
+    result["sha1"] = info["sha1"]
+    result["mapping"] = info["mapping"]
+    result["lunar_magic"] = info["lunar_magic"]
 
     project = work / "project"
-    code, output = run([KOBO, "import", rom, project], log=log)
-    result["import"] = import_report(output)
-    if code:
+    code, value, err = run_json([KOBO, "import", rom, project], log=log)
+    if code or value is None or not value.get("ok"):
         result["stage"] = "import"
-        result["error"], result["causes"] = error_of(output)
+        value = value or {}
+        result["error"] = value.get("error") or error_of(err)[0]
+        result["causes"] = value.get("causes", [])
         return result
+    result["import"] = import_report(value)
     result["imported_levels"] = len(manifest_levels(project))
 
     built = work / "build.sfc"
     refusals = []
     while True:
-        code, output = run([KOBO, "build", project, "-o", built], log=log)
-        if code == 0:
+        code, value, err = run_json([KOBO, "build", project, "-o", built], log=log)
+        if code == 0 and value and value.get("ok"):
             break
-        message, causes = error_of(output)
-        m = re.match(r"level ([0-9A-F]{3}): (.*)", message)
-        if not m or not drop_level(project, m.group(1)):
+        value = value or {"error": error_of(err)[0]}
+        level, message = value.get("level"), value.get("message")
+        if not level or not drop_level(project, level):
             result["stage"] = "build"
-            result["error"], result["causes"] = message, causes
+            result["error"], result["causes"] = value.get("error"), value.get("causes", [])
             result["refusals"] = refusals
             return result
-        refusals.append({"level": m.group(1), "message": m.group(2), "kind": kind(m.group(2))})
+        refusals.append({"level": level, "message": message, "kind": kind(message)})
     result["refusals"] = refusals
     levels = manifest_levels(project)
     result["built_levels"] = len(levels)
 
-    code, output = run([KOBO, "diff", rom, built, "--project", project], log=log)
-    lines = [l for l in output.splitlines() if l.strip()]
-    result["diff"] = {"same": code == 0, "lines": lines[:40]}
+    code, value, err = run_json([KOBO, "diff", rom, built, "--project", project], log=log)
+    differ = (value or {}).get("levels", [])
+    lines = [f"{d['level']}: {', '.join(d['parts'])}" for d in differ] or ([] if value else [err.strip()])
+    result["diff"] = {"same": code == 0 and bool(value) and value["same"], "lines": lines[:40]}
 
     if render:
         result["render"] = render_compare(rom, built, levels, log)
     if save:
+        # save-check ends with `kobo diff`: its exit is the comparison's.
         code, output = run([SAVE_CHECK, built, "105", project], log=log, timeout=900)
         lines = [l for l in output.splitlines() if l.strip()]
-        result["save"] = {"same": code == 0 and "the levels are the same" in output, "lines": lines[-20:]}
+        result["save"] = {"same": code == 0, "lines": lines[-20:]}
     result["stage"] = "done"
     result["seconds"] = round(time.time() - started)
     return result
 
 
-def summary(results):
+def regressions(results, baseline):
+    """What got worse against the baseline's result for the same hack (by
+    SHA-1, else by path), as (hack, what) pairs."""
+    old = {}
+    for r in baseline:
+        old[r.get("sha1") or r["path"]] = r
+    stages = ["patch", "rom", "import", "build", "done"]
+    out = []
+    for r in results:
+        b = old.get(r.get("sha1") or r["path"]) or old.get(r["path"])
+        if b is None:
+            continue
+        def rank(x):
+            return stages.index(x.get("stage")) if x.get("stage") in stages else -1
+        if rank(r) < rank(b):
+            out.append((r["hack"], f"stopped at {r.get('stage')}, was {b.get('stage')}: {r.get('error')}"))
+            continue
+        if len(r.get("refusals", [])) > len(b.get("refusals", [])):
+            new = {x["level"] for x in r["refusals"]} - {x["level"] for x in b.get("refusals", [])}
+            out.append((r["hack"], f"{len(r['refusals'])} levels refused, was {len(b.get('refusals', []))}"
+                        + (f" (new: {' '.join(sorted(new))})" if new else "")))
+        for part in ("diff", "save"):
+            if b.get(part, {}).get("same") and part in r and not r[part]["same"]:
+                out.append((r["hack"], f"{part} passed and fails: {(r[part]['lines'] or ['?'])[0]}"))
+        rb, rr = b.get("render"), r.get("render")
+        if rb and rr:
+            worse = sorted(set(rr["differ"] + rr["errors"]) - set(rb["differ"] + rb["errors"]))
+            if worse:
+                out.append((r["hack"], f"{len(worse)} pictures differ that did not: {' '.join(worse[:24])}"))
+    return out
+
+
+def summary(results, against=None):
     rows = [
         "| Hack | LM | Mapping | Stage | Levels | Built | Refused | Not imported | Diff | Render same | Save |",
         "|---|---|---|---|---|---|---|---|---|---|---|",
@@ -245,8 +326,14 @@ def summary(results):
     note_table = ["| Import note | Hacks | Times |", "|---|---|---|"]
     for k, (h, n) in sorted(notes.items(), key=lambda kv: (-kv[1][0], -kv[1][1])):
         note_table.append(f"| {k.replace('|', '/')} | {h} | {n} |")
+    revisions = sorted({r.get("revision") or "?" for r in results})
+    head = ["# Corpus sweep", "", f"Revision {', '.join(revisions)}.", ""]
+    if against is not None:
+        head += ["## Against the baseline", ""]
+        head += [f"- {h}: {w}" for h, w in against] or ["Nothing got worse."]
+        head += [""]
     return "\n".join(
-        ["# Corpus sweep", "", "## Per hack", "", *rows, "", "## Refusals", "", *table, "",
+        [*head, "## Per hack", "", *rows, "", "## Refusals", "", *table, "",
          "## Import notes", "", *note_table, ""]
     )
 
@@ -259,20 +346,30 @@ def main():
     parser.add_argument("--no-save", action="store_true")
     parser.add_argument("--only", help="only hacks whose path contains this")
     parser.add_argument("--summary", action="store_true", help="only rewrite summary.md from results.json")
+    parser.add_argument("--baseline", type=Path, help="an earlier sweep's results.json to compare with")
+    parser.add_argument("--no-build", action="store_true", help="use kobo and render_hashes as built")
     args = parser.parse_args()
-    hacks = args.hacks or [Path(p) for p in os.environ.get("KOBO_LM_ROMS", "").split(":") if p]
-    if args.only:
-        hacks = [h for h in hacks if args.only in str(h)]
     args.out.mkdir(parents=True, exist_ok=True)
     results_path = args.out / "results.json"
+    baseline = json.loads(args.baseline.read_text()) if args.baseline else None
     if args.summary:
-        (args.out / "summary.md").write_text(summary(json.loads(results_path.read_text())))
-        return
-    # A sweep that stopped part way resumes: hacks already swept keep their result.
+        results = json.loads(results_path.read_text())
+        against = regressions(results, baseline) if baseline is not None else None
+        (args.out / "summary.md").write_text(summary(results, against))
+        return 1 if against else 0
+    hacks = args.hacks or kobo_config.paths("lm_roms") or []
+    if not hacks:
+        sys.exit("no hacks: name them, or set KOBO_LM_ROMS or `tests.lm_roms`")
+    if args.only:
+        hacks = [h for h in hacks if args.only in str(h)]
+    if not args.no_build:
+        build_binaries()
+    # A sweep that stopped part way resumes: hacks already swept at this
+    # revision keep their result.
     done = {}
     if results_path.exists():
         for r in json.loads(results_path.read_text()):
-            if not str(r.get("error", "")).startswith("failed to write"):
+            if r.get("revision") == REVISION and not str(r.get("error", "")).startswith("failed to write"):
                 done[r["path"]] = r
     results = []
     for i, hack in enumerate(hacks, 1):
@@ -286,7 +383,17 @@ def main():
         results.append(result)
         results_path.write_text(json.dumps(results, indent=1))
         (args.out / "summary.md").write_text(summary(results))
+    against = regressions(results, baseline) if baseline is not None else None
+    (args.out / "summary.md").write_text(summary(results, against))
+    if against:
+        print(f"{len(against)} regressions against {args.baseline}:")
+        for h, w in against:
+            print(f"  {h}: {w}")
+        return 1
+    return 0
 
+
+REVISION = revision()
 
 if __name__ == "__main__":
     sys.exit(main())

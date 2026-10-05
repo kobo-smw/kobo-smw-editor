@@ -7,14 +7,14 @@
 # clean ROM's own levels (docs/lunar-magic.md).
 # Lunar Magic's restore system wants the original game, with a copier
 # header, in sysLMRestore/smwOrig.smc; the vanilla ROM comes from
-# KOBO_SMW_ROM or `kobo`'s configuration. With SAVE_CHECK_KEEP=dir, the
+# KOBO_SMW_ROM or `roms.smw`, tools/kobo_config.py. With SAVE_CHECK_KEEP=dir, the
 # saved copy and Lunar Magic's files are left in dir.
 set -euo pipefail
 rom=$(realpath "$1"); level=${2:-105}
 project=(); [ -n "${3:-}" ] && project=(--project "$(realpath "$3")")
 here=$(dirname "$(realpath "$0")")
 kobo=${KOBO:-kobo}
-vanilla=${KOBO_SMW_ROM:-$(sed -n 's/^smw *= *"\(.*\)"/\1/p' "${XDG_CONFIG_HOME:-$HOME/.config}/kobo/config.toml")}
+vanilla=$(python3 "$here/../kobo_config.py" rom)
 if [ -n "${SAVE_CHECK_KEEP:-}" ]; then
   work=$(realpath -m "$SAVE_CHECK_KEEP"); rm -rf "$work"; mkdir -p "$work"
 else

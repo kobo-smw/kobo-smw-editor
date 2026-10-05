@@ -14,7 +14,11 @@
 //!   (`KOBO_FULL_RENDER`).
 //! - `lint-tools`: `bash -n` and shellcheck on the shell scripts in
 //!   `tools/`, Python's compiler on the Python ones, `luac -p` on the Lua.
+//! - `baseline`: the picture hashes of every level of the vanilla ROM
+//!   and the SA-1 reference ROM, written to
+//!   `tests/fixtures/render_hashes/` for `tests/render_baselines.rs`.
 
+mod baseline;
 mod lint;
 mod tiers;
 
@@ -30,6 +34,7 @@ fn main() -> ExitCode {
     let result = match task {
         "tiers" => tiers::run(rest),
         "verify" => verify(rest),
+        "baseline" => baseline::run_task(rest),
         "lint-tools" => lint::run(rest.iter().any(|a| a == "--strict")),
         "help" | "-h" | "--help" => {
             println!("{}", HELP.trim());
@@ -53,6 +58,7 @@ cargo xtask <task>
   verify [--quick] [--strict] [--require-all] [--full] [-- TEST ARGS]
                             fmt, clippy, lint-tools, the tests, and what skipped
   lint-tools [--strict]     syntax-check the scripts in tools/ (and shellcheck them)
+  baseline                  write every level's picture hashes for render_baselines
 
 docs/testing.md has what each tier checks.
 ";
@@ -80,7 +86,7 @@ pub fn run(what: &str, cmd: &mut Command) -> Result<(), String> {
     }
 }
 
-fn cargo() -> Command {
+pub fn cargo() -> Command {
     Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
 }
 

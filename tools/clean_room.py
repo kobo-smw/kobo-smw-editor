@@ -11,7 +11,10 @@ where a script may stop or call into a ROM's code.
 
 Imported by romdiff.py and sites.py; run by the Mesen wrappers in tools/oracle/.
 """
-import hashlib, os, sys, tomllib
+import hashlib, os, sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import kobo_config  # noqa: E402
 
 VANILLA_SHA1 = '6b47bb75d16514b6a476aa0c73a683a2a4c18765'
 MARKER = 0x0FF0A0
@@ -60,12 +63,10 @@ def may_stop(data, vanilla, addr):
 
 
 def vanilla_path():
-    path = os.environ.get('KOBO_SMW_ROM')
-    if path:
-        return path
-    home = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
-    with open(os.path.join(home, 'kobo', 'config.toml'), 'rb') as f:
-        return tomllib.load(f)['roms']['smw']
+    path = kobo_config.path('rom')
+    if path is None:
+        sys.exit('no vanilla ROM: set KOBO_SMW_ROM or `roms.smw`')
+    return path
 
 
 def main(args):

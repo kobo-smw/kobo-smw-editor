@@ -7,7 +7,7 @@
 # Lunar Magic's install stays, as vram.asm calls the BG Map16 routine at $0EFD00.
 # Needs `kobo` (KOBO, default on PATH), Asar's library (KOBO_ASAR_LIB), and the vanilla
 # ROM (KOBO_SMW_ROM or kobo's configuration), or for an SA-1
-# ROM the vanilla ROM with SA-1 Pack (KOBO_SA1_BASE, base-rom).
+# ROM the vanilla ROM with SA-1 Pack (KOBO_SA1_REFERENCE, base-rom).
 set -euo pipefail
 here=$(dirname "$(realpath "$0")")
 K=${KOBO:-kobo}; A=$here/../../crates/kobo-core/asm/lunar-magic

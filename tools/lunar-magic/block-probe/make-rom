@@ -3,7 +3,7 @@
 # Lunar Magic 3.70 (its one-time install), with GPS's probe block at tile
 # $200 (acting like $130, cement) placed in level 105 at (x, y).
 #   make-rom out-dir [x y]
-# Needs: the vanilla ROM (KOBO_SMW_ROM or kobo's config, with a copier
+# Needs: the vanilla ROM (KOBO_SMW_ROM or `roms.smw`, with a copier
 # header for Lunar Magic's restore system), Lunar Magic under Wine
 # (../lm), GPS 1.4.4 built for this system in $KOBO_GPS (a folder with the
 # program as `gps`, its asm files, and libasar), and cargo.
@@ -13,7 +13,7 @@ set -euo pipefail
 out=$(realpath -m "$1"); x=${2:-6}; y=${3:-20}
 here=$(dirname "$(realpath "$0")")
 repo=$(realpath "$here/../../..")
-vanilla=${KOBO_SMW_ROM:-$(sed -n 's/^smw *= *"\(.*\)"/\1/p' "${XDG_CONFIG_HOME:-$HOME/.config}/kobo/config.toml")}
+vanilla=$(python3 "$here/../../kobo_config.py" rom)
 rm -rf "$out" && mkdir -p "$out/lm/sysLMRestore" "$out/gps"
 if [ $(( $(stat -c%s "$vanilla") % 1024 )) -eq 512 ]; then
   cp "$vanilla" "$out/lm/sysLMRestore/smwOrig.smc"

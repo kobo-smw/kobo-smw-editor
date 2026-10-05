@@ -281,8 +281,9 @@ pub fn expand_home(path: PathBuf) -> PathBuf {
 }
 
 /// The corpus a list names: a file is itself, and a folder its ROMs
-/// (`.smc`, `.sfc`), or its `.bps` patches if it holds no ROM, in name
-/// order; folders are not searched further down.
+/// (`.smc`, `.sfc`) and `.bps` patches in name order, a patch left out
+/// when a ROM of the same name is beside it (the patch applied); folders
+/// are not searched further down.
 pub fn expand_roms(entries: &[PathBuf]) -> Result<Vec<PathBuf>, TierError> {
     let mut out = Vec::new();
     for entry in entries {
@@ -299,16 +300,18 @@ pub fn expand_roms(entries: &[PathBuf]) -> Result<Vec<PathBuf>, TierError> {
             .filter(|p| p.is_file())
             .collect();
         files.sort();
-        let roms: Vec<_> = files
-            .iter()
-            .filter(|p| has_extension(p, &["smc", "sfc"]))
-            .cloned()
-            .collect();
-        if roms.is_empty() {
-            out.extend(files.into_iter().filter(|p| has_extension(p, &["bps"])));
-        } else {
-            out.extend(roms);
-        }
+        let is_rom = |p: &Path| has_extension(p, &["smc", "sfc"]);
+        let applied = |p: &Path| {
+            files
+                .iter()
+                .any(|r| is_rom(r) && r.file_stem() == p.file_stem())
+        };
+        out.extend(
+            files
+                .iter()
+                .filter(|p| is_rom(p) || (has_extension(p, &["bps"]) && !applied(p)))
+                .cloned(),
+        );
     }
     Ok(out)
 }
@@ -359,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    fn a_folder_lists_its_roms_or_else_its_patches() {
+    fn a_folder_lists_its_roms_and_the_patches_not_applied_beside_them() {
         let dir = env::temp_dir().join(format!("kobo-tiers-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("roms")).unwrap();
@@ -368,6 +371,7 @@ mod tests {
             "roms/b.smc",
             "roms/a.SFC",
             "roms/a.bps",
+            "roms/c.bps",
             "roms/notes.txt",
             "patches/x.bps",
         ] {
@@ -381,6 +385,7 @@ mod tests {
             [
                 dir.join("roms/a.SFC"),
                 dir.join("roms/b.smc"),
+                dir.join("roms/c.bps"),
                 dir.join("patches/x.bps"),
                 dir.join("one.smc"),
             ]

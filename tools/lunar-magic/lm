@@ -1,8 +1,16 @@
 #!/bin/bash
 # Run Lunar Magic headlessly under Wine: lm -Command rom.smc args...
-# Uses the x64 build of the release in $KOBO_LM_DIR (default: the 3.70 tools directory).
-# Always run it on a copy of a ROM.
-dir=${KOBO_LM_DIR:-$HOME/.local/share/kobo/tools/lunar-magic-3.70}
+# Uses the x64 build of the release in KOBO_LM_DIR, else KOBO_LUNAR_MAGIC or
+# `tests.lunar_magic` (tools/kobo_config.py). Always run it on a copy of a ROM.
+# One Lunar Magic runs at a time on the machine: the runs share a Wine prefix,
+# and `xvfb-run -a` can hand two of them the same display.
+set -uo pipefail
+dir=${KOBO_LM_DIR:-$(python3 "$(dirname "$(realpath "$0")")/../kobo_config.py" lunar_magic)} || {
+  echo "lm: no Lunar Magic: set KOBO_LUNAR_MAGIC or tests.lunar_magic" >&2
+  exit 2
+}
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/kobo-lunar-magic.lock"
+flock -w 600 9 || { echo "lm: another Lunar Magic run holds the lock" >&2; exit 2; }
 export WINEDLLOVERRIDES="mscoree,mshtml=" WINEDEBUG=-all
 timeout 180 xvfb-run -a wine "$dir/x64/Lunar Magic.exe" "$@" 2>&1 \
   | grep -v -e syswow64 -e "X connection" | tr -d '\r'
