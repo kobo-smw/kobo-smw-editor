@@ -99,6 +99,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             .unwrap_or(copy_to);
     }
 
+    if let [item] = selection[..] {
+        picture_of(app, ui, item);
+    }
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
@@ -219,6 +222,46 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             open.selection = vec![item];
         }
     }
+}
+
+/// What is selected, cut from the level's picture with a tile around it,
+/// at a whole scale that fits the panel.
+fn picture_of(app: &App, ui: &mut egui::Ui, item: Item) {
+    let Some(open) = app.current() else { return };
+    let (Some(picture), Some(geometry)) = (&open.picture, &open.geometry) else {
+        return;
+    };
+    let Some(bounds) = geometry.bounds(item) else {
+        return;
+    };
+    // A screen exit's bounds are its whole screen: not a picture of it.
+    if bounds.width() > 512.0 || bounds.height() > 512.0 {
+        return;
+    }
+    let source = bounds
+        .expand(16.0)
+        .intersect(egui::Rect::from_min_size(egui::Pos2::ZERO, picture.size));
+    let room = egui::vec2(ui.available_width() - 8.0, 120.0);
+    let scale = (room / source.size()).min_elem().floor().clamp(1.0, 4.0);
+    let size = source.size() * scale;
+    ui.add_space(8.0);
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), size.y),
+        egui::Sense::hover(),
+    );
+    let target = egui::Rect::from_min_size(rect.min, size);
+    ui.painter().rect_filled(target, 0, theme::CANVAS);
+    picture.draw(ui.painter(), source, target, egui::Color32::WHITE);
+    let selected = egui::Rect::from_min_size(
+        target.min + (bounds.min - source.min) * scale,
+        bounds.size() * scale,
+    );
+    ui.painter().rect_stroke(
+        selected,
+        0,
+        egui::Stroke::new(1.0, crate::app::color_for(item)),
+        egui::StrokeKind::Outside,
+    );
 }
 
 fn heading(ui: &mut egui::Ui, title: &str, detail: &str) {
