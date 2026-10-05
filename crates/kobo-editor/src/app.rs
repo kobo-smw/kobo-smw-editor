@@ -149,7 +149,7 @@ impl OpenLevel {
 
 /// What the left panel shows.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum LeftTab {
+pub(crate) enum LeftTab {
     Levels,
     Add,
     Outline,
@@ -203,7 +203,9 @@ pub struct App {
     pub(crate) adding: Option<u16>,
     /// Where the level panel's copy goes.
     pub copy_to: u16,
-    left: LeftTab,
+    pub(crate) left: LeftTab,
+    /// The command palette and the shortcuts window.
+    pub commands: crate::commands::CommandState,
     /// What the outline is narrowed to.
     pub outline_filter: String,
     pub palette: PaletteState,
@@ -275,6 +277,7 @@ impl App {
                 _ => LeftTab::Levels,
             },
             outline_filter: String::new(),
+            commands: Default::default(),
             palette: PaletteState::default(),
             placing: None,
             place_layer: edit::ObjectLayer::One,
@@ -544,6 +547,22 @@ impl App {
         }
     }
 
+    pub fn save_all_levels(&mut self) {
+        self.save_all();
+    }
+
+    pub fn undo_step(&mut self, redo: bool) {
+        self.undo(redo);
+    }
+
+    /// Draws the open level again, after a view setting the picture
+    /// depends on changed.
+    pub fn redraw(&mut self) {
+        if let Some(number) = self.current {
+            self.request_preview(number);
+        }
+    }
+
     fn save_all(&mut self) {
         let mut saved = Vec::new();
         let mut failed = Vec::new();
@@ -650,6 +669,10 @@ impl App {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
+        crate::commands::keys(self, ctx);
+        if self.commands.open {
+            return;
+        }
         let command = |key| KeyboardShortcut::new(Modifiers::COMMAND, key);
         let shift_command = |key| KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, key);
         let (save, undo, redo, redo_y, build) = ctx.input_mut(|i| {
@@ -744,6 +767,13 @@ impl App {
                     .on_hover_text(format!("Undo {} (Ctrl+Z)", undo_label.unwrap_or_default()));
                 if undo.clicked() {
                     self.undo(false);
+                }
+                if ui
+                    .button("Commands")
+                    .on_hover_text("Find any command, level, or thing to add (Ctrl+K)")
+                    .clicked()
+                {
+                    self.commands.open = true;
                 }
                 ui.separator();
                 ui.toggle_value(&mut self.view.source, "Source")
@@ -1222,6 +1252,7 @@ impl eframe::App for App {
                 canvas::show(self, ui);
             });
         crate::build::window(self, &ctx);
+        crate::commands::window(self, &ctx);
         self.confirm_adding(&ctx);
         self.confirm_switch(&ctx);
         self.close_requests(&ctx);

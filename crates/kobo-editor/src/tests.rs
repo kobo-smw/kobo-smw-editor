@@ -778,3 +778,33 @@ fn changes_since_the_last_commit_are_listed_and_taken_back() {
         }
     )));
 }
+
+#[test]
+fn the_command_palette_finds_and_runs_by_name() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "commands");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
+    harness.run_steps(3);
+    assert!(harness.state().commands.open);
+    // The palette's field has the keyboard.
+    harness.event(egui::Event::Text("add coin".into()));
+    harness.run_steps(3);
+    harness.key_press(Key::Enter);
+    harness.run_steps(3);
+    assert!(!harness.state().commands.open);
+    let placing = harness.state().placing.clone();
+    assert_eq!(
+        placing,
+        Some(crate::palette::Placing::Object(
+            kobo_core::level::objects::Object::Standard {
+                number: 0x05,
+                x: 0,
+                y: 0,
+                settings: 0,
+            }
+        )),
+        "the best match for `add coin` is object 05, Coin"
+    );
+}

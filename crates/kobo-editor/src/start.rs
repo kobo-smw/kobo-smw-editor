@@ -440,6 +440,10 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
             });
         }
         ui.separator();
+        if ui.button("Keyboard shortcuts").clicked() {
+            ui.close();
+            app.commands.shortcuts = true;
+        }
         if ui.button("Close the project").clicked() {
             ui.close();
             app.switch_project(None);

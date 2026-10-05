@@ -6,6 +6,7 @@ mod build;
 mod canvas;
 mod changes;
 mod clipboard;
+mod commands;
 mod inspector;
 mod outline;
 mod palette;

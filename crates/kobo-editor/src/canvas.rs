@@ -333,6 +333,9 @@ pub fn keys(app: &mut App, ctx: &egui::Context) {
     {
         open.selection = vec![item];
     }
+    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::G)) {
+        app.view.grid = !app.view.grid;
+    }
     let (delete, escape, all, nudge) = ctx.input_mut(|i| {
         let step = if i.modifiers.shift { 16 } else { 1 };
         let mut nudge = (0, 0);
