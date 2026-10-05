@@ -611,3 +611,63 @@ mod tests {
         assert_eq!(e.to_bytes(), (0x80, [0x40, 0xE0]));
     }
 }
+
+/// Where the game puts the player for a main entrance's position settings
+/// (method 1, the game's own; `CODE_05D796`): the X setting picks the low
+/// byte of his X from `$05D750` (and, in a vertical level, the high byte
+/// from `$05D758`), the Y setting his Y from `$05D730` and `$05D740`, and
+/// the screen setting is the high byte of his X in a horizontal level and
+/// of his Y in a vertical one. Read from a ROM, which a patch may have
+/// changed.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct MainEntranceTables {
+    x_low: [u8; 8],
+    x_high: [u8; 8],
+    y: [u16; 16],
+}
+
+impl MainEntranceTables {
+    pub fn read(rom: &Rom) -> Result<Self, crate::rom::RomError> {
+        let bytes = |addr: u32, len: usize| rom.read(SnesAddr::new(addr), len);
+        let (x_low, x_high) = (bytes(0x05_D750, 8)?, bytes(0x05_D758, 8)?);
+        let (y_low, y_high) = (bytes(0x05_D730, 16)?, bytes(0x05_D740, 16)?);
+        Ok(Self {
+            x_low: x_low.try_into().expect("eight bytes"),
+            x_high: x_high.try_into().expect("eight bytes"),
+            y: std::array::from_fn(|i| u16::from(y_high[i]) << 8 | u16::from(y_low[i])),
+        })
+    }
+
+    /// The player's place, in level pixels, for a screen (0 to 31), an X
+    /// setting (0 to 7), and a Y setting (0 to 15).
+    pub fn position(&self, screen: u8, x: u8, y: u8, vertical: bool) -> (u32, u32) {
+        let (x, y) = (usize::from(x & 7), usize::from(y & 15));
+        let screen = u32::from(screen & 0x1F);
+        if vertical {
+            let px = u32::from(self.x_high[x]) << 8 | u32::from(self.x_low[x]);
+            (px, screen << 8 | u32::from(self.y[y] & 0xFF))
+        } else {
+            (screen << 8 | u32::from(self.x_low[x]), u32::from(self.y[y]))
+        }
+    }
+
+    /// The settings (screen, X, Y) whose place is nearest (`px`, `py`).
+    pub fn nearest(&self, px: i32, py: i32, vertical: bool) -> (u8, u8, u8) {
+        let mut best = (0, 0, 0);
+        let mut distance = i64::MAX;
+        for screen in 0..32u8 {
+            for x in 0..8u8 {
+                for y in 0..16u8 {
+                    let (ex, ey) = self.position(screen, x, y, vertical);
+                    let (dx, dy) = (i64::from(ex as i32 - px), i64::from(ey as i32 - py));
+                    let d = dx * dx + dy * dy;
+                    if d < distance {
+                        distance = d;
+                        best = (screen, x, y);
+                    }
+                }
+            }
+        }
+        best
+    }
+}

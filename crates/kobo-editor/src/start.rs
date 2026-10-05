@@ -89,6 +89,7 @@ fn choose_rom(app: &mut App) {
         }
         Err(e) => app.start.error = Some(format!("Could not record it: {e}")),
     }
+    app.entrance_tables = kobo_core::entrance::MainEntranceTables::read(&rom).ok();
     app.clean = Clean::Loaded(Arc::new(rom));
 }
 

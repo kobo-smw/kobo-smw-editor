@@ -114,6 +114,8 @@ pub enum Drag {
     Marquee { from: Pos2, to: Pos2, add: bool },
     /// A screen exit's label taken to another screen.
     Exit { index: usize, screen: u8 },
+    /// The start marker taken to another place: the settings nearest it.
+    Start { at: Pos2 },
     /// Changing an object's size by its handle, in whole tiles.
     Resize {
         object: ObjectRef,
@@ -510,6 +512,7 @@ fn show_canvas(
     };
     let sprites_on = view.sprites != SpriteView::Hidden;
     let placing = app.placing.clone();
+    let tables = app.entrance_tables;
     let mut place_at: Option<(u16, u16)> = None;
     let place_layer = app.place_layer;
     let mut stop_placing = false;
@@ -669,12 +672,24 @@ fn show_canvas(
             {
                 let from = camera.to_level(canvas, origin);
                 let pill = on_pill(origin);
+                // The start marker, where the game's tables place it.
+                let on_start = view.entrances
+                    && tables.is_some()
+                    && open.document.level().settings.tile_position.is_none()
+                    && open
+                        .entries
+                        .iter()
+                        .find(|e| e.kind == crate::preview::EntryKind::Main)
+                        .is_some_and(|e| start_rect(e).contains(from));
                 let on_handle = handle.filter(|(_, bounds)| {
                     handle_rect(&camera, canvas, *bounds)
                         .expand(3.0)
                         .contains(origin)
                 });
                 match geometry.item_at(from, sprites_on) {
+                    _ if on_start => {
+                        open.drag = Some(Drag::Start { at: from });
+                    }
                     _ if pill.is_some() => {
                         if let Some(Item::Object(o)) = pill
                             && let Some(Object::ScreenExit(exit)) =
@@ -730,6 +745,7 @@ fn show_canvas(
                         let d = (at - *from) / TILE;
                         *delta = (d.x.round() as i32, d.y.round() as i32);
                     }
+                    Some(Drag::Start { at: start }) => *start = at,
                     Some(Drag::Exit { screen, .. }) => {
                         let along = if vertical { at.y } else { at.x };
                         *screen = (along / 256.0).floor().clamp(0.0, 31.0) as u8;
@@ -748,6 +764,25 @@ fn show_canvas(
                             moved,
                             delta,
                         });
+                    }
+                    Some(Drag::Start { at }) => {
+                        if let Some(tables) = tables {
+                            let (screen, x, y) =
+                                tables.nearest(at.x as i32 - 8, at.y as i32, vertical);
+                            let header = open.document.level().entrance;
+                            let moved = kobo_core::level::SecondaryHeader {
+                                entrance_screen: screen,
+                                entrance_x: x,
+                                entrance_y: y,
+                                ..header
+                            };
+                            if moved != header {
+                                context_edit = Some((
+                                    "Move the start".to_string(),
+                                    vec![Edit::SetEntrance(moved)],
+                                ));
+                            }
+                        }
                     }
                     Some(Drag::Exit { index, screen }) => {
                         let level = open.document.level();
@@ -832,6 +867,25 @@ fn show_canvas(
             };
             painter.rect_filled(rect, CornerRadius::same(4), fill);
             painter.galley(rect.min + Vec2::new(6.0, 3.0), galley, text);
+        }
+        // The start being moved: where its settings would put it.
+        if let (Some(Drag::Start { at }), Some(tables)) = (&open.drag, tables) {
+            let (screen, x, y) = tables.nearest(at.x as i32 - 8, at.y as i32, vertical);
+            let (px, py) = tables.position(screen, x, y, vertical);
+            let entry = crate::preview::Entry {
+                kind: crate::preview::EntryKind::Main,
+                x: px as i32,
+                y: py as i32,
+            };
+            draw_entries(&painter, canvas, &camera, std::slice::from_ref(&entry));
+            let r = camera.rect_to_screen(canvas, start_rect(&entry));
+            painter.text(
+                r.center_bottom() + Vec2::new(0.0, 6.0),
+                Align2::CENTER_TOP,
+                format!("screen {screen:02X}, X {x}, Y {y}"),
+                FontId::monospace(11.0),
+                theme::OK,
+            );
         }
         if let (Some(placing), Some(at)) = (&placing, pointer) {
             let layer = match placing {
@@ -1446,6 +1500,15 @@ fn draw(
         painter.rect_filled(r, CornerRadius::same(3), crate::app::color_for(item));
         painter.galley(at, galley, theme::ON_SELECTION);
     }
+}
+
+/// Where the start marker can be taken hold of, in level pixels: the flag
+/// and the player under it.
+fn start_rect(entry: &crate::preview::Entry) -> Rect {
+    Rect::from_min_max(
+        Pos2::new(entry.x as f32 - 4.0, entry.y as f32 - 24.0),
+        Pos2::new(entry.x as f32 + 40.0, entry.y as f32 + 32.0),
+    )
 }
 
 /// A flag where the player enters each way, labelled.

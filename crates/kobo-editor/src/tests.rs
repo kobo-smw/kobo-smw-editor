@@ -892,3 +892,46 @@ fn a_screen_exit_is_dragged_to_another_screen() {
         .collect();
     assert_eq!(screens, [9]);
 }
+
+#[test]
+fn the_start_is_dragged_to_the_nearest_place_its_settings_allow() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "start-drag");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    {
+        let open = harness.state_mut().current_mut().unwrap();
+        let camera = open.camera.as_mut().unwrap();
+        camera.offset = egui::Vec2::ZERO;
+    }
+    harness.run_steps(2);
+    // From the start's pole, at (16, 352) and 8 to the right, to near
+    // screen 1's X setting 1 (0x80) and Y setting 4 (0xA0).
+    let (from, to) = {
+        let open = harness.state().current().unwrap();
+        let camera = open.camera.unwrap();
+        (
+            camera.to_screen(open.canvas, Pos2::new(24.0, 360.0)),
+            camera.to_screen(
+                open.canvas,
+                Pos2::new(256.0 + 0x82 as f32 + 8.0, 0xA3 as f32),
+            ),
+        )
+    };
+    harness.hover_at(from);
+    harness.step();
+    press(&mut harness, from, true);
+    harness.step();
+    for i in 1..=10 {
+        harness.hover_at(from + (to - from) * (i as f32 / 10.0));
+        harness.step();
+    }
+    press(&mut harness, to, false);
+    harness.step();
+    let e = harness.state().current().unwrap().document.level().entrance;
+    assert_eq!((e.entrance_screen, e.entrance_x, e.entrance_y), (1, 1, 4));
+    assert_eq!(
+        harness.state().current().unwrap().document.undo_label(),
+        Some("Move the start")
+    );
+}

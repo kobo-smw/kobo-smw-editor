@@ -292,3 +292,18 @@ fn a_level_that_does_not_build_is_left_out_of_another_ones_picture() {
             .is_err()
     );
 }
+
+#[test]
+fn the_main_entrance_tables_place_the_player_as_the_load_does() {
+    use kobo_core::entrance::MainEntranceTables;
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let tables = MainEntranceTables::read(&clean).unwrap();
+    // Level 105: screen 0, X setting 0, Y setting 11, which the load puts at
+    // (16, 352) (the editor's start marker test has the same).
+    assert_eq!(tables.position(0, 0, 11, false), (16, 352));
+    assert_eq!(tables.nearest(16, 352, false), (0, 0, 11));
+    // X 0x75 is setting 5 (0x70), Y 0x95 setting 4 (0xA0).
+    assert_eq!(tables.nearest(3 * 256 + 0x75, 0x95, false), (3, 5, 4));
+}

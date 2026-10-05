@@ -227,6 +227,9 @@ pub struct App {
     pub place_layer: edit::ObjectLayer,
     /// What was copied, to paste in any level.
     pub clipboard: crate::clipboard::Clipboard,
+    /// Where the game puts the player for a main entrance's settings, from
+    /// the clean ROM.
+    pub entrance_tables: Option<kobo_core::entrance::MainEntranceTables>,
     /// A message for the status bar, and when it was given.
     status: Option<(String, Instant)>,
     /// The inspector widget whose change is being made, so that dragging
@@ -295,6 +298,7 @@ impl App {
             placing: None,
             place_layer: edit::ObjectLayer::One,
             clipboard: Default::default(),
+            entrance_tables: None,
             status: None,
             editing: None,
             confirm_close: false,
@@ -303,6 +307,9 @@ impl App {
             startup: startup.clone(),
             screenshot_frames: None,
         };
+        if let Clean::Loaded(rom) = &app.clean {
+            app.entrance_tables = kobo_core::entrance::MainEntranceTables::read(rom).ok();
+        }
         if let Some(storage) = cc.storage {
             app.start.recent = eframe::get_value(storage, RECENT_KEY).unwrap_or_default();
         }
