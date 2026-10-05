@@ -22,6 +22,8 @@ pub struct Rendered {
     pub diagnostics: Vec<String>,
     /// The sprites whose pass gave up, by tile, and why.
     pub failed_sprites: Vec<(i32, i32, String)>,
+    /// Other levels left out of the build for the picture, and why.
+    pub left_out: Vec<(u16, String)>,
     /// Where the player enters the level, each way he can.
     pub entries: Vec<Entry>,
     pub took: Duration,
@@ -188,6 +190,7 @@ fn run(job: &Job) -> Ran {
     let rgb: Vec<u8> = image.pixels.iter().flatten().copied().collect();
     let size = [image.width as usize, image.height as usize];
     let later = (preview.rom, render.level.clone());
+    let left_out = preview.left_out;
     let rendered = Rendered {
         image: egui::ColorImage::from_rgb(size, &rgb),
         diagnostics: expand::summarize(&render.diagnostics),
@@ -205,6 +208,7 @@ fn run(job: &Job) -> Ran {
         loaded: render.level,
         sprites: render.sprites,
         entries,
+        left_out,
         took: started.elapsed(),
     };
     (Ok(rendered), Some(later))

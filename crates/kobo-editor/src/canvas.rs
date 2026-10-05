@@ -54,11 +54,14 @@ impl Camera {
                 level.y * z <= view.y
             }
         };
+        // A level too tall (or wide) to fit at full size is seen at full
+        // size, a part at a time.
         self.zoom = ZOOMS
             .into_iter()
             .rev()
             .find(|&z| fits(z))
-            .unwrap_or(ZOOMS[0]);
+            .unwrap_or(1.0)
+            .max(1.0);
         self.fit_height = false;
     }
 
@@ -545,8 +548,15 @@ fn show_canvas(
                     camera.offset.y = y - seen.y * 2.0 / 3.0;
                 } else {
                     camera.offset.x = x - seen.x / 3.0;
+                    // A level taller than the view: where the player is.
+                    if level_size.y > seen.y {
+                        camera.offset.y = y - seen.y / 2.0;
+                    }
                 }
             }
+            // The first view stays inside the level.
+            let most = (level_size - seen).max(Vec2::ZERO);
+            camera.offset = camera.offset.clamp(Vec2::ZERO, most);
             camera
         });
         if camera.fit_height {

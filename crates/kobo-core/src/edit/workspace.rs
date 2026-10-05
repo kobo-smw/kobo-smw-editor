@@ -1,6 +1,7 @@
 //! A project open for editing: what it builds into, and its levels'
 //! pictures from that build.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -40,12 +41,19 @@ pub struct Workspace {
     clean: Arc<Rom>,
     project: Arc<Project>,
     cache: Option<Cache>,
+    /// Levels whose build failed, why, and what they held then: shared by
+    /// every copy, so that a build leaves them out at once until they
+    /// change ([`Workspace::build_leaving_out`]).
+    broken: Arc<std::sync::Mutex<BTreeMap<u16, (String, Level)>>>,
 }
 
 /// A level's picture, and the ROM it was rendered from.
 pub struct Preview {
     pub rom: Arc<Rom>,
     pub render: LevelRender,
+    /// Other levels whose build failed, and why: the build the picture
+    /// comes from has the clean ROM's in their place.
+    pub left_out: Vec<(u16, String)>,
 }
 
 impl Workspace {
@@ -56,6 +64,7 @@ impl Workspace {
             clean,
             project: Arc::new(Project::load(dir)?),
             cache: Cache::user(),
+            broken: Default::default(),
         })
     }
 
@@ -183,6 +192,51 @@ impl Workspace {
         )?)
     }
 
+    /// Builds the project, leaving out each level whose build fails (but
+    /// `keep`, whose failure fails the build), as the clean ROM has it;
+    /// with the levels left out, and why.
+    pub fn build_leaving_out(
+        &self,
+        keep: Option<u16>,
+    ) -> Result<(Rom, Vec<(u16, String)>), WorkspaceError> {
+        let mut copy = self.clone();
+        let mut left_out: Vec<(u16, String)> = Vec::new();
+        let leave_out = |copy: &mut Workspace, level: u16| {
+            let project = Arc::make_mut(&mut copy.project);
+            project.levels.retain(|(n, _)| *n != level);
+            project.manifest.levels.remove(&level);
+        };
+        // What failed before and has not changed since fails again.
+        let known: Vec<(u16, String)> = {
+            let broken = self.broken.lock().expect("no build panics holding it");
+            broken
+                .iter()
+                .filter(|(n, (_, held))| Some(**n) != keep && self.level(**n) == Some(held))
+                .map(|(n, (why, _))| (*n, why.clone()))
+                .collect()
+        };
+        for (level, why) in known {
+            leave_out(&mut copy, level);
+            left_out.push((level, why));
+        }
+        loop {
+            match copy.build() {
+                Ok(rom) => return Ok((rom, left_out)),
+                Err(WorkspaceError::Build(BuildError::Level { level, message }))
+                    if Some(level) != keep && !left_out.iter().any(|(n, _)| *n == level) =>
+                {
+                    if let Some(held) = self.level(level) {
+                        let mut broken = self.broken.lock().expect("no build panics holding it");
+                        broken.insert(level, (message.clone(), held.clone()));
+                    }
+                    left_out.push((level, message));
+                    leave_out(&mut copy, level);
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
     /// Builds the project and renders `level` from the build, under
     /// `operation`, which can cancel the render.
     pub fn preview(
@@ -194,10 +248,17 @@ impl Workspace {
         if !self.project.manifest.levels.contains_key(&level) {
             return Err(WorkspaceError::NoLevel(level));
         }
-        let rom = Arc::new(self.build()?);
+        // Another level that does not build is left out, as the clean
+        // ROM's, so that this one still draws.
+        let (rom, left_out) = self.build_leaving_out(Some(level))?;
+        let rom = Arc::new(rom);
         operation.check().map_err(RenderError::from)?;
         let render = render::render_level_with_control(&rom, level, options, operation)?;
-        Ok(Preview { rom, render })
+        Ok(Preview {
+            rom,
+            render,
+            left_out,
+        })
     }
 }
 

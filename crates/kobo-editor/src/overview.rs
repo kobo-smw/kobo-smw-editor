@@ -93,8 +93,8 @@ fn start(overview: &mut Overview, workspace: Workspace, ctx: egui::Context) {
     let operation = Operation::default();
     let control = operation.clone();
     std::thread::spawn(move || {
-        let rom = match workspace.build() {
-            Ok(rom) => rom,
+        let (rom, left_out) = match workspace.build_leaving_out(None) {
+            Ok(built) => built,
             Err(e) => {
                 for number in levels {
                     let _ = send.send((number, Err(e.to_string())));
@@ -110,6 +110,10 @@ fn start(overview: &mut Overview, workspace: Workspace, ctx: egui::Context) {
         for number in levels {
             if control.check().is_err() {
                 break;
+            }
+            if let Some((_, why)) = left_out.iter().find(|(n, _)| *n == number) {
+                let _ = send.send((number, Err(format!("does not build: {why}"))));
+                continue;
             }
             let picture =
                 kobo_core::render::render_level_with_control(&rom, number, options, &control)

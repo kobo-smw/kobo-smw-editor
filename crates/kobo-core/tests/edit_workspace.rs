@@ -241,3 +241,54 @@ fn sprites_are_pictured_as_the_level_draws_them() {
     );
     assert_eq!(sizes[2], None);
 }
+
+#[test]
+fn a_level_that_does_not_build_is_left_out_of_another_ones_picture() {
+    use kobo_core::level::objects::Object;
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-left-out");
+    fs::write(dir.join("kobo.toml"), "format = 1\n").unwrap();
+    let mut workspace = Workspace::open(&dir, Arc::new(clean))
+        .unwrap()
+        .without_cache();
+    let good = workspace.clean_level(0x105).unwrap();
+    workspace.add_level(0x105, &good).unwrap();
+    // Level 106 with an object past its last screen, which no build
+    // writes.
+    let mut bad = workspace.clean_level(0x106).unwrap();
+    bad.layer1.push(Object::Extended {
+        number: 0x41,
+        x: 600,
+        y: 5,
+    });
+    workspace
+        .add_level(0x106, &kobo_core::edit::copy_of(&bad))
+        .unwrap();
+    workspace.set_level(0x106, &bad);
+    assert!(workspace.build().is_err());
+
+    let options = RenderOptions {
+        sprites: Sprites::Hidden,
+        player: false,
+    };
+    let preview = workspace
+        .preview(0x105, options, &Operation::default())
+        .unwrap();
+    assert_eq!(
+        preview.left_out.iter().map(|(n, _)| *n).collect::<Vec<_>>(),
+        [0x106]
+    );
+    // Again, left out at once: the reason is remembered.
+    let again = workspace
+        .preview(0x105, options, &Operation::default())
+        .unwrap();
+    assert_eq!(again.left_out.len(), 1);
+    // Its own picture fails as it should.
+    assert!(
+        workspace
+            .preview(0x106, options, &Operation::default())
+            .is_err()
+    );
+}

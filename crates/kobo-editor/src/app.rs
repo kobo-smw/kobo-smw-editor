@@ -73,6 +73,8 @@ pub struct OpenLevel {
     pub entries: Vec<crate::preview::Entry>,
     /// The sprites the sprite capture gave up on, by tile, and why.
     pub failed_sprites: Vec<(i32, i32, String)>,
+    /// Other levels that do not build, which the picture's build left out.
+    pub left_out: Vec<(u16, String)>,
     pub render_error: Option<String>,
     pub rendered_in: Option<Duration>,
     /// The newest preview asked for, and the one shown.
@@ -111,6 +113,7 @@ impl OpenLevel {
             diagnostics: Vec::new(),
             entries: Vec::new(),
             failed_sprites: Vec::new(),
+            left_out: Vec::new(),
             render_error: None,
             rendered_in: None,
             requested: 0,
@@ -132,6 +135,7 @@ impl OpenLevel {
     }
 
     /// Whether the picture shows the document as it is.
+    #[cfg(test)]
     pub fn up_to_date(&self) -> bool {
         self.shown == self.requested && self.render_error.is_none()
     }
@@ -446,8 +450,10 @@ impl App {
                     diagnostics,
                     failed_sprites,
                     entries,
+                    left_out,
                     took,
                 } = rendered;
+                open.left_out = left_out;
                 open.failed_sprites = failed_sprites;
                 // The secondary entrances follow; until they do, the last
                 // ones stay.
@@ -985,6 +991,22 @@ impl App {
         let Some(open) = self.open.get_mut(&number) else {
             return;
         };
+        let mut go_to = None;
+        if let Some((other, why)) = open.left_out.first() {
+            let more = match open.left_out.len() {
+                1 => String::new(),
+                n => format!(" (and {} more)", n - 1),
+            };
+            ui.add(egui::Label::new(
+                RichText::new(format!(
+                    "Level {other:03X} does not build{more}, so this picture has the game's own: {why}"
+                ))
+                .color(theme::WARNING),
+            ).wrap());
+            if ui.small_button(format!("Open level {other:03X}")).clicked() {
+                go_to = Some(*other);
+            }
+        }
         if let Some(error) = &open.disk_error {
             ui.colored_label(
                 theme::ERROR,
@@ -1016,6 +1038,9 @@ impl App {
             }
         } else if keep && let Some(text) = open.conflict.take() {
             open.document.keep_over(text);
+        }
+        if let Some(other) = go_to {
+            self.open_level(other);
         }
     }
 
@@ -1281,8 +1306,8 @@ impl App {
             return;
         };
         let ready = self.current().is_some_and(|o| {
-            o.picture.is_some()
-                && o.up_to_date()
+            (o.picture.is_some() || o.render_error.is_some())
+                && o.shown == o.requested
                 && !self.palette.busy()
                 && !self.build.busy()
                 && !(self.overview.open && self.overview.busy())
