@@ -53,7 +53,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let diagnostics = open.diagnostics.clone();
     let mut change: Option<Change> = None;
     let mut delete = false;
-    let mut copy = false;
+    let mut level_action = None;
     let mut copy_to = app.copy_to;
     let taken: Vec<bool> = (0..0x200).map(|n| app.has_level(n)).collect();
     let free_entrance = app.workspace().and_then(|w| w.free_entrance(number));
@@ -72,7 +72,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 [] => {
                     header(ui, &level, &mut change);
                     entrances(ui, &level, free_entrance, &mut change);
-                    copy = copy_level(ui, &mut copy_to, &taken);
+                    level_action = copy_level(ui, &mut copy_to, &taken);
                 }
                 [Item::Object(o)] => object(ui, &level, number, o, &mut change),
                 [Item::Sprite(i)] => sprite(ui, &level, i, &mut change),
@@ -100,8 +100,21 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         });
 
     app.copy_to = copy_to;
-    if copy {
-        app.add_level(copy_to, &edit::copy_of(&level));
+    match level_action {
+        Some(LevelAction::Copy) => app.add_level(copy_to, &edit::copy_of(&level)),
+        Some(LevelAction::Empty) => {
+            // The open level's header and settings, and the secondary
+            // entrances the game's own level there has, which lead to it.
+            let mut empty = edit::empty_of(&level);
+            empty.entrances = app
+                .workspace()
+                .and_then(|w| w.clean_level(copy_to).ok())
+                .map(|l| l.entrances)
+                .unwrap_or_default();
+            app.add_level(copy_to, &empty);
+        }
+        Some(LevelAction::Remove) => app.removing = Some(number),
+        None => {}
     }
     if delete {
         let label = if selection.len() == 1 {
@@ -915,26 +928,53 @@ fn entrances(
     }
 }
 
-/// Copying the level to a number the project does not list yet. The copy
-/// has no secondary entrances: those stay the original's.
-fn copy_level(ui: &mut egui::Ui, to: &mut u16, taken: &[bool]) -> bool {
-    section(ui, "Copy");
-    let mut copy = false;
+/// What the level panel's last section asked for.
+enum LevelAction {
+    Copy,
+    Empty,
+    Remove,
+}
+
+/// Making a level at a number the project does not list yet, a copy of
+/// this one (without its secondary entrances, which stay its own) or an
+/// empty one; and taking this one out of the project.
+fn copy_level(ui: &mut egui::Ui, to: &mut u16, taken: &[bool]) -> Option<LevelAction> {
+    section(ui, "Other levels");
+    let mut action = None;
+    let free = !taken[usize::from(*to)];
     ui.horizontal(|ui| {
-        ui.label("To level");
+        ui.label("Level");
         ui.add(
             DragValue::new(to)
                 .range(0..=0x1FF)
                 .speed(0.1)
                 .hexadecimal(3, false, true),
         );
-        let free = !taken[usize::from(*to)];
-        copy = ui
-            .add_enabled(free, egui::Button::new("Copy"))
+        if ui
+            .add_enabled(free, egui::Button::new("Copy this one there"))
             .on_disabled_hover_text("The project has that level already.")
-            .clicked();
+            .clicked()
+        {
+            action = Some(LevelAction::Copy);
+        }
     });
-    copy
+    if ui
+        .add_enabled(free, egui::Button::new("Start an empty level there"))
+        .on_hover_text("With this level's settings, and nothing in it")
+        .on_disabled_hover_text("The project has that level already.")
+        .clicked()
+    {
+        action = Some(LevelAction::Empty);
+    }
+    ui.add_space(4.0);
+    if ui
+        .button("Take this level out of the project…")
+        .on_hover_text("It then builds as the game has it")
+        .clicked()
+    {
+        action = Some(LevelAction::Remove);
+    }
+    action
 }
 
 /// A field of a midway entrance of its own, as [`Field`] is of others.

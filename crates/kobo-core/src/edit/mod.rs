@@ -200,6 +200,19 @@ pub fn map16_object_sized(object: &Object, width: u16, height: u16) -> Object {
     object
 }
 
+/// A level with nothing in it, to start one from: `level`'s header,
+/// entrance, settings, and secondary entrances, with no objects, sprites,
+/// or exits, and layer 2's objects gone too where it has them.
+pub fn empty_of(level: &Level) -> Level {
+    let mut empty = level.clone();
+    empty.layer1.clear();
+    if let Layer2::Objects(list) = &mut empty.layer2 {
+        list.clear();
+    }
+    empty.sprites.list.clear();
+    empty
+}
+
 /// What a screen exit leads to, whichever format it is kept in.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ExitTarget {

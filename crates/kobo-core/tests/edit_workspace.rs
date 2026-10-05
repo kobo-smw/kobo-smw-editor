@@ -307,3 +307,29 @@ fn the_main_entrance_tables_place_the_player_as_the_load_does() {
     // X 0x75 is setting 5 (0x70), Y 0x95 setting 4 (0xA0).
     assert_eq!(tables.nearest(3 * 256 + 0x75, 0x95, false), (3, 5, 4));
 }
+
+#[test]
+fn a_level_taken_out_builds_as_the_games_own() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-remove-level");
+    fs::write(dir.join("kobo.toml"), "# Mine.\nformat = 1\n").unwrap();
+    let mut workspace = Workspace::open(&dir, Arc::new(clean))
+        .unwrap()
+        .without_cache();
+    let level = workspace.clean_level(0x105).unwrap();
+    workspace
+        .add_level(0x105, &kobo_core::edit::empty_of(&level))
+        .unwrap();
+    assert!(workspace.level(0x105).unwrap().layer1.is_empty());
+    let path = workspace.remove_level(0x105).unwrap();
+    assert!(!path.exists());
+    assert_eq!(workspace.levels().count(), 0);
+    let manifest = fs::read_to_string(dir.join("kobo.toml")).unwrap();
+    assert!(
+        manifest.starts_with("# Mine.\n") && !manifest.contains("0x105"),
+        "{manifest}"
+    );
+    assert!(workspace.remove_level(0x105).is_err());
+}

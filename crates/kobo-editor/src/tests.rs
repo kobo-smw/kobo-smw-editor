@@ -935,3 +935,21 @@ fn the_start_is_dragged_to_the_nearest_place_its_settings_allow() {
         Some("Move the start")
     );
 }
+
+#[test]
+fn a_level_is_taken_out_of_the_project_once_confirmed() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "remove");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().removing = Some(0x105);
+    harness.run_steps(20);
+    harness.get_by_label("Take it out").click();
+    harness.run_steps(3);
+    assert!(!project.level_file().exists());
+    assert!(!harness.state().has_level(0x105));
+    let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
+    assert!(!manifest.contains("0x105"), "{manifest}");
+}

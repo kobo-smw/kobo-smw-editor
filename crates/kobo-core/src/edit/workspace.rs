@@ -161,6 +161,20 @@ impl Workspace {
         Ok(path)
     }
 
+    /// Takes level `number` out of the project: its file is deleted and
+    /// the manifest no longer lists it, so it builds as the clean ROM has
+    /// it ([`crate::import::remove_level`]).
+    pub fn remove_level(&mut self, number: u16) -> Result<PathBuf, WorkspaceError> {
+        if !self.project.manifest.levels.contains_key(&number) {
+            return Err(WorkspaceError::NoLevel(number));
+        }
+        let path = crate::import::remove_level(&self.project.root, number)?;
+        let project = Arc::make_mut(&mut self.project);
+        project.manifest.levels.remove(&number);
+        project.levels.retain(|(n, _)| *n != number);
+        Ok(path)
+    }
+
     /// Puts the level's state in the editor in the project, for the next
     /// build.
     pub fn set_level(&mut self, number: u16, level: &Level) {

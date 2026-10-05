@@ -211,6 +211,8 @@ pub struct App {
     all_levels: bool,
     /// A level the user asked to add from the game's own, to confirm.
     pub(crate) adding: Option<u16>,
+    /// A level the user asked to take out of the project, to confirm.
+    pub(crate) removing: Option<u16>,
     /// Where the level panel's copy goes.
     pub copy_to: u16,
     pub(crate) left: LeftTab,
@@ -284,6 +286,7 @@ impl App {
             level_filter: String::new(),
             all_levels: false,
             adding: None,
+            removing: None,
             copy_to: 0,
             left: match (startup.palette, startup.tab.as_deref()) {
                 (true, _) | (_, Some("add" | "sprites" | "map16")) => LeftTab::Add,
@@ -1378,6 +1381,49 @@ impl App {
         self.status.as_ref().map(|(message, _)| message.as_str())
     }
 
+    /// Asks before taking a level out of the project.
+    fn confirm_removing(&mut self, ctx: &egui::Context) {
+        let Some(number) = self.removing else { return };
+        let (mut remove, mut cancel) = (false, false);
+        egui::Modal::new(egui::Id::new("confirm-remove")).show(ctx, |ui| {
+            ui.heading(format!("Take level {number:03X} out of the project?"));
+            ui.label("Its file is deleted, and the project builds it as the game has it.");
+            if self.is_modified(number) {
+                ui.colored_label(theme::WARNING, "Its unsaved edits go with it.");
+            }
+            ui.horizontal(|ui| {
+                remove = ui.button("Take it out").clicked();
+                cancel = ui.button("Cancel").clicked();
+            });
+        });
+        if cancel {
+            self.removing = None;
+        }
+        if remove {
+            self.removing = None;
+            let Some(workspace) = &mut self.workspace else {
+                return;
+            };
+            match workspace.remove_level(number) {
+                Ok(path) => {
+                    self.open.remove(&number);
+                    if self.current == Some(number) {
+                        self.current = None;
+                        if let Some(first) = self.first_level() {
+                            self.open_level(first);
+                        }
+                    }
+                    self.overview.changed(number);
+                    self.say(format!(
+                        "Took level {number:03X} out; {} is deleted",
+                        path.display()
+                    ));
+                }
+                Err(e) => self.say(format!("Could not take level {number:03X} out: {e}")),
+            }
+        }
+    }
+
     /// Whether the project lists level `number`.
     pub fn has_level(&self, number: u16) -> bool {
         self.workspace
@@ -1578,6 +1624,7 @@ impl eframe::App for App {
         crate::build::window(self, &ctx);
         crate::commands::window(self, &ctx);
         self.confirm_adding(&ctx);
+        self.confirm_removing(&ctx);
         self.confirm_switch(&ctx);
         self.close_requests(&ctx);
         self.screenshot(&ctx);

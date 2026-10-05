@@ -365,6 +365,37 @@ pub struct Report {
     pub unread_blocks: Vec<RatsBlock>,
 }
 
+/// Takes level `number` out of the project in `dir`: the manifest no
+/// longer lists it, so it builds as the clean ROM has it, and its file is
+/// deleted. Returns the file's path. A level the manifest does not list is
+/// an error.
+pub fn remove_level(dir: &Path, number: u16) -> Result<PathBuf, ImportError> {
+    let manifest_path = dir.join(MANIFEST);
+    let text = fs::read_to_string(&manifest_path).map_err(|source| ImportError::Io {
+        path: manifest_path.clone(),
+        source,
+    })?;
+    let (mut manifest, comments) =
+        Manifest::from_toml(&text).map_err(|source| ImportError::Manifest {
+            path: manifest_path.clone(),
+            source,
+        })?;
+    let file = manifest
+        .levels
+        .remove(&number)
+        .ok_or(ImportError::LevelNumber(number))?;
+    fs::write(&manifest_path, manifest.to_toml(&comments)).map_err(|source| ImportError::Io {
+        path: manifest_path,
+        source,
+    })?;
+    let path = dir.join(&file);
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(path),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(path),
+        Err(source) => Err(ImportError::Io { path, source }),
+    }
+}
+
 /// A hack to import, from its file: a ROM, headered or not, or a BPS
 /// patch of the clean ROM, which is applied to it.
 pub fn read_hack(path: &Path, clean: &Rom) -> Result<Rom, ImportError> {
