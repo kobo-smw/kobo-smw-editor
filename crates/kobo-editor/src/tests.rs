@@ -1132,7 +1132,7 @@ fn a_sprite_is_changed_to_another_by_name() {
         .list[0]
         .clone();
     let name = format!("{:02X}  {}", before.id, kobo_core::names::sprite(before.id));
-    harness.get_by_label(&name).click();
+    harness.get_by_label_contains(&name).click();
     harness.run_steps(2);
     // The popup's search field has the focus.
     harness
