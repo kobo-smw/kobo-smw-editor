@@ -85,3 +85,13 @@ fn level_names_read_as_the_overworld_shows_them() {
     assert_eq!(name(0x1C7), None);
     assert_eq!(name(0x000), None);
 }
+
+#[test]
+fn the_games_tiles_act_like_themselves() {
+    let Some(rom) = common::vanilla() else {
+        return;
+    };
+    for tile in [0x025, 0x130, 0x1FF] {
+        assert_eq!(kobo_core::map16::pages::acts_like_in(&rom, tile), tile);
+    }
+}

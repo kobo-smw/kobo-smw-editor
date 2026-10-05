@@ -40,6 +40,8 @@ pub enum PlaytestError {
     Asar(#[from] Box<AsarError>),
     #[error(transparent)]
     Rom(#[from] RomError),
+    #[error("the level does not load: {0}")]
+    Load(#[from] Box<crate::expand::ExpandError>),
 }
 
 /// The entrance at `start`'s tile, numbered `id`: in a horizontal level
@@ -77,6 +79,16 @@ pub fn entrance(level: &crate::source::level::Level, start: &Start, id: u16) -> 
             overworld: None,
         },
     }
+}
+
+/// The tile the level's main entrance puts the player on, by its load in
+/// a build of `workspace`.
+pub fn entrance_tile(workspace: &Workspace, level: u16) -> Result<(u16, u16), PlaytestError> {
+    let (rom, _) = workspace.build_leaving_out(Some(level))?;
+    let loaded = crate::expand::expand_level(&rom, level).map_err(Box::new)?;
+    let x = loaded.ram.u16(crate::ram::PLAYER_X);
+    let y = loaded.ram.u16(crate::ram::PLAYER_Y);
+    Ok((x / 16, y / 16))
 }
 
 /// A build of `workspace` that starts at `start`.

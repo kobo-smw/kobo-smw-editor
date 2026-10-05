@@ -440,6 +440,14 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
         }
+        if ui
+            .button("This project…")
+            .on_hover_text("What it holds, and what its build installs and runs")
+            .clicked()
+        {
+            ui.close();
+            app.project_open = true;
+        }
         ui.separator();
         if ui
             .button("Import a Lunar Magic level (MWL)…")

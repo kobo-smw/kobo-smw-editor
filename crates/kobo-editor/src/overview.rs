@@ -199,6 +199,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     });
     let filter = app.overview.filter.trim().to_lowercase();
     let mut open_level = None;
+    let mut play = None;
     let card_width = 300.0;
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -333,6 +334,20 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         if response.clicked() {
                             open_level = Some(number);
                         }
+                        response.context_menu(|ui| {
+                            if ui.button("Open").clicked() {
+                                open_level = Some(number);
+                                ui.close();
+                            }
+                            ui.menu_button("Play from its start", |ui| {
+                                for (i, name) in crate::play::POWERUPS.iter().enumerate() {
+                                    if ui.button(*name).clicked() {
+                                        play = Some((number, i as u8));
+                                        ui.close();
+                                    }
+                                }
+                            });
+                        });
                         if response.hovered() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                         }
@@ -345,5 +360,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     if let Some(number) = open_level {
         app.overview.open = false;
         app.open_level(number);
+    }
+    if let Some((number, powerup)) = play {
+        crate::play::from_level_start(app, number, powerup);
     }
 }

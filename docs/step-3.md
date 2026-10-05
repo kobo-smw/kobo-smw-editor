@@ -156,6 +156,10 @@ Since (2026-10-05 and 06, on master):
 - Play from here (`kobo_core::playtest`, `asm/playtest.asm`, `kobo play`): checked in
   Mesen 2 on vanilla, a Lunar Magic hack, and an SA-1 one, from the title screen into the
   level at the tile, and back there after a death and a game over.
+- Names from the game's tables where it has them: levels by their overworld names
+  (`level::level_name`), entrance actions, layer 2 scroll and layer 3 settings, palette
+  settings' colours; what a tile acts like in the status bar; the project window; menus on
+  the level list and the overview's cards.
 - Every entrance's position by the game's places or by tile, and its camera at the game's
   positions or rows from the player (`entrance::Camera`).
 

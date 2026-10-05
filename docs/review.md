@@ -60,3 +60,8 @@ settle it.
   level's screen count by itself, as Lunar Magic does when it saves; the flag is shown as
   what it is ("Lunar Magic sets screens"), and *Fit* beside the screen count sets it from
   the objects and sprites when the user asks (`edit::screens_used`).
+- **Level names from the clean ROM (2026-10-06).** The editor names levels as the
+  overworld does (`level::level_name`), from the clean ROM, whose overworld a build keeps
+  while Kobo carries none of a project's. For a project imported from a hack they are the
+  game's names, not the hack's, though true of what the build makes. To settle once the
+  overworld is a project's (step 4): the project's names then.

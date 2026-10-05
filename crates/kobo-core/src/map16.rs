@@ -468,6 +468,15 @@ pub mod pages {
         Ok(SnesAddr::from_bank_offset(bank, offset))
     }
 
+    /// What tile `tile` acts like in `rom`: by the tables where the ROM
+    /// has them installed, else itself, as each of the game's tiles is.
+    pub fn acts_like_in(rom: &Rom, tile: u16) -> u16 {
+        if rom.read_u8(INSTALLED).ok() == Some(0xFF) {
+            return tile;
+        }
+        acts_like(rom, tile).ok().flatten().unwrap_or(tile)
+    }
+
     /// What tile `tile` acts like, from the tables, or `None` where there
     /// is no table.
     pub fn acts_like(rom: &Rom, tile: u16) -> Result<Option<u16>, RomError> {

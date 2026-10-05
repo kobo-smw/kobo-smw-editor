@@ -16,6 +16,7 @@ mod palette;
 mod picture;
 mod play;
 mod preview;
+mod project;
 mod selection;
 mod source;
 mod start;

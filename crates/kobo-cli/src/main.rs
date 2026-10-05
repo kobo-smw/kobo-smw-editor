@@ -1541,14 +1541,7 @@ fn play(
                 .ok_or_else(|| anyhow::anyhow!("--at takes x,y in tiles, as 70,18"))?;
             (x, y)
         }
-        None => {
-            // Where the level's own load puts the player.
-            let rom = workspace.build()?;
-            let loaded = kobo_core::expand::expand_level(&rom, level)?;
-            let px = loaded.ram.u16(kobo_core::ram::PLAYER_X);
-            let py = loaded.ram.u16(kobo_core::ram::PLAYER_Y);
-            (px / 16, py / 16)
-        }
+        None => playtest::entrance_tile(&workspace, level)?,
     };
     let start = Start {
         level,

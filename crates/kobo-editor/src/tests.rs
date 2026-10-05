@@ -1352,4 +1352,28 @@ fn play_from_here_builds_a_rom_that_starts_there() {
     assert_eq!(loaded.tiles.tile_at(65, 22), 0x25);
     // The project's files are as they were: the edit is not saved.
     assert!(harness.state().is_modified(0x105));
+
+    // From the level's start, found by loading it: level 105's player
+    // starts on tile (1, 22).
+    crate::play::from_level_start(harness.state_mut(), 0x105, 0);
+    wait_for(&mut harness, "the build to play", |app| !app.play.busy());
+    let message = harness.state().status().unwrap_or_default().to_string();
+    assert!(
+        message.starts_with("Playing level 105 from (1, 22) as Small Mario"),
+        "{message}"
+    );
+}
+
+#[test]
+fn the_project_window_says_what_the_project_holds() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "project-window");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().project_open = true;
+    harness.run_steps(2);
+    harness.get_by_label_contains("1 of 512");
+    harness.get_by_label("not needed: the build keeps the game's");
 }

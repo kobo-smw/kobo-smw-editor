@@ -1058,7 +1058,6 @@ fn show_canvas(
         app.follow_exit(leads);
     }
     if let Some(start) = play {
-        app.play.powerup = start.powerup;
         crate::play::start(app, start);
     }
     if let Some(query) = find_query {

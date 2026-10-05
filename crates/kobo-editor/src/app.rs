@@ -99,6 +99,8 @@ pub struct OpenLevel {
     pub focus: bool,
     /// Bring this entrance into view once the picture has it.
     pub look_at: Option<crate::preview::EntryKind>,
+    /// The build the picture is of.
+    pub built: Option<std::sync::Arc<kobo_core::Rom>>,
     /// The selection the outline last scrolled to.
     pub outline_scrolled_to: Option<Item>,
     /// The file changed on disk while the document had unsaved edits:
@@ -136,6 +138,7 @@ impl OpenLevel {
             pending: None,
             focus: false,
             look_at: None,
+            built: None,
             outline_scrolled_to: None,
             conflict: None,
             disk_error: None,
@@ -261,6 +264,8 @@ pub struct App {
     pub build: crate::build::BuildState,
     pub backgrounds: crate::backgrounds::Backgrounds,
     pub play: crate::play::PlayState,
+    /// The project window is open.
+    pub project_open: bool,
     startup: Startup,
     screenshot_frames: Option<u32>,
     /// The window's title as last set.
@@ -340,6 +345,7 @@ impl App {
             build: Default::default(),
             backgrounds: Default::default(),
             play: Default::default(),
+            project_open: false,
             startup: startup.clone(),
             screenshot_frames: None,
             shown_title: String::new(),
@@ -370,6 +376,7 @@ impl App {
             }
         }
         app.overview.open = startup.tab.as_deref() == Some("overview");
+        app.project_open = startup.tab.as_deref() == Some("project");
         app.backgrounds.open = startup.tab.as_deref() == Some("backgrounds");
         match startup.tab.as_deref() {
             Some("sprites") => app.palette.show(crate::palette::Kind::Sprites),
@@ -504,6 +511,7 @@ impl App {
             {
                 open.picture = None;
                 open.image = None;
+                open.built = None;
                 open.requested = u64::MAX;
             }
         }
@@ -606,6 +614,7 @@ impl App {
             Ok(rendered) => {
                 let Rendered {
                     image,
+                    rom,
                     loaded,
                     sprites,
                     diagnostics,
@@ -625,6 +634,7 @@ impl App {
                     .collect();
                 open.entries = entries;
                 open.entries.extend(old);
+                open.built = Some(rom);
                 open.picture = Some(Picture::new(ctx, &image));
                 open.image = Some(std::sync::Arc::new(image));
                 open.geometry = Some(Geometry::new(
@@ -1221,6 +1231,7 @@ impl App {
             })
             .collect();
         let mut clicked = None;
+        let mut menu = None;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -1268,6 +1279,35 @@ impl App {
                         if response.clicked() {
                             clicked = Some(number);
                         }
+                        let listed = workspace.level_path(number).is_some();
+                        response.context_menu(|ui| {
+                            if ui
+                                .button(if listed {
+                                    "Open"
+                                } else {
+                                    "Add to the project…"
+                                })
+                                .clicked()
+                            {
+                                clicked = Some(number);
+                                ui.close();
+                            }
+                            if listed {
+                                ui.menu_button("Play from its start", |ui| {
+                                    for (i, name) in crate::play::POWERUPS.iter().enumerate() {
+                                        if ui.button(*name).clicked() {
+                                            menu = Some((number, ListAction::Play(i as u8)));
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                                ui.separator();
+                                if ui.button("Take out of the project…").clicked() {
+                                    menu = Some((number, ListAction::Remove));
+                                    ui.close();
+                                }
+                            }
+                        });
                     }
                 });
             });
@@ -1278,6 +1318,13 @@ impl App {
                 self.adding = Some(number);
             }
         }
+        match menu {
+            Some((number, ListAction::Play(powerup))) => {
+                crate::play::from_level_start(self, number, powerup);
+            }
+            Some((number, ListAction::Remove)) => self.removing = Some(number),
+            None => {}
+        }
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui, hover: Option<canvas::Hover>) {
@@ -1287,6 +1334,15 @@ impl App {
                 ui.label(RichText::new(format!("screen {:02X}", hover.screen)).color(theme::MUTED));
                 if let Some(tile) = hover.tile {
                     ui.label(RichText::new(format!("Map16 {tile:03X}")).color(theme::MUTED));
+                    let acts = self
+                        .current()
+                        .and_then(|o| o.built.as_deref())
+                        .map(|rom| kobo_core::map16::pages::acts_like_in(rom, tile));
+                    if let Some(acts) = acts.filter(|&a| a != tile) {
+                        ui.label(
+                            RichText::new(format!("acts like {acts:03X}")).color(theme::MUTED),
+                        );
+                    }
                 }
                 if let Some(name) = hover.owner {
                     ui.label(RichText::new(name).color(theme::MUTED));
@@ -1812,6 +1868,12 @@ fn same_file(a: &Path, b: &Path) -> bool {
 
 /// How many levels keep their pictures while others are shown.
 const KEPT_PICTURES: usize = 4;
+/// What the level list's menu asks for of a level.
+enum ListAction {
+    Play(u8),
+    Remove,
+}
+
 /// What the level list shows of a level: its name on the overworld, its
 /// tileset, and its size.
 type ListedLevel = (Option<String>, String, String);
@@ -1904,6 +1966,7 @@ impl eframe::App for App {
             });
         crate::build::window(self, &ctx);
         crate::backgrounds::window(self, &ctx);
+        crate::project::window(self, &ctx);
         crate::commands::window(self, &ctx);
         self.confirm_adding(&ctx);
         self.confirm_removing(&ctx);

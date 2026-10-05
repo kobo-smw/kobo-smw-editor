@@ -17,6 +17,8 @@ use kobo_core::video::SpriteScene;
 /// A level's picture as the worker made it.
 pub struct Rendered {
     pub image: egui::ColorImage,
+    /// The build the picture is of.
+    pub rom: std::sync::Arc<kobo_core::Rom>,
     pub loaded: LoadedLevel,
     pub sprites: Option<SpriteScene>,
     /// One line per distinct thing a pass gave up on.
@@ -190,7 +192,7 @@ fn run(job: &Job) -> Ran {
     let image = &render.image;
     let rgb: Vec<u8> = image.pixels.iter().flatten().copied().collect();
     let size = [image.width as usize, image.height as usize];
-    let later = (preview.rom, render.level.clone());
+    let later = (preview.rom.clone(), render.level.clone());
     let left_out = preview.left_out;
     let rendered = Rendered {
         image: egui::ColorImage::from_rgb(size, &rgb),
@@ -207,6 +209,7 @@ fn run(job: &Job) -> Ran {
             })
             .collect(),
         loaded: render.level,
+        rom: preview.rom,
         sprites: render.sprites,
         entries,
         left_out,

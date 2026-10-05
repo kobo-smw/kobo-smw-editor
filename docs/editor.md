@@ -27,7 +27,7 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
 - **Left**: five tabs.
   - *Levels*: the project's levels by their names on the overworld (and with the box
     ticked, the game's own, which are added when chosen), found by number, name, or
-    tileset; *All levels as pictures* shows every level as a card.
+    tileset; a level's menu plays it from its start or takes it out of the project; *All levels as pictures* shows every level as a card.
   - *Add*: the palette. Objects, extended objects, and sprites, each drawn as the open level
     draws it (its tileset, sprite set, graphics, and palette); and Map16, a page at a time,
     for placing a tile directly. Choosing one places it at each click on the canvas, until
@@ -43,7 +43,9 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
     level; choosing one opens its level with it selected. The canvas's menu finds every
     one like what is selected, or selects every one like it in the level.
 - **Canvas**: the level, with screen boundaries, the grid (G), markers where the player
-  enters (the start, the midway, each secondary entrance), and a minimap below.
+  enters (the start, the midway, each secondary entrance), and a minimap below. The status
+  bar names the tile under the mouse: its place, screen, Map16 number, what it acts like
+  when that is another tile, and the object that drew it.
   The view bar and the View menu show or hide layers 1, 2, and 3, the sprites, and the
   player; a hidden layer is left out as the PPU leaves out a layer neither screen has, so
   what is behind it shows.
@@ -90,6 +92,13 @@ forward buttons) go back to the level shown before and forward again.
 
 Undo (Ctrl+Z) and redo (Ctrl+Shift+Z) work per level; the Edit menu undoes back several
 steps at once. Ctrl+S saves every changed level.
+
+## The project
+
+*This project…* (Project menu) shows what the project holds (its levels, Map16, graphics,
+patches, and tools' folders), whether its build installs Kobo's code for Lunar Magic's
+layout, and where each tool the build runs comes from: Kobo's pinned build, or a copy the
+user set, which makes the build depend on that copy. `kobo.toml` is where these are set.
 
 ## Outside the editor
 
