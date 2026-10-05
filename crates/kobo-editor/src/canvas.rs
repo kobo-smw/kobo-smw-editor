@@ -114,8 +114,14 @@ pub enum Drag {
     Marquee { from: Pos2, to: Pos2, add: bool },
     /// A screen exit's label taken to another screen.
     Exit { index: usize, screen: u8 },
-    /// The start marker taken to another place: the settings nearest it.
-    Start { at: Pos2 },
+    /// An entrance's marker taken to another place: the settings nearest
+    /// it, less how far the marker stood from where its settings' tables
+    /// put it (an action, a pipe say, moves the player on).
+    Entry {
+        kind: crate::preview::EntryKind,
+        at: Pos2,
+        offset: Vec2,
+    },
     /// Changing an object's size by its handle, in whole tiles.
     Resize {
         object: ObjectRef,
@@ -672,23 +678,37 @@ fn show_canvas(
             {
                 let from = camera.to_level(canvas, origin);
                 let pill = on_pill(origin);
-                // The start marker, where the game's tables place it.
-                let on_start = view.entrances
-                    && tables.is_some()
-                    && open.document.level().settings.tile_position.is_none()
-                    && open
-                        .entries
+                // An entrance's marker, placed by the game's tables.
+                let on_entry = if view.entrances
+                    && let Some(tables) = tables
+                {
+                    open.entries
                         .iter()
-                        .find(|e| e.kind == crate::preview::EntryKind::Main)
-                        .is_some_and(|e| start_rect(e).contains(from));
+                        .filter(|e| e.kind != crate::preview::EntryKind::Midway)
+                        .find(|e| start_rect(e).contains(from))
+                        .and_then(|e| {
+                            let (screen, x, y) = entry_settings(open.document.level(), e.kind)?;
+                            let (px, py) = tables.position(screen, x, y, vertical);
+                            let offset =
+                                Vec2::new((e.x - px as i32) as f32, (e.y - py as i32) as f32);
+                            Some((e.kind, offset))
+                        })
+                } else {
+                    None
+                };
                 let on_handle = handle.filter(|(_, bounds)| {
                     handle_rect(&camera, canvas, *bounds)
                         .expand(3.0)
                         .contains(origin)
                 });
                 match geometry.item_at(from, sprites_on) {
-                    _ if on_start => {
-                        open.drag = Some(Drag::Start { at: from });
+                    _ if on_entry.is_some() => {
+                        let (kind, offset) = on_entry.expect("checked");
+                        open.drag = Some(Drag::Entry {
+                            kind,
+                            at: from,
+                            offset,
+                        });
                     }
                     _ if pill.is_some() => {
                         if let Some(Item::Object(o)) = pill
@@ -745,7 +765,7 @@ fn show_canvas(
                         let d = (at - *from) / TILE;
                         *delta = (d.x.round() as i32, d.y.round() as i32);
                     }
-                    Some(Drag::Start { at: start }) => *start = at,
+                    Some(Drag::Entry { at: entry, .. }) => *entry = at,
                     Some(Drag::Exit { screen, .. }) => {
                         let along = if vertical { at.y } else { at.x };
                         *screen = (along / 256.0).floor().clamp(0.0, 31.0) as u8;
@@ -765,22 +785,13 @@ fn show_canvas(
                             delta,
                         });
                     }
-                    Some(Drag::Start { at }) => {
+                    Some(Drag::Entry { kind, at, offset }) => {
                         if let Some(tables) = tables {
-                            let (screen, x, y) =
-                                tables.nearest(at.x as i32 - 8, at.y as i32, vertical);
-                            let header = open.document.level().entrance;
-                            let moved = kobo_core::level::SecondaryHeader {
-                                entrance_screen: screen,
-                                entrance_x: x,
-                                entrance_y: y,
-                                ..header
-                            };
-                            if moved != header {
-                                context_edit = Some((
-                                    "Move the start".to_string(),
-                                    vec![Edit::SetEntrance(moved)],
-                                ));
+                            let target = at - Vec2::new(8.0, 0.0) - offset;
+                            let settings =
+                                tables.nearest(target.x as i32, target.y as i32, vertical);
+                            if let Some(edit) = move_entry(open.document.level(), kind, settings) {
+                                context_edit = Some(edit);
                             }
                         }
                     }
@@ -868,14 +879,15 @@ fn show_canvas(
             painter.rect_filled(rect, CornerRadius::same(4), fill);
             painter.galley(rect.min + Vec2::new(6.0, 3.0), galley, text);
         }
-        // The start being moved: where its settings would put it.
-        if let (Some(Drag::Start { at }), Some(tables)) = (&open.drag, tables) {
-            let (screen, x, y) = tables.nearest(at.x as i32 - 8, at.y as i32, vertical);
+        // An entrance being moved: where its settings would put it.
+        if let (Some(Drag::Entry { kind, at, offset }), Some(tables)) = (&open.drag, tables) {
+            let target = *at - Vec2::new(8.0, 0.0) - *offset;
+            let (screen, x, y) = tables.nearest(target.x as i32, target.y as i32, vertical);
             let (px, py) = tables.position(screen, x, y, vertical);
             let entry = crate::preview::Entry {
-                kind: crate::preview::EntryKind::Main,
-                x: px as i32,
-                y: py as i32,
+                kind: *kind,
+                x: px as i32 + offset.x as i32,
+                y: py as i32 + offset.y as i32,
             };
             draw_entries(&painter, canvas, &camera, std::slice::from_ref(&entry));
             let r = camera.rect_to_screen(canvas, start_rect(&entry));
@@ -1520,6 +1532,64 @@ fn draw(
         let r = Rect::from_min_size(at, galley.size()).expand2(Vec2::new(5.0, 2.0));
         painter.rect_filled(r, CornerRadius::same(3), crate::app::color_for(item));
         painter.galley(at, galley, theme::ON_SELECTION);
+    }
+}
+
+/// An entrance's position settings: (screen, X, Y).
+fn entry_settings(level: &Level, kind: crate::preview::EntryKind) -> Option<(u8, u8, u8)> {
+    use crate::preview::EntryKind;
+    match kind {
+        EntryKind::Main if level.settings.tile_position.is_none() => {
+            let e = level.entrance;
+            Some((e.entrance_screen, e.entrance_x, e.entrance_y))
+        }
+        EntryKind::Secondary(id) => {
+            let e = level.entrances.iter().find(|e| e.id == id)?;
+            Some((e.screen, e.x, e.y))
+        }
+        _ => None,
+    }
+}
+
+/// The edit that gives an entrance new position settings, and its label.
+fn move_entry(
+    level: &Level,
+    kind: crate::preview::EntryKind,
+    (screen, x, y): (u8, u8, u8),
+) -> Option<(String, Vec<Edit>)> {
+    use crate::preview::EntryKind;
+    match kind {
+        EntryKind::Main => {
+            let header = level.entrance;
+            let moved = kobo_core::level::SecondaryHeader {
+                entrance_screen: screen,
+                entrance_x: x,
+                entrance_y: y,
+                ..header
+            };
+            (moved != header)
+                .then(|| ("Move the start".to_string(), vec![Edit::SetEntrance(moved)]))
+        }
+        EntryKind::Secondary(id) => {
+            let index = level.entrances.iter().position(|e| e.id == id)?;
+            let entrance = level.entrances[index];
+            let moved = kobo_core::source::level::Entrance {
+                screen,
+                x,
+                y,
+                ..entrance
+            };
+            (moved != entrance).then(|| {
+                (
+                    format!("Move entrance {id:03X}"),
+                    vec![Edit::ReplaceEntrance {
+                        index,
+                        entrance: moved,
+                    }],
+                )
+            })
+        }
+        EntryKind::Midway => None,
     }
 }
 

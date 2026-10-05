@@ -953,3 +953,51 @@ fn a_level_is_taken_out_of_the_project_once_confirmed() {
     let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
     assert!(!manifest.contains("0x105"), "{manifest}");
 }
+
+#[test]
+fn a_secondary_entrance_is_dragged_keeping_where_its_action_puts_the_player() {
+    use crate::preview::EntryKind;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "entrance-drag");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the secondary entrances", |app| {
+        app.current().is_some_and(|o| {
+            o.entries
+                .iter()
+                .any(|e| e.kind == EntryKind::Secondary(0x1CB))
+        })
+    });
+    {
+        let open = harness.state_mut().current_mut().unwrap();
+        let camera = open.camera.as_mut().unwrap();
+        camera.offset = egui::vec2(2000.0, 150.0);
+    }
+    harness.run_steps(2);
+    // Entrance 1CB stands at (2072, 306): screen 8, X setting 0, Y setting
+    // 9 (2064, 304) and its pipe's 8 and 2 more. To screen 9's X setting 1.
+    let (from, to) = {
+        let open = harness.state().current().unwrap();
+        let camera = open.camera.unwrap();
+        (
+            camera.to_screen(open.canvas, Pos2::new(2072.0 + 8.0, 306.0 + 8.0)),
+            camera.to_screen(
+                open.canvas,
+                Pos2::new((9 * 256 + 0x80 + 8 + 8) as f32, 306.0 + 8.0),
+            ),
+        )
+    };
+    harness.hover_at(from);
+    harness.step();
+    press(&mut harness, from, true);
+    harness.step();
+    for i in 1..=10 {
+        harness.hover_at(from + (to - from) * (i as f32 / 10.0));
+        harness.step();
+    }
+    press(&mut harness, to, false);
+    harness.step();
+    let level = harness.state().current().unwrap().document.level().clone();
+    let e = level.entrances.iter().find(|e| e.id == 0x1CB).unwrap();
+    assert_eq!((e.screen, e.x, e.y), (9, 1, 9));
+}
