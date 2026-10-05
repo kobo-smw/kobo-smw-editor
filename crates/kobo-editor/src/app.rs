@@ -732,6 +732,8 @@ impl App {
             ui.label(RichText::new("KOBO").strong().color(theme::ACCENT));
             if self.workspace.is_some() {
                 crate::start::menu(self, ui);
+                self.edit_menu(ui);
+                self.view_menu(ui);
             }
             if let Some(workspace) = &self.workspace {
                 let root = &workspace.project().root;
@@ -1015,6 +1017,140 @@ impl App {
         } else if keep && let Some(text) = open.conflict.take() {
             open.document.keep_over(text);
         }
+    }
+
+    /// The Edit menu: undo, the clipboard, and selecting.
+    fn edit_menu(&mut self, ui: &mut egui::Ui) {
+        use crate::clipboard::Action;
+        ui.menu_button("Edit", |ui| {
+            let (undo, redo) = self.current().map_or((None, None), |o| {
+                (
+                    o.document.undo_label().map(str::to_owned),
+                    o.document.redo_label().map(str::to_owned),
+                )
+            });
+            let undo_text = undo
+                .as_ref()
+                .map_or("Undo".to_string(), |l| format!("Undo {l}"));
+            if ui
+                .add_enabled(
+                    undo.is_some(),
+                    egui::Button::new(undo_text).shortcut_text("Ctrl+Z"),
+                )
+                .clicked()
+            {
+                self.undo(false);
+                ui.close();
+            }
+            let redo_text = redo
+                .as_ref()
+                .map_or("Redo".to_string(), |l| format!("Redo {l}"));
+            if ui
+                .add_enabled(
+                    redo.is_some(),
+                    egui::Button::new(redo_text).shortcut_text("Ctrl+Shift+Z"),
+                )
+                .clicked()
+            {
+                self.undo(true);
+                ui.close();
+            }
+            ui.separator();
+            let selected = self.current().is_some_and(|o| !o.selection.is_empty());
+            let ctx = ui.ctx().clone();
+            for (text, keys, action, enabled) in [
+                ("Cut", "Ctrl+X", Action::Cut, selected),
+                ("Copy", "Ctrl+C", Action::Copy, selected),
+                ("Paste", "Ctrl+V", Action::Paste, !self.clipboard.is_empty()),
+                ("Duplicate", "Ctrl+D", Action::Duplicate, selected),
+            ] {
+                if ui
+                    .add_enabled(enabled, egui::Button::new(text).shortcut_text(keys))
+                    .clicked()
+                {
+                    crate::clipboard::run(self, &ctx, action, None, None);
+                    ui.close();
+                }
+            }
+            if ui
+                .add_enabled(selected, egui::Button::new("Delete").shortcut_text("Del"))
+                .clicked()
+            {
+                let selection = self
+                    .current()
+                    .map(|o| o.selection.clone())
+                    .unwrap_or_default();
+                if self.apply("Delete", canvas::delete_edits(&selection))
+                    && let Some(open) = self.current_mut()
+                {
+                    open.selection.clear();
+                }
+                ui.close();
+            }
+            ui.separator();
+            if ui
+                .add(egui::Button::new("Select everything").shortcut_text("Ctrl+A"))
+                .clicked()
+                && let Some(open) = self.current_mut()
+            {
+                let level = open.document.level();
+                let mut items: Vec<Item> = (0..level.layer1.len())
+                    .map(|i| Item::object(edit::ObjectLayer::One, i))
+                    .collect();
+                items.extend((0..level.sprites.list.len()).map(Item::Sprite));
+                open.selection = items;
+                ui.close();
+            }
+            if ui
+                .add(egui::Button::new("Select nothing").shortcut_text("Esc"))
+                .clicked()
+            {
+                if let Some(open) = self.current_mut() {
+                    open.selection.clear();
+                }
+                ui.close();
+            }
+        });
+    }
+
+    /// The View menu: what the canvas shows, and the panels.
+    fn view_menu(&mut self, ui: &mut egui::Ui) {
+        ui.menu_button("View", |ui| {
+            let before = (self.view.sprites, self.view.player);
+            ui.checkbox(&mut self.view.screens, "Screen boundaries");
+            ui.checkbox(&mut self.view.grid, "Grid (G)");
+            ui.checkbox(&mut self.view.entrances, "Entrance markers");
+            ui.checkbox(&mut self.view.player, "The player at the start");
+            ui.separator();
+            ui.label(RichText::new("Sprites").small().color(theme::MUTED));
+            ui.radio_value(
+                &mut self.view.sprites,
+                SpriteView::Drawn,
+                "Drawn as the game draws them",
+            );
+            ui.radio_value(
+                &mut self.view.sprites,
+                SpriteView::Markers,
+                "As their numbers",
+            );
+            ui.radio_value(&mut self.view.sprites, SpriteView::Hidden, "Hidden");
+            ui.separator();
+            ui.checkbox(&mut self.view.source, "The level file beside the canvas");
+            if ui.button("All levels as pictures").clicked() {
+                self.overview.open = true;
+                ui.close();
+            }
+            if ui
+                .add(egui::Button::new("Keyboard shortcuts").shortcut_text("F1"))
+                .clicked()
+            {
+                self.commands.shortcuts = true;
+                ui.close();
+            }
+            if before != (self.view.sprites, self.view.player) {
+                self.redraw();
+            }
+        });
     }
 
     /// Asks what to do with unsaved edits before switching projects.

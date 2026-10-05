@@ -11,6 +11,40 @@ pub struct Picture {
     /// Each piece and where it sits in the level, in level pixels.
     chunks: Vec<(TextureHandle, Rect)>,
     pub size: Vec2,
+    /// The whole picture small, averaged, for the minimap.
+    pub small: TextureHandle,
+}
+
+/// The longest side of the small picture.
+const SMALL: usize = 1024;
+
+/// `image` shrunk by a whole factor so its longest side is at most
+/// [`SMALL`], each pixel the average of those it covers.
+fn shrink(image: &ColorImage) -> ColorImage {
+    let [width, height] = image.size;
+    let factor = width.max(height).div_ceil(SMALL).max(1);
+    let (w, h) = ((width / factor).max(1), (height / factor).max(1));
+    let mut pixels = Vec::with_capacity(w * h);
+    for y in 0..h {
+        for x in 0..w {
+            let mut sum = [0u32; 3];
+            for dy in 0..factor {
+                for dx in 0..factor {
+                    let p = image.pixels[(y * factor + dy) * width + x * factor + dx];
+                    sum[0] += u32::from(p.r());
+                    sum[1] += u32::from(p.g());
+                    sum[2] += u32::from(p.b());
+                }
+            }
+            let n = (factor * factor) as u32;
+            pixels.push(Color32::from_rgb(
+                (sum[0] / n) as u8,
+                (sum[1] / n) as u8,
+                (sum[2] / n) as u8,
+            ));
+        }
+    }
+    ColorImage::new([w, h], pixels)
 }
 
 impl Picture {
@@ -38,9 +72,11 @@ impl Picture {
                 chunks.push((texture, at));
             }
         }
+        let small = ctx.load_texture("level-small", shrink(image), egui::TextureOptions::LINEAR);
         Self {
             chunks,
             size: Vec2::new(width as f32, height as f32),
+            small,
         }
     }
 

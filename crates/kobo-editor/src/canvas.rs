@@ -444,8 +444,8 @@ fn minimap(app: &mut App, ui: &mut egui::Ui) {
     let room = strip.shrink2(Vec2::new(16.0, 8.0));
     let scale = (room.height() / picture.size.y).min(room.width() / picture.size.x);
     let shown = Rect::from_center_size(room.center(), picture.size * scale);
-    let whole = Rect::from_min_size(Pos2::ZERO, picture.size);
-    picture.draw(&painter, whole, shown, Color32::WHITE);
+    let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+    painter.image(picture.small.id(), shown, uv, Color32::WHITE);
     painter.rect_stroke(
         shown,
         CornerRadius::ZERO,
