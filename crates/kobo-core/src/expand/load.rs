@@ -167,6 +167,25 @@ pub(crate) fn expand_controlled(
     Ok((level, trace))
 }
 
+/// Where the player stands once the loader has entered level `level` by
+/// secondary entrance `id`, in level pixels (`$94`, `$96`): as a screen
+/// exit in Lunar Magic's format to it would (`$19D8`'s `u`, `s`, and the
+/// number's bit 8) and as the game's own code takes one (`$1B93` set, and
+/// bit 8 from the submap, `CODE_05D796`).
+pub fn secondary_entry(rom: &Rom, level: u16, id: u16) -> Result<(u16, u16), ExpandError> {
+    let mut machine = Machine::new(rom, level);
+    boot(&mut machine)?;
+    let high = (id >> 8 & 1) as u8;
+    load_level_with(&mut machine, |ram| {
+        ram.set_u8(ram::EXIT_TABLE_LOW, id as u8);
+        ram.set_u8(ram::EXIT_TABLE_HIGH, 0x04 | 0x02 | high);
+        ram.set_u8(ram::USE_SECONDARY_EXIT, 1);
+        ram.set_u8(ram::OW_PLAYER_SUBMAP, high);
+    })?;
+    let ram = &machine.bus.ram;
+    Ok((ram.u16(ram::PLAYER_X), ram.u16(ram::PLAYER_Y)))
+}
+
 /// The first `len` bytes of GFX file `index` (`00` to `31`) as the ROM's
 /// own code decompresses it, whatever routine a hack has put in the
 /// game's place. This is what [`crate::gfx`]'s decoders are checked
@@ -514,7 +533,7 @@ pub fn enter_by_exit(
     ram.set_u8(ram::SUBLEVEL_COUNT, 1);
     ram.set_u8(ram::EXIT_TABLE_LOW, low);
     ram.set_u8(ram::EXIT_TABLE_HIGH, high);
-    ram.set_u8(ram::RamAddr::new(0x7E_1B93), secondary as u8);
+    ram.set_u8(ram::USE_SECONDARY_EXIT, secondary as u8);
     ram.set_u8(ram::OW_PLAYER_SUBMAP, submap);
     ram.set_u8(ram::GAME_MODE, 0x11);
     set(ram);

@@ -26,6 +26,8 @@ pub struct View {
     pub sprites: SpriteView,
     pub player: bool,
     pub source: bool,
+    /// Markers where the player enters.
+    pub entrances: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -66,6 +68,7 @@ pub struct OpenLevel {
     /// The last picture's load and what it says of objects and sprites.
     pub geometry: Option<Geometry>,
     pub diagnostics: Vec<String>,
+    pub entries: Vec<crate::preview::Entry>,
     pub render_error: Option<String>,
     pub rendered_in: Option<Duration>,
     /// The newest preview asked for, and the one shown.
@@ -99,6 +102,7 @@ impl OpenLevel {
             picture: None,
             geometry: None,
             diagnostics: Vec::new(),
+            entries: Vec::new(),
             render_error: None,
             rendered_in: None,
             requested: 0,
@@ -247,6 +251,7 @@ impl App {
                 sprites: SpriteView::Drawn,
                 player: true,
                 source: startup.source,
+                entrances: true,
             },
             level_filter: String::new(),
             all_levels: false,
@@ -389,6 +394,7 @@ impl App {
     }
 
     fn take_preview(&mut self, ctx: &egui::Context) {
+        self.take_entries();
         let Some(done) = self.previewer.poll() else {
             return;
         };
@@ -403,8 +409,18 @@ impl App {
                     loaded,
                     sprites,
                     diagnostics,
+                    entries,
                     took,
                 } = rendered;
+                // The secondary entrances follow; until they do, the last
+                // ones stay.
+                let old: Vec<_> = open
+                    .entries
+                    .drain(..)
+                    .filter(|e| matches!(e.kind, crate::preview::EntryKind::Secondary(_)))
+                    .collect();
+                open.entries = entries;
+                open.entries.extend(old);
                 open.picture = Some(Picture::new(ctx, &image));
                 open.geometry = Some(Geometry::new(
                     loaded,
@@ -422,6 +438,19 @@ impl App {
                 open.render_error = Some(e);
                 open.pending = None;
             }
+        }
+    }
+
+    /// The secondary entrances found for a level's picture: with the main
+    /// entrance and the midway, which came with it.
+    fn take_entries(&mut self) {
+        let Some((id, found)) = self.previewer.take_entries() else {
+            return;
+        };
+        if let Some(open) = self.open.values_mut().find(|o| o.shown == id) {
+            open.entries
+                .retain(|e| !matches!(e.kind, crate::preview::EntryKind::Secondary(_)));
+            open.entries.extend(found);
         }
     }
 
@@ -715,6 +744,10 @@ impl App {
         ui.horizontal(|ui| {
             ui.toggle_value(&mut self.view.screens, "Screens");
             ui.toggle_value(&mut self.view.grid, "Grid");
+            ui.toggle_value(&mut self.view.entrances, "Entrances")
+                .on_hover_text(
+                    "Where the player enters: the start, the midway, and each secondary entrance",
+                );
             ui.separator();
             let before = (self.view.sprites, self.view.player);
             ui.label(RichText::new("Sprites").color(theme::MUTED));

@@ -448,6 +448,9 @@ pub const EXIT_TABLE_HIGH: RamAddr = ram(0x7E_19D8);
 /// `$1F11`: the player's submap, which vanilla turns into the level
 /// number's high byte.
 pub const OW_PLAYER_SUBMAP: RamAddr = ram(0x7E_1F11);
+/// Whether the exit being taken leads to a secondary entrance
+/// (`UseSecondaryExit`).
+pub const USE_SECONDARY_EXIT: RamAddr = ram(0x7E_1B93);
 pub const LAST_SCREEN_HORIZ: RamAddr = ram(0x7E_005E);
 pub const SCREEN_MODE: RamAddr = ram(0x7E_005B);
 pub const LEVEL_MODE: RamAddr = ram(0x7E_1925);

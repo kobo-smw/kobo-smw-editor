@@ -1157,6 +1157,10 @@ fn draw(
         );
     }
 
+    if view.entrances {
+        draw_entries(&painter, canvas, camera, &open.entries);
+    }
+
     if let Some(Drag::Marquee { from, to, .. }) = &open.drag {
         let r = camera.rect_to_screen(canvas, Rect::from_two_pos(*from, *to));
         painter.rect(
@@ -1192,6 +1196,39 @@ fn draw(
         let galley = painter.layout_no_wrap(text, FontId::monospace(11.0), theme::ON_SELECTION);
         let r = Rect::from_min_size(at, galley.size()).expand2(Vec2::new(5.0, 2.0));
         painter.rect_filled(r, CornerRadius::same(3), crate::app::color_for(item));
+        painter.galley(at, galley, theme::ON_SELECTION);
+    }
+}
+
+/// A flag where the player enters each way, labelled.
+fn draw_entries(
+    painter: &egui::Painter,
+    canvas: Rect,
+    camera: &Camera,
+    entries: &[crate::preview::Entry],
+) {
+    use crate::preview::EntryKind;
+    for entry in entries {
+        let (text, color) = match entry.kind {
+            EntryKind::Main => ("START".to_string(), theme::OK),
+            EntryKind::Midway => ("MIDWAY".to_string(), theme::ACCENT),
+            EntryKind::Secondary(id) => (format!("ENTRANCE {id:03X}"), theme::HEADER),
+        };
+        // The player's feet are 32 pixels below his position.
+        let foot = camera.to_screen(
+            canvas,
+            Pos2::new(entry.x as f32 + 8.0, entry.y as f32 + 32.0),
+        );
+        let top = camera.to_screen(
+            canvas,
+            Pos2::new(entry.x as f32 + 8.0, entry.y as f32 - 8.0),
+        );
+        painter.line_segment([foot, top], Stroke::new(2.0, color));
+        painter.circle_filled(foot, 3.0, color);
+        let galley = painter.layout_no_wrap(text, FontId::monospace(10.5), theme::ON_SELECTION);
+        let at = top + Vec2::new(0.0, -galley.size().y - 2.0);
+        let r = Rect::from_min_size(at, galley.size()).expand2(Vec2::new(4.0, 1.0));
+        painter.rect_filled(r, CornerRadius::same(3), color);
         painter.galley(at, galley, theme::ON_SELECTION);
     }
 }

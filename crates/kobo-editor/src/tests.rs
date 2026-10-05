@@ -688,3 +688,31 @@ fn building_writes_the_rom_and_a_patch_with_unsaved_edits() {
     let loaded = kobo_core::expand::expand_level(&built, 0x105).unwrap();
     assert_eq!(loaded.tiles.tile_at(65, 22), 0x25);
 }
+
+#[test]
+fn entrances_are_marked_where_the_loader_puts_the_player() {
+    use crate::preview::EntryKind;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "entries");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the secondary entrances", |app| {
+        app.current().is_some_and(|o| {
+            o.entries
+                .iter()
+                .any(|e| e.kind == EntryKind::Secondary(0x1CB))
+        })
+    });
+    let open = harness.state().current().unwrap();
+    let place = |kind| {
+        open.entries
+            .iter()
+            .find(|e| e.kind == kind)
+            .map(|e| (e.x, e.y))
+    };
+    // Level 105 starts at its left, on the ground; entrance 1CB is on
+    // screen 8, out of the diagonal pipe; the midway is on screen 9.
+    assert_eq!(place(EntryKind::Main), Some((16, 352)));
+    assert_eq!(place(EntryKind::Secondary(0x1CB)), Some((2072, 306)));
+    assert_eq!(place(EntryKind::Midway).map(|(x, _)| x / 256), Some(9));
+}
