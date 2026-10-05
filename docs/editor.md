@@ -65,8 +65,9 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
   a level or across levels.
 - **Screen exits**: each has a label at the top of its screen; drag it to another screen.
   The canvas's menu adds one to a screen without.
-- **Entrances**: drag the start or a secondary entrance; it snaps to where its screen, X,
-  and Y settings can put the player.
+- **Entrances**: drag the start, the midway, or a secondary entrance; it snaps to where its
+  settings can put the player (the game's table of places, or with Lunar Magic's position
+  method 2 any tile). The game's own midway entrance moves from screen to screen.
 - **Right click**: the menu for what is under the mouse.
 
 Undo (Ctrl+Z) and redo (Ctrl+Shift+Z) work per level; the Edit menu undoes back several

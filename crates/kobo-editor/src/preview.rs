@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 use kobo_core::edit::Workspace;
+use kobo_core::entrance::SeparateMidway;
 use kobo_core::expand::{self, LoadedLevel};
 use kobo_core::operation::Operation;
 use kobo_core::render::RenderOptions;
@@ -40,8 +41,8 @@ pub struct Entry {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EntryKind {
     Main,
-    /// The midway entrance as the game makes it: the main entrance's
-    /// place on the midway screen.
+    /// The midway entrance: the main entrance's place on the midway
+    /// screen, or a separate one's own place there.
     Midway,
     Secondary(u16),
 }
@@ -230,20 +231,28 @@ fn entries(workspace: &Workspace, number: u16, loaded: &LoadedLevel) -> Vec<Entr
     let Some(level) = workspace.level(number) else {
         return entries;
     };
-    if !loaded.tiles.vertical {
-        let screen = i32::from(level.entrance.midway_screen)
-            | if level.settings.midway.screen_high {
-                0x10
-            } else {
-                0
-            };
-        if level.settings.midway.separate.is_none() && screen > 0 {
+    let screen = level.entrance.midway_screen
+        | if level.settings.midway.screen_high {
+            0x10
+        } else {
+            0
+        };
+    match level.settings.midway.separate {
+        None if !loaded.tiles.vertical && screen > 0 => entries.push(Entry {
+            kind: EntryKind::Midway,
+            x: i32::from(screen) * 256 + x % 256,
+            y,
+        }),
+        Some(SeparateMidway::Entrance(m)) => {
+            let vertical = loaded.tiles.vertical;
+            let (x, y) = kobo_core::entrance::tile_place(screen, m.x.into(), m.y, vertical);
             entries.push(Entry {
                 kind: EntryKind::Midway,
-                x: screen * 256 + x % 256,
-                y,
+                x: x as i32,
+                y: y as i32,
             });
         }
+        _ => {}
     }
     entries
 }

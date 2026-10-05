@@ -6,6 +6,7 @@ use eframe::egui::{
     Shape, Stroke, StrokeKind, Vec2,
 };
 use kobo_core::edit::{self, Edit, ObjectLayer};
+use kobo_core::entrance::{self, MainEntranceTables, SeparateMidway};
 use kobo_core::expand::ObjectRef;
 use kobo_core::level::objects::Object;
 use kobo_core::source::level::{Level, Sprite};
@@ -684,13 +685,11 @@ fn show_canvas(
                 {
                     open.entries
                         .iter()
-                        .filter(|e| e.kind != crate::preview::EntryKind::Midway)
                         .find(|e| start_rect(e).contains(from))
                         .and_then(|e| {
-                            let (screen, x, y) = entry_settings(open.document.level(), e.kind)?;
-                            let (px, py) = tables.position(screen, x, y, vertical);
-                            let offset =
-                                Vec2::new((e.x - px as i32) as f32, (e.y - py as i32) as f32);
+                            let placement = entry_placement(open.document.level(), e.kind)?;
+                            let (px, py) = placement.position(tables, vertical);
+                            let offset = Vec2::new((e.x - px) as f32, (e.y - py) as f32);
                             Some((e.kind, offset))
                         })
                 } else {
@@ -786,11 +785,14 @@ fn show_canvas(
                         });
                     }
                     Some(Drag::Entry { kind, at, offset }) => {
-                        if let Some(tables) = tables {
+                        let level = open.document.level();
+                        if let Some(tables) = tables
+                            && let Some(placement) = entry_placement(level, kind)
+                        {
                             let target = at - Vec2::new(8.0, 0.0) - offset;
-                            let settings =
-                                tables.nearest(target.x as i32, target.y as i32, vertical);
-                            if let Some(edit) = move_entry(open.document.level(), kind, settings) {
+                            let target = (target.x as i32, target.y as i32);
+                            let placement = placement.nearest(tables, target, vertical);
+                            if let Some(edit) = move_entry(level, kind, placement) {
                                 context_edit = Some(edit);
                             }
                         }
@@ -880,21 +882,23 @@ fn show_canvas(
             painter.galley(rect.min + Vec2::new(6.0, 3.0), galley, text);
         }
         // An entrance being moved: where its settings would put it.
-        if let (Some(Drag::Entry { kind, at, offset }), Some(tables)) = (&open.drag, tables) {
+        if let (Some(Drag::Entry { kind, at, offset }), Some(tables)) = (&open.drag, tables)
+            && let Some(placement) = entry_placement(open.document.level(), *kind)
+        {
             let target = *at - Vec2::new(8.0, 0.0) - *offset;
-            let (screen, x, y) = tables.nearest(target.x as i32, target.y as i32, vertical);
-            let (px, py) = tables.position(screen, x, y, vertical);
+            let placement = placement.nearest(tables, (target.x as i32, target.y as i32), vertical);
+            let (px, py) = placement.position(tables, vertical);
             let entry = crate::preview::Entry {
                 kind: *kind,
-                x: px as i32 + offset.x as i32,
-                y: py as i32 + offset.y as i32,
+                x: px + offset.x as i32,
+                y: py + offset.y as i32,
             };
             draw_entries(&painter, canvas, &camera, std::slice::from_ref(&entry));
             let r = camera.rect_to_screen(canvas, start_rect(&entry));
             painter.text(
                 r.center_bottom() + Vec2::new(0.0, 6.0),
                 Align2::CENTER_TOP,
-                format!("screen {screen:02X}, X {x}, Y {y}"),
+                placement.describe(),
                 FontId::monospace(11.0),
                 theme::OK,
             );
@@ -1535,62 +1539,170 @@ fn draw(
     }
 }
 
-/// An entrance's position settings: (screen, X, Y).
-fn entry_settings(level: &Level, kind: crate::preview::EntryKind) -> Option<(u8, u8, u8)> {
-    use crate::preview::EntryKind;
-    match kind {
-        EntryKind::Main if level.settings.tile_position.is_none() => {
-            let e = level.entrance;
-            Some((e.entrance_screen, e.entrance_x, e.entrance_y))
+/// How an entrance's settings place the player.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Placement {
+    /// Position method 1, the game's tables: a screen, an X setting, and a
+    /// Y setting.
+    Tables(u8, u8, u8),
+    /// Position method 2: a screen and a tile.
+    Tiles(u8, u16, u16),
+    /// The game's own midway entrance: the main entrance's place on a
+    /// screen.
+    Screen(u8),
+}
+
+impl Placement {
+    /// Where the player stands, in level pixels (a screen's left edge, for
+    /// `Screen`).
+    fn position(self, tables: MainEntranceTables, vertical: bool) -> (i32, i32) {
+        let (x, y) = match self {
+            Self::Tables(screen, x, y) => tables.position(screen, x, y, vertical),
+            Self::Tiles(screen, x, y) => entrance::tile_place(screen, x, y, vertical),
+            Self::Screen(screen) => (u32::from(screen) * 256, 0),
+        };
+        (x as i32, y as i32)
+    }
+
+    /// The placement of the same kind nearest (`px`, `py`).
+    fn nearest(self, tables: MainEntranceTables, (px, py): (i32, i32), vertical: bool) -> Self {
+        match self {
+            Self::Tables(..) => {
+                let (screen, x, y) = tables.nearest(px, py, vertical);
+                Self::Tables(screen, x, y)
+            }
+            Self::Tiles(..) => {
+                let (screen, x, y) = entrance::nearest_tile(px, py, vertical);
+                Self::Tiles(screen, x, y)
+            }
+            // Screen 0 is no midway point at all.
+            Self::Screen(_) => Self::Screen((px + 128).div_euclid(256).clamp(1, 31) as u8),
         }
-        EntryKind::Secondary(id) => {
-            let e = level.entrances.iter().find(|e| e.id == id)?;
-            Some((e.screen, e.x, e.y))
+    }
+
+    fn describe(self) -> String {
+        match self {
+            Self::Tables(screen, x, y) => format!("screen {screen:02X}, X {x}, Y {y}"),
+            Self::Tiles(screen, x, y) => format!("screen {screen:02X}, tile {x}, {y}"),
+            Self::Screen(screen) => format!("screen {screen:02X}"),
         }
-        _ => None,
     }
 }
 
-/// The edit that gives an entrance new position settings, and its label.
-fn move_entry(
-    level: &Level,
-    kind: crate::preview::EntryKind,
-    (screen, x, y): (u8, u8, u8),
-) -> Option<(String, Vec<Edit>)> {
+/// The midway screen, 0 to 31.
+fn midway_screen(level: &Level) -> u8 {
+    level.entrance.midway_screen
+        | if level.settings.midway.screen_high {
+            0x10
+        } else {
+            0
+        }
+}
+
+/// How an entrance's settings place the player, for one the canvas can
+/// move.
+pub(crate) fn entry_placement(level: &Level, kind: crate::preview::EntryKind) -> Option<Placement> {
     use crate::preview::EntryKind;
+    let tiles = |screen, x: u8, y: u8, (x_high, y_high): (u8, u8)| {
+        Placement::Tiles(
+            screen,
+            u16::from(x_high) << 3 | u16::from(x & 7),
+            u16::from(y_high) << 4 | u16::from(y & 15),
+        )
+    };
     match kind {
         EntryKind::Main => {
-            let header = level.entrance;
-            let moved = kobo_core::level::SecondaryHeader {
-                entrance_screen: screen,
-                entrance_x: x,
-                entrance_y: y,
-                ..header
-            };
-            (moved != header)
-                .then(|| ("Move the start".to_string(), vec![Edit::SetEntrance(moved)]))
-        }
-        EntryKind::Secondary(id) => {
-            let index = level.entrances.iter().position(|e| e.id == id)?;
-            let entrance = level.entrances[index];
-            let moved = kobo_core::source::level::Entrance {
-                screen,
-                x,
-                y,
-                ..entrance
-            };
-            (moved != entrance).then(|| {
-                (
-                    format!("Move entrance {id:03X}"),
-                    vec![Edit::ReplaceEntrance {
-                        index,
-                        entrance: moved,
-                    }],
-                )
+            let e = level.entrance;
+            Some(match level.settings.tile_position {
+                Some(high) => tiles(e.entrance_screen, e.entrance_x, e.entrance_y, high),
+                None => Placement::Tables(e.entrance_screen, e.entrance_x, e.entrance_y),
             })
         }
-        EntryKind::Midway => None,
+        EntryKind::Secondary(id) => {
+            let e = level.entrances.iter().find(|e| e.id == id)?;
+            Some(match e.settings.tile_position {
+                Some(high) => tiles(e.screen, e.x, e.y, high),
+                None => Placement::Tables(e.screen, e.x, e.y),
+            })
+        }
+        EntryKind::Midway => match level.settings.midway.separate {
+            None => Some(Placement::Screen(midway_screen(level))),
+            Some(SeparateMidway::Entrance(m)) => {
+                Some(Placement::Tiles(midway_screen(level), u16::from(m.x), m.y))
+            }
+            Some(SeparateMidway::Redirect(_)) => None,
+        },
     }
+}
+
+/// The edits that give an entrance a new placement, and their label.
+pub(crate) fn move_entry(
+    level: &Level,
+    kind: crate::preview::EntryKind,
+    placement: Placement,
+) -> Option<(String, Vec<Edit>)> {
+    use crate::preview::EntryKind;
+    if entry_placement(level, kind) == Some(placement) {
+        return None;
+    }
+    // The settings' X, Y, and method 2's high bits, for a placement.
+    let split = |x: u16, y: u16| {
+        (
+            (x & 7) as u8,
+            (y & 15) as u8,
+            ((x >> 3) as u8, (y >> 4) as u8),
+        )
+    };
+    let mut edits = Vec::new();
+    let mut header = level.entrance;
+    let mut settings = level.settings;
+    let label = match (kind, placement) {
+        (EntryKind::Main, Placement::Tables(screen, x, y)) => {
+            (header.entrance_screen, header.entrance_x, header.entrance_y) = (screen, x, y);
+            "Move the start".to_string()
+        }
+        (EntryKind::Main, Placement::Tiles(screen, x, y)) => {
+            let (x, y, high) = split(x, y);
+            (header.entrance_screen, header.entrance_x, header.entrance_y) = (screen, x, y);
+            settings.tile_position = Some(high);
+            "Move the start".to_string()
+        }
+        (EntryKind::Secondary(id), Placement::Tables(..) | Placement::Tiles(..)) => {
+            let index = level.entrances.iter().position(|e| e.id == id)?;
+            let mut entrance = level.entrances[index];
+            match placement {
+                Placement::Tiles(screen, x, y) => {
+                    let (x, y, high) = split(x, y);
+                    (entrance.screen, entrance.x, entrance.y) = (screen, x, y);
+                    entrance.settings.tile_position = Some(high);
+                }
+                Placement::Tables(screen, x, y) => {
+                    (entrance.screen, entrance.x, entrance.y) = (screen, x, y);
+                }
+                Placement::Screen(_) => return None,
+            }
+            edits.push(Edit::ReplaceEntrance { index, entrance });
+            format!("Move entrance {id:03X}")
+        }
+        (EntryKind::Midway, Placement::Screen(screen) | Placement::Tiles(screen, ..)) => {
+            header.midway_screen = screen & 0x0F;
+            settings.midway.screen_high = screen & 0x10 != 0;
+            if let (Placement::Tiles(_, x, y), Some(SeparateMidway::Entrance(m))) =
+                (placement, &mut settings.midway.separate)
+            {
+                (m.x, m.y) = (x as u8, y);
+            }
+            "Move the midway entrance".to_string()
+        }
+        _ => return None,
+    };
+    if header != level.entrance {
+        edits.push(Edit::SetEntrance(header));
+    }
+    if settings != level.settings {
+        edits.push(Edit::SetSettings(settings));
+    }
+    (!edits.is_empty()).then_some((label, edits))
 }
 
 /// Where the start marker can be taken hold of, in level pixels: the flag

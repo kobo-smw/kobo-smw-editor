@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
-use kobo_core::edit::{self, ObjectLayer};
+use kobo_core::edit::{self, Edit, ObjectLayer};
 use kobo_core::tiers::{self, Tier};
 use kobo_core::{Rom, RomIdentity, config, import};
 
@@ -1000,4 +1000,55 @@ fn a_secondary_entrance_is_dragged_keeping_where_its_action_puts_the_player() {
     let level = harness.state().current().unwrap().document.level().clone();
     let e = level.entrances.iter().find(|e| e.id == 0x1CB).unwrap();
     assert_eq!((e.screen, e.x, e.y), (9, 1, 9));
+}
+
+#[test]
+fn entrances_move_by_the_settings_that_place_them() {
+    use crate::canvas::{Placement, entry_placement, move_entry};
+    use crate::preview::EntryKind;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "placements");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    let mut level = harness.state().current().unwrap().document.level().clone();
+
+    // The game's midway entrance moves by its screen alone.
+    assert_eq!(
+        entry_placement(&level, EntryKind::Midway),
+        Some(Placement::Screen(9))
+    );
+    let (_, edits) = move_entry(&level, EntryKind::Midway, Placement::Screen(0x14)).unwrap();
+    let mut header = level.entrance;
+    header.midway_screen = 4;
+    let mut settings = level.settings;
+    settings.midway.screen_high = true;
+    assert_eq!(
+        edits,
+        [Edit::SetEntrance(header), Edit::SetSettings(settings)]
+    );
+    assert!(move_entry(&level, EntryKind::Midway, Placement::Screen(9)).is_none());
+
+    // Position method 2 splits the tile between the settings' X and Y and
+    // the method's high bits.
+    level.settings.tile_position = Some((0, 1));
+    let Some(Placement::Tiles(_, x, y)) = entry_placement(&level, EntryKind::Main) else {
+        panic!("the start is placed by tile");
+    };
+    assert_eq!(
+        (x, y),
+        (
+            u16::from(level.entrance.entrance_x),
+            16 | u16::from(level.entrance.entrance_y)
+        )
+    );
+    let (_, edits) = move_entry(&level, EntryKind::Main, Placement::Tiles(2, 12, 30)).unwrap();
+    let mut header = level.entrance;
+    (header.entrance_screen, header.entrance_x, header.entrance_y) = (2, 4, 14);
+    let mut settings = level.settings;
+    settings.tile_position = Some((1, 1));
+    assert_eq!(
+        edits,
+        [Edit::SetEntrance(header), Edit::SetSettings(settings)]
+    );
 }

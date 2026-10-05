@@ -143,14 +143,15 @@ Since (2026-10-05 and 06, on master):
   every level as a picture card.
 - Marks for sprites the capture gave up on; hex fields for extension bytes and Lunar Magic's
   and unplaced objects' data.
+- Screen exits dragged to another screen; entrances dragged, the midway and those placed by
+  tile (`entrance::tile_place`) too; layers 1, 2, and 3 shown or hidden
+  (`RenderOptions::hidden_layers`).
 
 Next:
 
-- Positions in tiles past a vertical level's edge, and editing a separate midway entrance on
-  the canvas rather than by numbers.
-- Dragging a screen exit to another screen; dragging entrances.
-- The rest of `LevelSettings` (a relative camera, position method 2), and the graphics list,
-  palette, and ExAnimation, which are step 4's.
+- Positions in tiles past a vertical level's edge.
+- The rest of `LevelSettings` (a relative camera), and the graphics list, palette, and
+  ExAnimation, which are step 4's.
 
 ## Running it
 

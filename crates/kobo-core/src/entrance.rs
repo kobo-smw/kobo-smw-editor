@@ -599,6 +599,21 @@ mod tests {
     }
 
     #[test]
+    fn tile_places_round_trip() {
+        for vertical in [false, true] {
+            for (screen, x, y) in [(0, 0, 0), (3, 15, 12), (31, 7, 9)] {
+                let (px, py) = tile_place(screen, x, y, vertical);
+                assert_eq!(
+                    nearest_tile(px as i32 + 3, py as i32 - 2, vertical),
+                    (screen, x, y)
+                );
+            }
+        }
+        assert_eq!(tile_place(2, 4, 20, false), (2 * 256 + 64, 320));
+        assert_eq!(tile_place(2, 20, 4, true), (320, 2 * 256 + 64));
+    }
+
+    #[test]
     fn entrance_settings() {
         // Kaizo Kindergarten's entrance 0C5: method 2 with X bit 3, F set.
         let e = EntranceSettings::from_bytes([0x24, 0x04, 0x50], [0x40, 0x00]);
@@ -609,6 +624,33 @@ mod tests {
         assert!(e.slippery && e.face_left && e.water);
         assert_eq!(e.relative, Some(true));
         assert_eq!(e.to_bytes(), (0x80, [0x40, 0xE0]));
+    }
+}
+
+/// Where position method 2 puts the player, in level pixels, for a screen
+/// (0 to 31) and a tile: in a horizontal level, X is the screen's plus the
+/// X tile (0 to 15) and Y the Y tile (0 to 1023); in a vertical one, X is
+/// the X tile (0 to 31) and Y the screen's plus the Y tile (0 to 15).
+pub fn tile_place(screen: u8, x: u16, y: u16, vertical: bool) -> (u32, u32) {
+    let screen = u32::from(screen & 0x1F) << 8;
+    let (x, y) = (u32::from(x), u32::from(y));
+    if vertical {
+        ((x & 31) * 16, screen + (y & 15) * 16)
+    } else {
+        (screen + (x & 15) * 16, (y & 1023) * 16)
+    }
+}
+
+/// The screen and tiles whose method 2 place is nearest (`px`, `py`),
+/// the tile kept on its screen.
+pub fn nearest_tile(px: i32, py: i32, vertical: bool) -> (u8, u16, u16) {
+    let tile = |p: i32, most: i32| (p + 8).div_euclid(16).clamp(0, most) as u16;
+    if vertical {
+        let screen = py.div_euclid(256).clamp(0, 31);
+        (screen as u8, tile(px, 31), tile(py - screen * 256, 15))
+    } else {
+        let screen = px.div_euclid(256).clamp(0, 31);
+        (screen as u8, tile(px - screen * 256, 15), tile(py, 1023))
     }
 }
 
