@@ -121,16 +121,36 @@ Done (2026-10-05), on the `step-3-editor` branch:
    from the canvas's menu; copying a level.
 8. Build to `build.sfc`, diagnostics, unsaved-edit prompt on close.
 
-Since: layer 2's objects selected and placed where the picture shows them, and secondary
-entrances added (`Workspace::free_entrance`) and removed.
+Since (2026-10-05 and 06, on master):
+
+- Layer 2's objects selected and placed where the picture shows them; secondary entrances
+  added (`Workspace::free_entrance`) and removed.
+- The outline (every entry in drawing order, with find), the clipboard (copy, cut, paste
+  at the mouse, duplicate, across levels), and reordering by key and menu.
+- The start screen: the clean ROM chosen and recorded (`config::set_vanilla_rom`), recent
+  projects, new projects empty, from a hack (`import::read_hack`), or from a baserom
+  template; the Project, Edit, and View menus.
+- The build window (`build::build_reporting`): stages as they run, a BPS patch, errors that
+  open their level.
+- Lunar Magic's level settings: the size (`Edit::SetSize`), the background, spawning, layer
+  2's vertical scroll, the midway screen and a midway entrance of its own.
+- Entrance markers (`expand::secondary_entry`), the minimap, and a level opening where the
+  player starts.
+- Changes since the last commit (`edit::diff`): listed, marked on the canvas, each taken
+  back on its own.
+- The command palette (Ctrl+K) and the shortcuts (F1).
+- Pictures in the palette for sprites too (`edit::sprite_previews`), and the overview of
+  every level as a picture card.
+- Marks for sprites the capture gave up on; hex fields for extension bytes and Lunar Magic's
+  and unplaced objects' data.
 
 Next:
 
-- The midway entrance's own settings, Lunar Magic's level sizes, and the rest of
-  `LevelSettings`.
-- Sprite pictures in the palette, and extension bytes for a tool's sprites.
-- CI: the editor builds and its tests run on all three platforms (they need no display),
-  but this has not been pushed yet.
+- Positions in tiles past a vertical level's edge, and editing a separate midway entrance on
+  the canvas rather than by numbers.
+- Dragging a screen exit to another screen; dragging entrances.
+- The rest of `LevelSettings` (a relative camera, position method 2), and the graphics list,
+  palette, and ExAnimation, which are step 4's.
 
 ## Running it
 

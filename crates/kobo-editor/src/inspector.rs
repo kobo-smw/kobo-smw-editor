@@ -268,12 +268,31 @@ fn object(
                 }
                 Object::Lunar { data, .. } => {
                     ui.label("Data");
-                    ui.label(RichText::new(hex_bytes(data)).monospace());
+                    let (r, bytes) = hex_field(ui, ("lunar", o.index), data);
+                    if let Some(bytes) = bytes {
+                        let mut changed = object.clone();
+                        if let Object::Lunar { data, .. } = &mut changed {
+                            *data = bytes;
+                        }
+                        *change = Some(Change::new(
+                            &r,
+                            "Change object data",
+                            vec![replace(changed)],
+                        ));
+                    }
                     ui.end_row();
                 }
                 Object::Unplaced(bytes) => {
                     ui.label("Bytes");
-                    ui.label(RichText::new(hex_bytes(bytes)).monospace());
+                    let (r, new) = hex_field(ui, ("unplaced", o.index), bytes);
+                    if let Some(new) = new {
+                        let changed = Object::Unplaced(new);
+                        *change = Some(Change::new(
+                            &r,
+                            "Change object bytes",
+                            vec![replace(changed)],
+                        ));
+                    }
                     ui.end_row();
                 }
             }
@@ -348,8 +367,16 @@ fn sprite(ui: &mut egui::Ui, level: &Level, index: usize, change: &mut Option<Ch
             }
             ui.end_row();
             if !sprite.extension.is_empty() {
-                ui.label("Extension");
-                ui.label(RichText::new(hex_bytes(&sprite.extension)).monospace());
+                ui.label("Extension")
+                    .on_hover_text("The bytes a tool's sprite takes after the game's three: as many as PIXI's list gives it");
+                let (r, bytes) = hex_field(ui, ("extension", index), &sprite.extension);
+                if let Some(extension) = bytes {
+                    let changed = Sprite {
+                        extension,
+                        ..sprite.clone()
+                    };
+                    *change = Some(Change::new(&r, "Change sprite", vec![replace(changed)]));
+                }
                 ui.end_row();
             }
         });
@@ -540,6 +567,45 @@ fn capitalised(name: &str) -> String {
         Some(c) => c.to_uppercase().chain(chars).collect(),
         None => String::new(),
     }
+}
+
+/// Bytes as hex to edit, the same count as before; the new bytes once the
+/// field is left or Enter pressed, if they read as that many.
+fn hex_field(
+    ui: &mut egui::Ui,
+    id: impl std::hash::Hash + std::fmt::Debug,
+    bytes: &[u8],
+) -> (Response, Option<Vec<u8>>) {
+    let id = ui.id().with(id);
+    let shown = hex_bytes(bytes);
+    let mut text = ui
+        .data(|d| d.get_temp::<String>(id))
+        .unwrap_or_else(|| shown.clone());
+    let response = ui.add(
+        egui::TextEdit::singleline(&mut text)
+            .font(egui::TextStyle::Monospace)
+            .desired_width(180.0),
+    );
+    let parsed: Option<Vec<u8>> = text
+        .split_whitespace()
+        .map(|b| u8::from_str_radix(b, 16).ok())
+        .collect::<Option<Vec<u8>>>()
+        .filter(|new| new.len() == bytes.len());
+    if response.has_focus() {
+        ui.data_mut(|d| d.insert_temp(id, text.clone()));
+    } else {
+        ui.data_mut(|d| d.remove::<String>(id));
+    }
+    let done = response.lost_focus();
+    let mut response = response;
+    if parsed.is_none() && text != shown {
+        response = response.on_hover_text(format!("{} bytes in hex, such as 00 1F", bytes.len()));
+    }
+    let new = parsed.filter(|new| done && new.as_slice() != bytes);
+    if new.is_some() {
+        response.mark_changed();
+    }
+    (response, new)
 }
 
 fn hex_bytes(bytes: &[u8]) -> String {
