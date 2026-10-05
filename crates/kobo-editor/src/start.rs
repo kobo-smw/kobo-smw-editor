@@ -440,6 +440,21 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
             });
         }
         ui.separator();
+        if ui
+            .button("Import a Lunar Magic level (MWL)…")
+            .on_hover_text("As the level it was saved from, in Kobo's format")
+            .clicked()
+        {
+            ui.close();
+            app.import_mwl();
+        }
+        if ui
+            .add_enabled(app.current().is_some_and(|o| o.image.is_some()), egui::Button::new("Save the level's picture…"))
+            .clicked()
+        {
+            ui.close();
+            app.save_picture();
+        }
         let file = app.current().map(|o| o.document.path().to_path_buf());
         if ui
             .add_enabled(file.is_some(), egui::Button::new("Open the level file elsewhere"))

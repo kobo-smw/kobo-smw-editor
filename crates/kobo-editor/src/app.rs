@@ -67,6 +67,8 @@ pub struct OpenLevel {
     pub number: u16,
     pub document: LevelDocument,
     pub picture: Option<Picture>,
+    /// The picture's pixels, for saving it.
+    pub image: Option<std::sync::Arc<egui::ColorImage>>,
     /// The last picture's load and what it says of objects and sprites.
     pub geometry: Option<Geometry>,
     pub diagnostics: Vec<String>,
@@ -109,6 +111,7 @@ impl OpenLevel {
             number,
             document,
             picture: None,
+            image: None,
             geometry: None,
             diagnostics: Vec::new(),
             entries: Vec::new(),
@@ -467,6 +470,7 @@ impl App {
                 open.entries = entries;
                 open.entries.extend(old);
                 open.picture = Some(Picture::new(ctx, &image));
+                open.image = Some(std::sync::Arc::new(image));
                 open.geometry = Some(Geometry::new(
                     loaded,
                     sprites,
@@ -697,6 +701,91 @@ impl App {
             for open in self.open.values() {
                 workspace.set_level(open.number, open.document.level());
             }
+        }
+    }
+
+    /// Imports a Lunar Magic MWL file into the project as the level it
+    /// was saved from, and opens it.
+    pub fn import_mwl(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("A level Lunar Magic saved as an MWL file")
+            .add_filter("Lunar Magic level", &["mwl"])
+            .pick_file()
+        else {
+            return;
+        };
+        let (Some(workspace), Clean::Loaded(clean)) = (&self.workspace, &self.clean) else {
+            return;
+        };
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(e) => return self.say(format!("{}: {e}", path.display())),
+        };
+        // An open level with unsaved edits is not written over.
+        let number = kobo_core::mwl::MwlFile::parse(&bytes)
+            .ok()
+            .and_then(|f| f.decode(None).ok())
+            .map(|m| m.info.level);
+        if let Some(number) = number
+            && self.is_modified(number)
+        {
+            return self.say(format!(
+                "Level {number:03X} has unsaved edits; save or undo them before importing over it"
+            ));
+        }
+        let root = workspace.project().root.clone();
+        match kobo_core::import::import_mwl(&bytes, clean, &root, None) {
+            Ok(report) => {
+                let keep: Vec<(u16, kobo_core::source::level::Level)> = self
+                    .open
+                    .values()
+                    .filter(|o| !report.levels.contains(&o.number))
+                    .map(|o| (o.number, o.document.level().clone()))
+                    .collect();
+                for number in &report.levels {
+                    self.open.remove(number);
+                }
+                if let Some(workspace) = &mut self.workspace
+                    && let Err(e) = workspace.reload(&keep)
+                {
+                    self.project_error = Some(e.to_string());
+                }
+                let notes = report.notes.join("; ");
+                if let Some(&number) = report.levels.first() {
+                    self.open_level(number);
+                    self.say(if notes.is_empty() {
+                        format!("Imported level {number:03X}")
+                    } else {
+                        format!("Imported level {number:03X}: {notes}")
+                    });
+                }
+            }
+            Err(e) => self.say(format!("Could not import {}: {e}", path.display())),
+        }
+    }
+
+    /// Saves the open level's picture as a PNG file.
+    pub fn save_picture(&mut self) {
+        let Some(open) = self.current() else { return };
+        let Some(image) = open.image.clone() else {
+            return;
+        };
+        let name = format!("level-{:03X}.png", open.number);
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("Save the level's picture")
+            .set_file_name(&name)
+            .add_filter("PNG", &["png"])
+            .save_file()
+        else {
+            return;
+        };
+        let mut rgb = kobo_core::image::RgbImage::new(image.size[0] as u32, image.size[1] as u32);
+        for (i, pixel) in image.pixels.iter().enumerate() {
+            rgb.pixels[i] = [pixel.r(), pixel.g(), pixel.b()];
+        }
+        match rgb.write_png(&path) {
+            Ok(()) => self.say(format!("Saved {}", path.display())),
+            Err(e) => self.say(format!("{}: {e}", path.display())),
         }
     }
 
