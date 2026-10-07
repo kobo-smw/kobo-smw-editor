@@ -167,11 +167,30 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         }
         app.levels.scroll_to_current = true;
     }
-    let field = ui.add(
-        egui::TextEdit::singleline(&mut app.levels.filter)
-            .hint_text("Find a level, or what levels hold: 105, castle, goomba…")
-            .desired_width(f32::INFINITY),
-    );
+    let field = ui
+        .horizontal(|ui| {
+            let button = 28.0;
+            let field = ui.add(
+                egui::TextEdit::singleline(&mut app.levels.filter)
+                    .hint_text("Find: 105, castle, goomba…")
+                    .desired_width(ui.available_width() - button - ui.spacing().item_spacing.x),
+            )
+            .on_hover_text(
+                "Levels by number, name, or tileset, and every object and sprite in every level (Ctrl+Shift+F)",
+            );
+            if ui
+                .add(
+                    egui::Button::new(RichText::new("▦").size(15.0))
+                        .min_size(egui::vec2(button, 0.0)),
+                )
+                .on_hover_text("All levels as pictures")
+                .clicked()
+            {
+                app.overview.open = true;
+            }
+            field
+        })
+        .inner;
     if std::mem::take(&mut app.levels.focus_search) {
         field.request_focus();
     }

@@ -2574,20 +2574,23 @@ fn exits_in_one_format(list: &[Object], number: u16) -> Vec<Object> {
 /// are read from layer 1 alone.
 fn check_objects(number: u16, list: &[Object], layer1: bool) -> Result<(), BuildError> {
     let refused = |o: &Object| match o {
-        Object::Unplaced(_) if graphics_object(o) && !layer1 => {
-            Some("Lunar Magic's graphics bypass, which it reads from layer 1 only,")
+        Object::Unplaced(_) if graphics_object(o) && !layer1 => Some(
+            "is Lunar Magic's graphics bypass, which Lunar Magic reads from layer 1 alone, so a build does not write it on layer 2",
+        ),
+        Object::Lunar { .. } | Object::Unplaced(_) if !handled(o) => {
+            Some("is one of Lunar Magic's, which this build cannot write yet")
         }
-        Object::Lunar { .. } | Object::Unplaced(_) if !handled(o) => Some("one of Lunar Magic's"),
         _ => None,
     };
+    let layer = if layer1 { 1 } else { 2 };
     match list
         .iter()
         .enumerate()
         .find_map(|(i, o)| Some((i, refused(o)?)))
     {
-        Some((i, what)) => Err(level_error(
+        Some((i, why)) => Err(level_error(
             number,
-            format!("object {i} is {what}, which this build cannot write yet"),
+            format!("layer {layer}'s object {i} {why}"),
         )),
         None => Ok(()),
     }
