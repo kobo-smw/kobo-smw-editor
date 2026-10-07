@@ -408,7 +408,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let mut look = None;
     let mut revert = None;
     egui::ScrollArea::vertical()
-        .auto_shrink([false, false])
+        .auto_shrink([false, true])
         .show(ui, |ui| {
             for (i, line) in lines.iter().enumerate() {
                 ui.horizontal(|ui| {
@@ -472,17 +472,25 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
         return;
     }
     let mut open = true;
-    egui::Window::new("Changes since the last commit")
+    // At the canvas's top right, over the level rather than the panels:
+    // once the canvas has a place.
+    let canvas = app.current().map_or(egui::Rect::NOTHING, |o| o.canvas);
+    if !canvas.is_positive() {
+        ctx.request_repaint();
+        return;
+    }
+    let window = egui::Window::new("Changes since the last commit")
         .open(&mut open)
         .default_width(360.0)
-        .default_height(420.0)
-        .show(ctx, |ui| {
-            if app.current().is_some() {
-                show(app, ui);
-            } else {
-                ui.label(RichText::new("Open a level to see its changes.").color(theme::MUTED));
-            }
-        });
+        .max_height(480.0)
+        .default_pos(canvas.right_top() + egui::vec2(-376.0, 8.0));
+    window.show(ctx, |ui| {
+        if app.current().is_some() {
+            show(app, ui);
+        } else {
+            ui.label(RichText::new("Open a level to see its changes.").color(theme::MUTED));
+        }
+    });
     if !open {
         app.changes_open = false;
         app.view.changes = false;
