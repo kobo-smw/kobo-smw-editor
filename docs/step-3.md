@@ -154,7 +154,7 @@ Since (2026-10-05 and 06, on master):
 - Following a screen exit to where it leads (`Workspace::entrance_level`), back and forward
   between levels, and finding objects and sprites in every level (`edit::find`).
 - Play from here (`kobo_core::playtest`, `asm/playtest.asm`, `kobo play`): checked in
-  Mesen 2 on vanilla, a Lunar Magic hack, and an SA-1 one, from the title screen into the
+  Mesen 2 on vanilla, a Lunar Magic hack, and an SA-1 one, from power-on into the
   level at the tile, and back there after a death and a game over.
 - Names from the game's tables where it has them: levels by their overworld names
   (`level::level_name`), entrance actions, layer 2 scroll and layer 3 settings, palette

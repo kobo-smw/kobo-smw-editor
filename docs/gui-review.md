@@ -1,0 +1,27 @@
+Issues found reviewing the GUI for the first time. Raw thoughts ranging from big issues to minor nits.
+
+- Scrolling the mouse wheel should scroll the level side to side (or up and down for a vertical level)
+- Import of invictus hack doesn't render any levels correctly. They seems to work with kobo level png but not after import and build. Many levels refuse to render at all and those that do render are incorrect.
+- When in the file picker we get a warning of kobo not responding (possibly because it's waiting on the file picker). I also saw this issue when in the emulator.
+- I tried launching to level of Level 007 of the test project (vanilla import). Observed the following issues:
+  - It put mario directly inside the wall (i.e. vertical starting position was not correct). I think it's because I used the right-click play from here button which now makes total sense, but maybe it should be clearer what it will do
+  - Incorrect music
+  - The render went strange and weirdly pixelated sometimes
+  - Launching to a level still launches to the games title screen. Would be great it we could bypass that too and just open the level
+- Audio often cuts out and just plays a high pitched sound until I turn off and on my headset again. This seemed to happen just playing the vanilla rom without kobo so maybe it's an emulator bug
+- Launching a water level (00A) mario seemed to not be able to swim (water seemed absent)
+- I'm not understanding what "The game's own levels too" checkbox does. I can't see any change when I tick it. Can you clarify?
+- Remove "nothing selected: the level's settings". Not necessary
+- Outline -> Objects (maybe split out sprites if you think that makes sense)
+- Move "Changes" tab to be under a menu. Like maybe add a git menu or something
+- Find -> Move this into levels (i.e. then we can search for a level or inside all levels). Doesn't need to be a top level tab
+- In the levels list, it would be cool for the mouse-over hover popup to be a picture/thumbnail of the level rather than text
+- Any way to hide junk levels (i.e. ones that are not accessible or not edited at all and are usually just the TEST blocks level)? Only if this can work well without hiding real levels
+- "Choose one, then click the level to place it." - Unnecessary. This is obvious. Remove it.
+- "Add" - Move this to after the outline/objects. Don't say that they are Lunar Magic's objects. Maybe just say "Compatible with Lunar Magic"
+- "Placing Map16 tile XXX: click the level; Esc stops" - Remove this. It's obvious.
+- Use iconography for undo/redo. Also the placement is kind of hidden but idk what is better.
+- For the level list, let's make the screen count smaller. Maybe just the number and then next to a symbol to show whether it's that many screens tall or wide (i.e. whether it's horizontal or vertical). I'm also ok with taking up a little more vertical real-estate here with something else that can identify the level, maybe including the colour pallete or something like that. Doesn't have to be a lot, just something to make it more visually identifiable
+- Only if possible/practical, but I way to group the levels by level (overloaded term here) but like each "level" in the list is really a screen that is a subset of a level (screens can exit/enter to each other to make a full level in the sense of one overworld entry). This would make it easier to navigate and understand the levels. I'm also open to changing the terminology, maybe using something like "screen" vs "level", however I also don't want to deviate too much from Lunar Magic
+- On the outline tab it might be useful to order all objects and sprites by x position (or y for vertical levels), that way they read in the way the level progresses rather than having to jump down to sprites and layers
+- Put some padding between the buttons in the editor and the edge. Would also be good to use iconography instead of the longer words. Layers is fine. Just whatever we can do here.

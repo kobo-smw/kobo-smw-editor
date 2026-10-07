@@ -10,7 +10,7 @@ use std::time::Duration;
 use kobo_core::asar::Asar;
 use kobo_core::playtest::{self, Start};
 
-use crate::app::App;
+use crate::app::{App, OpenLevel};
 
 /// The power-ups the player can start with, by `Start::powerup`.
 pub const POWERUPS: [&str; 4] = ["Small Mario", "Super Mario", "Cape Mario", "Fire Mario"];
@@ -112,13 +112,45 @@ pub fn poll(app: &mut App) {
 }
 
 /// Where the player starts for a click at level pixel (`x`, `y`): standing
-/// in the clicked tile, his top a tile above it.
-pub fn start_at(level: u16, (x, y): (f32, f32), powerup: u8) -> Start {
+/// in the clicked tile, his top a tile above it; and when the click is on
+/// something (the ground, a wall), on top of it: on the first surface
+/// above the click with room for him, if one is near.
+pub fn start_at(open: &OpenLevel, (x, y): (f32, f32), powerup: u8) -> Start {
     let tile = |p: f32| (p / 16.0).floor().max(0.0) as u16;
+    let (x, mut y) = (tile(x), tile(y));
+    if let (Some(geometry), Some(rom)) = (&open.geometry, open.built.as_deref()) {
+        let tiles = &geometry.loaded.tiles;
+        let (width, height) = tiles.size();
+        let acts = |x: u16, y: u16| {
+            (usize::from(x) < width && usize::from(y) < height).then(|| {
+                let tile = tiles.tile_at(usize::from(x), usize::from(y));
+                kobo_core::map16::pages::acts_like_in(rom, tile)
+            })
+        };
+        let solid = |y: u16| acts(x, y).is_some_and(|a| (SOLID_FROM..SOLID_TO).contains(&a));
+        let on_something = acts(x, y).is_some_and(|a| a != BLANK);
+        if on_something
+            && let Some(top) = (0..=CLIMB)
+                .filter_map(|up| y.checked_sub(up))
+                .find(|&top| top >= 2 && solid(top) && !solid(top - 1) && !solid(top - 2))
+        {
+            y = top - 1;
+        }
+    }
     Start {
-        level,
-        x: tile(x),
-        y: tile(y).saturating_sub(1),
+        level: open.number,
+        x,
+        y: y.saturating_sub(1),
         powerup,
     }
 }
+
+/// The empty tile.
+const BLANK: u16 = 0x025;
+/// The tiles the player stands on: page 1's, which are the game's ledges,
+/// blocks, slopes, and walls; page 0's are its passable ones (water,
+/// coins, vines, the background, the inside of the ground).
+const SOLID_FROM: u16 = 0x100;
+const SOLID_TO: u16 = 0x200;
+/// How far up a start on something looks for its top.
+const CLIMB: u16 = 16;

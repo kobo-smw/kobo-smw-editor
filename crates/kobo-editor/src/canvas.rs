@@ -725,7 +725,7 @@ fn show_canvas(
         if let Some(at) = pointer
             && ui.input(|i| i.key_pressed(Key::F5))
         {
-            play = Some(crate::play::start_at(number, (at.x, at.y), app_powerup));
+            play = Some(crate::play::start_at(open, (at.x, at.y), app_powerup));
         }
         let pills = exit_pills(&painter, canvas, &camera, open, geometry);
         let on_pill = |at: Pos2| pills.iter().find(|p| p.rect.contains(at)).map(|p| p.item);
@@ -956,8 +956,15 @@ fn show_canvas(
             }
         }
 
-        // A menu on what was right-clicked.
+        // A menu on what was right-clicked, with where Play from here
+        // would put the player while it is open.
         if placing.is_none() {
+            if response.context_menu_opened()
+                && let Some(at) = open.menu_at
+            {
+                let start = crate::play::start_at(open, (at.x, at.y), 0);
+                draw_play_start(&painter, canvas, &camera, start);
+            }
             response.context_menu(|ui| {
                 clip = clipboard_menu(ui, open, can_paste);
                 context_menu(
@@ -1329,13 +1336,13 @@ fn context_menu(
         ui.menu_button("Play from here", |ui| {
             for (i, name) in crate::play::POWERUPS.iter().enumerate() {
                 if ui.button(*name).clicked() {
-                    *play = Some(crate::play::start_at(number, (at.x, at.y), i as u8));
+                    *play = Some(crate::play::start_at(open, (at.x, at.y), i as u8));
                     ui.close();
                 }
             }
         })
         .response
-        .on_hover_text("Build the project to start here, and open it (F5 where the mouse is)");
+        .on_hover_text("Build the project to start with the player where the marker shows: standing here, or on the ground above if this is in it. Opens the build in your emulator (F5 where the mouse is).");
         ui.separator();
     }
     // A screen exit for the screen the menu was opened on, if it has none.
@@ -1904,6 +1911,33 @@ fn start_rect(entry: &crate::preview::Entry) -> Rect {
         Pos2::new(entry.x as f32 - 4.0, entry.y as f32 - 24.0),
         Pos2::new(entry.x as f32 + 40.0, entry.y as f32 + 32.0),
     )
+}
+
+/// Where Play from here puts the player: his box, two tiles tall.
+fn draw_play_start(
+    painter: &egui::Painter,
+    canvas: Rect,
+    camera: &Camera,
+    start: kobo_core::playtest::Start,
+) {
+    let (x, y) = (f32::from(start.x) * TILE, f32::from(start.y) * TILE);
+    let body = camera.rect_to_screen(
+        canvas,
+        Rect::from_min_size(Pos2::new(x, y), Vec2::new(TILE, TILE * 2.0)),
+    );
+    painter.rect_filled(body, CornerRadius::same(2), theme::OK.gamma_multiply(0.3));
+    painter.rect_stroke(
+        body,
+        CornerRadius::same(2),
+        Stroke::new(2.0, theme::OK),
+        egui::StrokeKind::Outside,
+    );
+    let galley =
+        painter.layout_no_wrap("PLAY".into(), FontId::monospace(10.5), theme::ON_SELECTION);
+    let at = body.center_top() + Vec2::new(-galley.size().x / 2.0, -galley.size().y - 3.0);
+    let r = Rect::from_min_size(at, galley.size()).expand2(Vec2::new(4.0, 1.0));
+    painter.rect_filled(r, CornerRadius::same(3), theme::OK);
+    painter.galley(at, galley, theme::ON_SELECTION);
 }
 
 /// A flag where the player enters each way, labelled.

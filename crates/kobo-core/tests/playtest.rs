@@ -35,8 +35,8 @@ fn a_play_build_enters_the_level_at_the_tile() {
             powerup: 1,
         };
         let rom = playtest::build(&workspace, &start, &asar).unwrap();
-        // The title screen's code goes to Kobo's.
-        assert_eq!(rom.read_u8(SnesAddr::new(0x009C64)).unwrap(), 0x5C);
+        // The title screen's load goes to Kobo's code.
+        assert_eq!(rom.read_u8(SnesAddr::new(0x0096BE)).unwrap(), 0x22);
         // The entrance the ROM takes puts the player on the tile, as the
         // game's own loader enters by it.
         let id = workspace.free_entrance(level).unwrap();
@@ -49,4 +49,25 @@ fn a_play_build_enters_the_level_at_the_tile() {
         // The project is as it was.
         assert_eq!(workspace.level(level), Some(&original));
     }
+}
+
+#[test]
+fn a_play_entrance_into_a_water_level_is_water() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    // 00A, Donut Secret 1, is water by its entrance's action, 7.
+    let (level, _) = kobo_core::import::read_level(&clean, 0x00A).unwrap();
+    assert_eq!(level.entrance.entrance_action, 7);
+    let start = Start {
+        level: 0x00A,
+        x: 20,
+        y: 20,
+        powerup: 0,
+    };
+    let entrance = playtest::entrance(&level, &start, 0x50);
+    assert!(entrance.settings.water);
+    assert_eq!(entrance.action, 0, "not out of a pipe");
+    let (level, _) = kobo_core::import::read_level(&clean, 0x105).unwrap();
+    assert!(!playtest::entrance(&level, &start, 0x50).settings.water);
 }

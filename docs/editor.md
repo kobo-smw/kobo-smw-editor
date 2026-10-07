@@ -140,11 +140,15 @@ about. *Build and play* opens the ROM with what the system opens it with.
 
 **Play from here** (the canvas's menu, with the power-up to start with, or F5 where the
 mouse is; the command palette plays from the level's start) builds the project as the
-editor has it into `play.sfc` beside the project's build and opens it. The game goes from
-the title screen straight to that tile, through a secondary entrance put there in a copy
-of the level, and comes back there after a death, a game over (with four lives again), or
-the level's end; the project is not changed. `kobo play` does the same from the command
-line.
+editor has it into `play.sfc` beside the project's build and opens it. While the canvas's
+menu is open, a PLAY marker shows where the player will start: standing where it was
+opened, or, opened on the ground or a wall, on top of it. The game goes from power-on
+straight to that tile, with no title screen (a moment of dark "Nintendo Presents", whose
+game modes set the screen up), through a secondary entrance put there in a copy of the
+level, which is water or slippery when the level is; it plays the level's own music, and
+comes back there after a death, a game over (with four lives again), or the level's end;
+the project is not changed. The pixelated fade on the way in is the game's own, as from
+the overworld. `kobo play` does the same from the command line.
 
 A level that does not build does not stop the others from drawing: the picture's build
 leaves it out, as the game's own, and says so above the canvas.

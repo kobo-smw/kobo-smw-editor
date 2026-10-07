@@ -1,8 +1,8 @@
-//! Play from here: a build of a project that goes from the title screen
-//! straight into a level, with the player at a tile of the editor's
-//! choosing. The level gets a secondary entrance there, placed by tile
-//! (Lunar Magic's position method 2), in a copy of the project; the build
-//! of that copy gets [`PATCH`], which on the title screen starts a game
+//! Play from here: a build of a project that goes from power-on straight
+//! into a level, with the player at a tile of the editor's choosing. The
+//! level gets a secondary entrance there, placed by tile (Lunar Magic's
+//! position method 2), in a copy of the project; the build of that copy
+//! gets [`PATCH`], which where the title screen would load starts a game
 //! and takes a screen exit to the entrance. The project itself is not
 //! changed.
 
@@ -16,6 +16,10 @@ use crate::source::level::Entrance;
 
 /// Kobo's patch for it, `asm/playtest.asm`.
 pub const PATCH: (&str, &str) = ("playtest.asm", include_str!("../asm/playtest.asm"));
+
+/// The entrance actions of a slippery level and a water level.
+const SLIPPERY_ACTION: u8 = 5;
+const WATER_ACTION: u8 = 7;
 
 /// Where to start, and as what.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -46,7 +50,12 @@ pub enum PlaytestError {
 
 /// The entrance at `start`'s tile, numbered `id`: in a horizontal level
 /// the tile's screen and its column on it, in a vertical one its screen
-/// down the level; the camera as the level's main entrance has it.
+/// down the level; the camera, water, and slipperiness as the level's main
+/// entrance has them. The game's own water and slippery levels say so by
+/// their entrance's action (7 and 5, `CODE_00A6CC`), which this entrance
+/// cannot take, since 7 brings the player out of a pipe: it takes Lunar
+/// Magic's bits for them instead, which its placing by tile installs the
+/// code for anyway.
 pub fn entrance(level: &crate::source::level::Level, start: &Start, id: u16) -> Entrance {
     let vertical = level.header.level_mode.layer1_vertical();
     let (screen, x, y) = if vertical {
@@ -71,11 +80,11 @@ pub fn entrance(level: &crate::source::level::Level, start: &Start, id: u16) -> 
         fg_position,
         bg_position,
         settings: EntranceSettings {
-            slippery: level.settings.slippery,
+            slippery: level.settings.slippery || main.entrance_action == SLIPPERY_ACTION,
             tile_position: Some(((x >> 3) as u8, (y >> 4) as u8)),
             relative,
             face_left: false,
-            water: level.settings.water,
+            water: level.settings.water || main.entrance_action == WATER_ACTION,
             overworld: None,
         },
     }

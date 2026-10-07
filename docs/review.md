@@ -50,9 +50,11 @@ settle it.
   step 4; the editor has it now, as a build (`kobo_core::playtest`, `kobo play`) and an
   emulator of the user's choosing, which the system opens `play.sfc` with. No emulator is
   driven: Mesen-S and bsnes-plus integration stays step 4's. The build hooks two game
-  modes of the game's own (`asm/playtest.asm`): the title screen, which starts a game and
-  takes a screen exit, and the overworld's load, which goes back into the level, so a play
-  ROM never shows the overworld. It writes `play.sfc` into the project's folder, beside
+  modes of the game's own (`asm/playtest.asm`): the title screen's load, which starts a
+  game, uploads the level music bank in place of the overworld's (a screen exit's entry
+  does not), and takes a screen exit, and the overworld's load, which goes back into the
+  level, so a play ROM shows neither the title screen nor the overworld; "Nintendo
+  Presents" runs for a frame, dark, to set the screen up. It writes `play.sfc` into the project's folder, beside
   `build.sfc`; a project's `.gitignore` should name both. To settle: the file's place (the
   user's cache instead), whether the overworld should show after the level's end, and the
   power-up and lives a play starts with (four lives, the power-up chosen in the menu).

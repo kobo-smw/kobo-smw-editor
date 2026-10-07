@@ -1341,7 +1341,11 @@ fn play_from_here_builds_a_rom_that_starts_there() {
     click_tile(&mut harness, 65, 22);
     harness.key_press(Key::Delete);
     harness.step();
-    let start = crate::play::start_at(0x105, (70.0 * 16.0, 19.0 * 16.0), 2);
+    let start = crate::play::start_at(
+        harness.state().current().unwrap(),
+        (70.0 * 16.0, 19.0 * 16.0),
+        2,
+    );
     assert_eq!((start.x, start.y), (70, 18));
     crate::play::start(harness.state_mut(), start);
     wait_for(&mut harness, "the build to play", |app| !app.play.busy());
@@ -1349,9 +1353,9 @@ fn play_from_here_builds_a_rom_that_starts_there() {
     assert!(message.starts_with("Playing level 105"), "{message}");
     let rom = Rom::load(project.0.join("play.sfc")).unwrap();
     assert_eq!(
-        rom.read_u8(kobo_core::addr::SnesAddr::new(0x009C64))
+        rom.read_u8(kobo_core::addr::SnesAddr::new(0x0096BE))
             .unwrap(),
-        0x5C
+        0x22
     );
     let loaded = kobo_core::expand::expand_level(&rom, 0x105).unwrap();
     assert_eq!(loaded.tiles.tile_at(65, 22), 0x25);
@@ -1648,4 +1652,21 @@ fn the_level_list_groups_sublevels_and_leaves_unused_levels_out() {
     );
     harness.run_steps(2);
     assert!(harness.query_by_label_contains("1CB ").is_none());
+}
+
+#[test]
+fn play_from_a_click_in_the_ground_starts_on_it() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "play-start");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    let open = harness.state().current().unwrap();
+    let at = |x: f32, y: f32| (x * 16.0 + 8.0, y * 16.0 + 8.0);
+    // Inside the ground ledge whose top is row 20: on top of it, his feet
+    // in row 19 and his top in 18.
+    let start = crate::play::start_at(open, at(65.0, 22.0), 0);
+    assert_eq!((start.x, start.y), (65, 18));
+    // In the air, where it was clicked.
+    let start = crate::play::start_at(open, at(65.0, 12.0), 0);
+    assert_eq!((start.x, start.y), (65, 11));
 }
