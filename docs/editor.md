@@ -18,6 +18,10 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
 - **Empty**: a `kobo.toml` and nothing else; every level builds as the game has it until it
   is added.
 - **From a hack**: a ROM or a BPS patch of the clean ROM, imported as `kobo import` does.
+  A window then says what came and what did not: the hack's own code and patches, which a
+  project carries only as their sources, and each level's notes. A hack its author locked
+  (which Lunar Magic will not open either) is imported only once the user agrees, since
+  its graphics and code stay behind and its levels will not look or play as the hack's.
 - **From a baserom**: one of `kobo new`'s templates, downloaded from its authors' release.
 
 ## The window

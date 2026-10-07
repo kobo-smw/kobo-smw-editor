@@ -1511,3 +1511,51 @@ fn a_level_goes_back_to_its_saved_file_as_one_step() {
     harness.step();
     assert!(harness.state().is_modified(0x105));
 }
+
+#[test]
+fn what_an_emulator_writes_beside_a_build_is_not_followed() {
+    use crate::app::matters;
+    for file in [
+        "levels/105.toml",
+        "kobo.toml",
+        "map16/01.toml",
+        "gfx/ExGFX80.png",
+    ] {
+        assert!(matters(Path::new(file)), "{file}");
+    }
+    for file in [
+        "play.sfc",
+        "play.srm",
+        "build.sav",
+        "play.state1",
+        "play.000",
+        "play.mss",
+        ".git/index",
+        "levels/105.toml~",
+    ] {
+        assert!(!matters(Path::new(file)), "{file}");
+    }
+}
+
+#[test]
+fn an_import_says_what_the_project_does_not_carry() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "import-report");
+    // A hack that changes a byte of the game's code, which no import
+    // carries.
+    let mut hack = Rom::from_bytes(clean.data().to_vec()).unwrap();
+    let at = kobo_core::addr::SnesAddr::new(0x00A1DA);
+    let byte = hack.read(at, 1).unwrap()[0];
+    hack.write_u8(at, byte ^ 0xFF).unwrap();
+    let dir = project.0.join("imported");
+    let report = import::import_rom(&hack, &clean, &dir, false).unwrap();
+    let report = crate::start::ImportReport::new("hack.sfc".into(), true, &report);
+    assert!(report.left_out.is_some());
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the level", drawn);
+    harness.state_mut().start.report = Some(report);
+    harness.run_steps(2);
+    use egui_kittest::kittest::Queryable;
+    harness.get_by_label_contains("locked by its author");
+    harness.get_by_label_contains("outside its levels");
+}

@@ -9,7 +9,10 @@ use std::thread::JoinHandle;
 use eframe::egui::{self, Align, Layout, RichText};
 use kobo_core::{Rom, RomIdentity, config, import, template};
 
+use rfd::AsyncFileDialog;
+
 use crate::app::{App, Clean};
+use crate::dialogs::{self, Pick, Purpose};
 use crate::theme;
 
 /// How many recent projects are remembered.
@@ -20,11 +23,70 @@ pub struct StartState {
     /// Recent projects, newest first.
     pub recent: Vec<PathBuf>,
     /// A project being made on a worker thread: what, and its outcome,
-    /// the folder to open.
-    task: Option<(String, JoinHandle<Result<PathBuf, String>>)>,
+    /// the folder to open and what its import left out.
+    task: Option<(String, JoinHandle<Result<Made, String>>)>,
     error: Option<String>,
     /// The template chosen for a new project.
     template: Option<String>,
+    /// A locked hack chosen to import, waiting on the user's say.
+    locked: Option<PathBuf>,
+    /// What the last import left out, until the user closes it.
+    pub report: Option<ImportReport>,
+}
+
+/// A new project, waiting on its folder.
+pub enum NewProject {
+    Empty,
+    Hack(PathBuf),
+    Template(String),
+}
+
+/// A project made, and what its import says.
+type Made = (PathBuf, Option<ImportReport>);
+
+/// What an import from a hack carried and left out, for the user.
+pub struct ImportReport {
+    pub hack: String,
+    pub locked: bool,
+    pub summary: String,
+    /// What the hack changes that the project does not carry.
+    pub left_out: Option<String>,
+    /// Notes on the whole hack.
+    pub notes: Vec<String>,
+    /// Notes on single levels.
+    pub level_notes: Vec<String>,
+}
+
+impl ImportReport {
+    pub(crate) fn new(hack: String, locked: bool, report: &import::Report) -> Self {
+        let summary = format!(
+            "{} levels and {} Map16 pages imported.",
+            report.levels.len(),
+            report.map16.len()
+        );
+        let changed: usize = report.unmodelled.iter().map(|(_, len)| len).sum();
+        let blocks: usize = report.unread_blocks.iter().map(|b| b.len).sum();
+        let left_out = (changed + blocks > 0).then(|| {
+            format!(
+                "The hack changes {} KB of the game outside its levels, Map16, and graphics, and adds {} KB that no level uses: its own code, patches, and tools' work. The project does not carry these, so its levels may look and play otherwise than in the hack until their sources are in the project (kobo.toml's patches and tools).",
+                changed.div_ceil(1024),
+                blocks.div_ceil(1024)
+            )
+        });
+        let (level_notes, notes) = report
+            .notes
+            .iter()
+            .cloned()
+            .partition(|note| note.starts_with("level "));
+        Self {
+            hack,
+            locked,
+            summary,
+            left_out,
+            notes,
+            level_notes,
+        }
+    }
 }
 
 impl StartState {
@@ -41,33 +103,49 @@ impl StartState {
     }
 }
 
-/// A folder for a new project: one that does not exist yet or is empty.
-fn pick_new_folder() -> Option<Result<PathBuf, String>> {
-    let dir = rfd::FileDialog::new()
-        .set_title("A folder for the new project (empty, or a new one)")
-        .pick_folder()?;
-    let empty = std::fs::read_dir(&dir).map_or(true, |mut entries| entries.next().is_none());
-    Some(if empty {
-        Ok(dir)
-    } else {
-        Err(format!(
-            "{} has files in it already; a new project needs an empty folder",
-            dir.display()
-        ))
-    })
+/// Asks for a folder for a new project.
+fn pick_new_folder(app: &mut App, new: NewProject) {
+    dialogs::ask(
+        app,
+        Purpose::NewFolder(new),
+        Pick::Folder,
+        AsyncFileDialog::new().set_title("A folder for the new project (empty, or a new one)"),
+    );
 }
 
-/// Lets the user choose the clean ROM, checks it, and records it in the
-/// config file.
-fn choose_rom(app: &mut App) {
-    let Some(path) = rfd::FileDialog::new()
-        .set_title("The clean Super Mario World (USA) ROM")
-        .add_filter("SNES ROM", &["sfc", "smc"])
-        .pick_file()
-    else {
+/// Makes the new project in `dir`, a folder that does not exist yet or is
+/// empty.
+pub(crate) fn folder_chosen(app: &mut App, new: NewProject, dir: PathBuf) {
+    let empty = std::fs::read_dir(&dir).map_or(true, |mut entries| entries.next().is_none());
+    if !empty {
+        app.start.error = Some(format!(
+            "{} has files in it already; a new project needs an empty folder",
+            dir.display()
+        ));
         return;
-    };
-    let rom = match Rom::load(&path) {
+    }
+    match new {
+        NewProject::Empty => new_empty(app, dir),
+        NewProject::Hack(hack) => new_from_hack(app, hack, dir),
+        NewProject::Template(name) => new_from_template(app, name, dir),
+    }
+}
+
+/// Asks for the clean ROM.
+fn ask_for_rom(app: &mut App) {
+    dialogs::ask(
+        app,
+        Purpose::CleanRom,
+        Pick::File,
+        AsyncFileDialog::new()
+            .set_title("The clean Super Mario World (USA) ROM")
+            .add_filter("SNES ROM", &["sfc", "smc"]),
+    );
+}
+
+/// Checks the clean ROM the user chose, and records it in the config file.
+pub(crate) fn choose_rom(app: &mut App, path: &Path) {
+    let rom = match Rom::load(path) {
         Ok(rom) => rom,
         Err(e) => {
             app.start.error = Some(e.to_string());
@@ -82,7 +160,7 @@ fn choose_rom(app: &mut App) {
         ));
         return;
     }
-    match config::set_vanilla_rom(&path) {
+    match config::set_vanilla_rom(path) {
         Ok(file) => {
             app.start.error = None;
             app.say(format!("The clean ROM is recorded in {}", file.display()));
@@ -111,7 +189,7 @@ fn open(app: &mut App, ctx: &egui::Context, dir: &Path) {
 fn spawn(
     app: &mut App,
     what: String,
-    work: impl FnOnce(&Rom) -> Result<PathBuf, String> + Send + 'static,
+    work: impl FnOnce(&Rom) -> Result<Made, String> + Send + 'static,
 ) {
     let Clean::Loaded(clean) = &app.clean else {
         return;
@@ -131,7 +209,12 @@ pub fn poll(app: &mut App, ctx: &egui::Context) {
     {
         let (_, task) = app.start.task.take().expect("checked");
         match task.join() {
-            Ok(Ok(dir)) => open(app, ctx, &dir),
+            Ok(Ok((dir, report))) => {
+                open(app, ctx, &dir);
+                if app.workspace().is_some() {
+                    app.start.report = report;
+                }
+            }
             Ok(Err(e)) => app.start.error = Some(e),
             Err(_) => app.start.error = Some("making the project stopped unexpectedly".into()),
         }
@@ -141,69 +224,128 @@ pub fn poll(app: &mut App, ctx: &egui::Context) {
     }
 }
 
-fn new_empty(app: &mut App) {
-    let dir = match pick_new_folder() {
-        Some(Ok(dir)) => dir,
-        Some(Err(e)) => {
-            app.start.error = Some(e);
-            return;
-        }
-        None => return,
-    };
+fn new_empty(app: &mut App, dir: PathBuf) {
     spawn(app, "Making the project".into(), move |_| {
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         let manifest = dir.join(kobo_core::source::project::MANIFEST);
         let text =
             "# A Kobo project. Levels it does not list build as the game has them.\nformat = 1\n";
         std::fs::write(&manifest, text).map_err(|e| format!("{}: {e}", manifest.display()))?;
-        Ok(dir)
+        Ok((dir, None))
     });
 }
 
-fn new_from_hack(app: &mut App) {
-    let Some(hack) = rfd::FileDialog::new()
-        .set_title("A hack to import: a ROM, or a BPS patch of the clean ROM")
-        .add_filter("ROM or patch", &["sfc", "smc", "bps"])
-        .pick_file()
-    else {
+/// A hack was chosen: one its author locked is imported only once the
+/// user knows how little of it comes.
+pub(crate) fn hack_chosen(app: &mut App, hack: PathBuf) {
+    let Clean::Loaded(clean) = &app.clean else {
         return;
     };
-    let dir = match pick_new_folder() {
-        Some(Ok(dir)) => dir,
-        Some(Err(e)) => {
-            app.start.error = Some(e);
-            return;
-        }
-        None => return,
-    };
+    match import::read_hack(&hack, clean) {
+        Ok(rom) if kobo_core::gfx::is_locked(&rom) => app.start.locked = Some(hack),
+        Ok(_) => pick_new_folder(app, NewProject::Hack(hack)),
+        Err(e) => app.start.error = Some(format!("{}: {e}", hack.display())),
+    }
+}
+
+fn new_from_hack(app: &mut App, hack: PathBuf, dir: PathBuf) {
     let name = hack
         .file_name()
         .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
     spawn(app, format!("Importing {name}"), move |clean| {
         let rom = import::read_hack(&hack, clean).map_err(|e| e.to_string())?;
-        import::import_rom(&rom, clean, &dir, false).map_err(|e| e.to_string())?;
-        Ok(dir)
+        let report = import::import_rom(&rom, clean, &dir, false).map_err(|e| e.to_string())?;
+        let locked = kobo_core::gfx::is_locked(&rom);
+        Ok((dir, Some(ImportReport::new(name, locked, &report))))
     });
 }
 
-fn new_from_template(app: &mut App, name: String) {
-    let dir = match pick_new_folder() {
-        Some(Ok(dir)) => dir,
-        Some(Err(e)) => {
-            app.start.error = Some(e);
-            return;
-        }
-        None => return,
-    };
+fn new_from_template(app: &mut App, name: String, dir: PathBuf) {
     spawn(
         app,
         format!("Setting {name} up (downloaded once, then cached)"),
         move |clean| {
             let recipe = template::template(&name).map_err(|e| e.to_string())?;
             recipe.create(clean, &dir).map_err(|e| e.to_string())?;
-            Ok(dir)
+            Ok((dir, None))
         },
     );
+}
+
+/// Asks before importing a hack its author locked.
+pub fn confirm_locked(app: &mut App, ctx: &egui::Context) {
+    let Some(hack) = app.start.locked.clone() else {
+        return;
+    };
+    let (mut import, mut cancel) = (false, false);
+    egui::Modal::new(egui::Id::new("confirm-locked")).show(ctx, |ui| {
+        ui.set_max_width(460.0);
+        ui.heading("This hack is locked");
+        ui.label(format!(
+            "{}'s author locked it against editing: Lunar Magic will not open it, and its levels are partly hidden or encoded by its own code.",
+            hack.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned())
+        ));
+        ui.label("Kobo can import what it can read of its levels and Map16, but not its graphics or its code, so the project's levels will not look or play as the hack's, and some will not build.");
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            import = ui.button("Import what Kobo can").clicked();
+            cancel = ui.button("Cancel").clicked();
+        });
+    });
+    if cancel {
+        app.start.locked = None;
+    }
+    if import {
+        app.start.locked = None;
+        pick_new_folder(app, NewProject::Hack(hack));
+    }
+}
+
+/// What the last import left out, until the user closes it.
+pub fn report_window(app: &mut App, ctx: &egui::Context) {
+    let Some(report) = &app.start.report else {
+        return;
+    };
+    let mut open = true;
+    egui::Window::new(format!("Imported {}", report.hack))
+        .open(&mut open)
+        .default_width(480.0)
+        .collapsible(false)
+        .show(ctx, |ui| {
+            if report.locked {
+                ui.add(
+                    egui::Label::new(
+                        RichText::new("The hack is locked by its author: its graphics and its own code are not imported, so its levels will not look or play as the hack's.")
+                            .color(theme::WARNING),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(4.0);
+            }
+            ui.label(&report.summary);
+            if let Some(left_out) = &report.left_out {
+                ui.add(egui::Label::new(RichText::new(left_out).color(theme::MUTED)).wrap());
+            }
+            egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                for note in &report.notes {
+                    ui.add(egui::Label::new(format!("• {note}")).wrap());
+                }
+                if !report.level_notes.is_empty() {
+                    egui::CollapsingHeader::new(format!(
+                        "Notes on single levels ({})",
+                        report.level_notes.len()
+                    ))
+                    .show(ui, |ui| {
+                        for note in &report.level_notes {
+                            ui.label(RichText::new(note).small());
+                        }
+                    });
+                }
+            });
+        });
+    if !open {
+        app.start.report = None;
+    }
 }
 
 fn card(ui: &mut egui::Ui, title: &str, contents: impl FnOnce(&mut egui::Ui)) {
@@ -298,7 +440,7 @@ fn body(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
         }
     });
     if choose {
-        choose_rom(app);
+        ask_for_rom(app);
     }
     let ready = matches!(app.clean, Clean::Loaded(_)) && !busy;
 
@@ -308,7 +450,12 @@ fn body(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
             .add_enabled(ready, egui::Button::new("Open a project folder…"))
             .clicked()
         {
-            open_dir = rfd::FileDialog::new().pick_folder();
+            dialogs::ask(
+                app,
+                Purpose::OpenProject,
+                Pick::Folder,
+                AsyncFileDialog::new().set_title("A project folder"),
+            );
         }
         if !app.start.recent.is_empty() {
             ui.add_space(6.0);
@@ -409,11 +556,18 @@ fn body(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
         );
     });
     match action {
-        Some(0) => new_empty(app),
-        Some(1) => new_from_hack(app),
+        Some(0) => pick_new_folder(app, NewProject::Empty),
+        Some(1) => dialogs::ask(
+            app,
+            Purpose::Hack,
+            Pick::File,
+            AsyncFileDialog::new()
+                .set_title("A hack to import: a ROM, or a BPS patch of the clean ROM")
+                .add_filter("ROM or patch", &["sfc", "smc", "bps"]),
+        ),
         Some(2) => {
             if let Some(name) = app.start.template.clone() {
-                new_from_template(app, name);
+                pick_new_folder(app, NewProject::Template(name));
             }
         }
         _ => {}
@@ -425,9 +579,12 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
     ui.menu_button("Project", |ui| {
         if ui.button("Open a project folder…").clicked() {
             ui.close();
-            if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                app.switch_project(Some(dir));
-            }
+            dialogs::ask(
+                app,
+                Purpose::SwitchProject,
+                Pick::Folder,
+                AsyncFileDialog::new().set_title("A project folder"),
+            );
         }
         let recent: Vec<PathBuf> = app.start.recent.iter().skip(1).cloned().collect();
         if !recent.is_empty() {
@@ -455,14 +612,33 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
             .clicked()
         {
             ui.close();
-            app.import_mwl();
+            dialogs::ask(
+                app,
+                Purpose::Mwl,
+                Pick::File,
+                AsyncFileDialog::new()
+                    .set_title("A level Lunar Magic saved as an MWL file")
+                    .add_filter("Lunar Magic level", &["mwl"]),
+            );
         }
         if ui
             .add_enabled(app.current().is_some_and(|o| o.image.is_some()), egui::Button::new("Save the level's picture…"))
             .clicked()
         {
             ui.close();
-            app.save_picture();
+            let name = app
+                .current()
+                .map(|o| format!("level-{:03X}.png", o.number))
+                .unwrap_or_default();
+            dialogs::ask(
+                app,
+                Purpose::Picture,
+                Pick::Save,
+                AsyncFileDialog::new()
+                    .set_title("Save the level's picture")
+                    .set_file_name(&name)
+                    .add_filter("PNG", &["png"]),
+            );
         }
         let file = app.current().map(|o| o.document.path().to_path_buf());
         if ui

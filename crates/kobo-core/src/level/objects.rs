@@ -570,21 +570,32 @@ pub fn encode(
         }
         let a = ((number & 0x30) << 1) | lo as u8;
         let b = ((number & 0x0F) << 4) | hi as u8;
-        let next = to_high == high && to_screen == screen + 1 && a | NEW_SCREEN != END;
+        let can_carry = a | NEW_SCREEN != END;
+        let next = to_high == high && to_screen == screen + 1 && can_carry;
+        let jump = |screen: u16| {
+            if screen <= 0x1F && to_high <= 0x0F {
+                Some([screen as u8, to_high as u8, EXT_SCREEN_JUMP])
+            } else if jumps == Jumps::Tall && screen <= 0x0F && to_high <= 0x1F {
+                Some([to_high as u8, screen as u8, EXT_TALL_SCREEN_JUMP])
+            } else {
+                None
+            }
+        };
         let a = if (to_screen, to_high) == (screen, high) {
             a
         } else if next {
             a | NEW_SCREEN
-        } else {
-            let jump = if to_screen <= 0x1F && to_high <= 0x0F {
-                [to_screen as u8, to_high as u8, EXT_SCREEN_JUMP]
-            } else if jumps == Jumps::Tall && to_screen <= 0x0F && to_high <= 0x1F {
-                [to_high as u8, to_screen as u8, EXT_TALL_SCREEN_JUMP]
-            } else {
-                return Err(unplaceable);
-            };
+        } else if let Some(jump) = jump(to_screen) {
             out.extend(jump);
             a
+        } else if let Some(jump) = jump(to_screen.wrapping_sub(1)).filter(|_| can_carry) {
+            // Past the last screen a jump names (a horizontal level's
+            // screen 20, which Lunar Magic's data reaches by new-screen
+            // bits): a jump to the one before, and the bit.
+            out.extend(jump);
+            a | NEW_SCREEN
+        } else {
+            return Err(unplaceable);
         };
         (screen, high) = (to_screen, to_high);
         out.extend([a, b]);
@@ -1031,6 +1042,27 @@ mod tests {
         assert!(matches!(
             decode(&advance(4096), Layout::Vertical, Jumps::Tall),
             Err(ObjectError::PastLastScreen { .. })
+        ));
+    }
+
+    #[test]
+    fn the_screen_after_the_last_a_jump_names_is_reached_by_its_bit() {
+        // Screen 1E, then screen 20 (which new-screen bits can reach):
+        // a jump to 1F, and the object's bit.
+        let at = |x: u16| Object::Standard {
+            number: 0x01,
+            x,
+            y: 2,
+            settings: 0,
+        };
+        let objects = [at(0x1E * 16), at(0x20 * 16 + 4)];
+        let bytes = round_trip(&objects, Layout::Horizontal, Jumps::Vanilla);
+        assert_eq!(bytes[11..14], [0x1F, 0x00, EXT_SCREEN_JUMP]);
+        assert_eq!(bytes[14] & NEW_SCREEN, NEW_SCREEN);
+        // Two screens past it are still out of reach.
+        assert!(matches!(
+            encode(HEADER, &[at(0x21 * 16)], Layout::Horizontal, Jumps::Vanilla),
+            Err(ObjectError::Unplaceable { .. })
         ));
     }
 }

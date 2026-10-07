@@ -17,6 +17,7 @@ anyhow.workspace = true
 clap.workspace = true
 eframe.workspace = true
 notify.workspace = true
+pollster.workspace = true
 rfd.workspace = true
 
 [dev-dependencies]

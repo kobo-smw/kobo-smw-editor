@@ -23,6 +23,8 @@ libloading = "0.9"
 # Watching a project's files for the editor (CC0-1.0).
 notify = "8"
 png = "0.17"
+# Waits on the editor's file dialogs off its window's thread (rfd's own dependency).
+pollster = "0.4"
 # The editor's file dialogs, through the XDG portal on Linux.
 rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 serde = { version = "1", features = ["derive"] }

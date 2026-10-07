@@ -267,6 +267,8 @@ pub struct App {
     pub build: crate::build::BuildState,
     pub backgrounds: crate::backgrounds::Backgrounds,
     pub play: crate::play::PlayState,
+    /// The file dialog open, if one is.
+    pub dialogs: crate::dialogs::Dialogs,
     /// The project window is open.
     pub project_open: bool,
     startup: Startup,
@@ -348,6 +350,7 @@ impl App {
             build: Default::default(),
             backgrounds: Default::default(),
             play: Default::default(),
+            dialogs: Default::default(),
             project_open: false,
             startup: startup.clone(),
             screenshot_frames: None,
@@ -898,18 +901,11 @@ impl App {
 
     /// Imports a Lunar Magic MWL file into the project as the level it
     /// was saved from, and opens it.
-    pub fn import_mwl(&mut self) {
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("A level Lunar Magic saved as an MWL file")
-            .add_filter("Lunar Magic level", &["mwl"])
-            .pick_file()
-        else {
-            return;
-        };
+    pub fn import_mwl(&mut self, path: &Path) {
         let (Some(workspace), Clean::Loaded(clean)) = (&self.workspace, &self.clean) else {
             return;
         };
-        let bytes = match std::fs::read(&path) {
+        let bytes = match std::fs::read(path) {
             Ok(bytes) => bytes,
             Err(e) => return self.say(format!("{}: {e}", path.display())),
         };
@@ -957,25 +953,16 @@ impl App {
     }
 
     /// Saves the open level's picture as a PNG file.
-    pub fn save_picture(&mut self) {
+    pub fn save_picture(&mut self, path: &Path) {
         let Some(open) = self.current() else { return };
         let Some(image) = open.image.clone() else {
-            return;
-        };
-        let name = format!("level-{:03X}.png", open.number);
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Save the level's picture")
-            .set_file_name(&name)
-            .add_filter("PNG", &["png"])
-            .save_file()
-        else {
             return;
         };
         let mut rgb = kobo_core::image::RgbImage::new(image.size[0] as u32, image.size[1] as u32);
         for (i, pixel) in image.pixels.iter().enumerate() {
             rgb.pixels[i] = [pixel.r(), pixel.g(), pixel.b()];
         }
-        match rgb.write_png(&path) {
+        match rgb.write_png(path) {
             Ok(()) => self.say(format!("Saved {}", path.display())),
             Err(e) => self.say(format!("{}: {e}", path.display())),
         }
@@ -1877,20 +1864,29 @@ impl App {
 }
 
 /// Whether a changed file could matter to the project: not the build's
-/// output, git's own files, or an editor's scratch files.
-fn matters(path: &Path) -> bool {
+/// output, what an emulator playing it writes beside it (its battery
+/// save, save states, cheats), git's own files, or an editor's scratch
+/// files.
+pub(crate) fn matters(path: &Path) -> bool {
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy())
         .unwrap_or_default();
     let ext = path
         .extension()
-        .map(|e| e.to_string_lossy().to_ascii_lowercase());
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    let emulator = matches!(
+        ext.as_str(),
+        "srm" | "sav" | "rtc" | "cht" | "bst" | "mss" | "sts" | "frz" | "zst" | "oops" | "state"
+    ) || ext.starts_with("state")
+        || (ext.len() == 3 && ext.starts_with('0') && ext.bytes().all(|b| b.is_ascii_digit()));
     !(path.components().any(|c| c.as_os_str() == ".git")
         || name.starts_with('.')
         || name.ends_with('~')
         || name.ends_with(".swp")
-        || matches!(ext.as_deref(), Some("sfc" | "smc" | "bps")))
+        || emulator
+        || matches!(ext.as_str(), "sfc" | "smc" | "bps"))
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
@@ -1928,6 +1924,7 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
         self.take_preview(&ctx);
         crate::start::poll(self, &ctx);
+        crate::dialogs::poll(self);
         self.title(&ctx);
         self.follow_files();
         crate::build::poll(self);
@@ -1948,6 +1945,7 @@ impl eframe::App for App {
             });
         if self.workspace.is_none() {
             egui::CentralPanel::default().show(ui, |ui| crate::start::show(self, ui));
+            crate::start::confirm_locked(self, &ctx);
             self.close_requests(&ctx);
             self.screenshot(&ctx);
             return;
@@ -2003,6 +2001,7 @@ impl eframe::App for App {
         crate::backgrounds::window(self, &ctx);
         crate::project::window(self, &ctx);
         crate::commands::window(self, &ctx);
+        crate::start::report_window(self, &ctx);
         self.confirm_adding(&ctx);
         self.confirm_removing(&ctx);
         self.confirm_switch(&ctx);
