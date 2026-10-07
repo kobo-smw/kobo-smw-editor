@@ -26,8 +26,9 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
 
 ## The window
 
-- **Top bar**: the Project, Edit, View, and Git menus; back and forward between levels;
-  Commands (Ctrl+K); Undo, Redo, Save, Play, and Build.
+- **Top bar**: the Project, Edit, View, and Git menus; undo and redo (⟲ ⟳, each naming
+  the step it takes); back and forward between levels; Commands (Ctrl+K); Save (💾),
+  Play, and Build.
 - **Left**: three tabs.
   - *Levels*: the project's levels as a player meets them: each overworld level (the
     levels the overworld enters, `000`-`024` and `101`-`13B`, by their names there),
@@ -63,8 +64,9 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
   the other way), Ctrl and the wheel zoom, and a trackpad pans freely. The status
   bar names the tile under the mouse: its place, screen, Map16 number, what it acts like
   when that is another tile, and the object that drew it.
-  The view bar and the View menu show or hide layers 1, 2, and 3, the sprites, and the
-  player; a hidden layer is left out as the PPU leaves out a layer neither screen has, so
+  The view bar above it (screens ▥, grid ▦, entrances ⚑, layers 1 2 3, sprites drawn 🐢,
+  as numbers, or hidden, the player 🏃, and zoom), and the View menu, show or hide
+  layers 1, 2, and 3, the sprites, and the player; a hidden layer is left out as the PPU leaves out a layer neither screen has, so
   what is behind it shows.
 - **Right**: the inspector. What is selected (with its picture, cut from the level's), or
   with nothing selected the level: its

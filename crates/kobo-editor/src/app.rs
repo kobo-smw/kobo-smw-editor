@@ -1042,6 +1042,9 @@ impl App {
                 self.edit_menu(ui);
                 self.view_menu(ui);
                 crate::changes::menu(self, ui);
+                ui.separator();
+                self.undo_buttons(ui);
+                ui.separator();
             }
             if let Some(workspace) = &self.workspace {
                 let root = &workspace.project().root;
@@ -1102,31 +1105,11 @@ impl App {
                 }
                 let modified = self.modified().count();
                 let save = ui
-                    .add_enabled(modified > 0, egui::Button::new("Save"))
-                    .on_hover_text("Save every changed level (Ctrl+S)");
+                    .add_enabled(modified > 0, egui::Button::new(icon("💾")))
+                    .on_hover_text("Save every changed level (Ctrl+S)")
+                    .on_disabled_hover_text("Nothing to save");
                 if save.clicked() {
                     self.save_all();
-                }
-                let (undo_label, redo_label) = self.current().map_or((None, None), |o| {
-                    (
-                        o.document.undo_label().map(str::to_owned),
-                        o.document.redo_label().map(str::to_owned),
-                    )
-                });
-                let redo = ui
-                    .add_enabled(redo_label.is_some(), egui::Button::new("Redo"))
-                    .on_hover_text(format!(
-                        "Redo {} (Ctrl+Shift+Z)",
-                        redo_label.unwrap_or_default()
-                    ));
-                if redo.clicked() {
-                    self.undo(true);
-                }
-                let undo = ui
-                    .add_enabled(undo_label.is_some(), egui::Button::new("Undo"))
-                    .on_hover_text(format!("Undo {} (Ctrl+Z)", undo_label.unwrap_or_default()));
-                if undo.clicked() {
-                    self.undo(false);
                 }
                 if ui
                     .button("Commands")
@@ -1142,13 +1125,51 @@ impl App {
         });
     }
 
+    /// Undo and redo, as arrows, named by what they would undo and redo.
+    fn undo_buttons(&mut self, ui: &mut egui::Ui) {
+        let (undo_label, redo_label) = self.current().map_or((None, None), |o| {
+            (
+                o.document.undo_label().map(str::to_owned),
+                o.document.redo_label().map(str::to_owned),
+            )
+        });
+        let undo = ui
+            .add_enabled(undo_label.is_some(), egui::Button::new(icon("⟲")))
+            .on_hover_text(format!(
+                "Undo {} (Ctrl+Z)",
+                undo_label.as_deref().unwrap_or_default()
+            ))
+            .on_disabled_hover_text("Nothing to undo");
+        if undo.clicked() {
+            self.undo(false);
+        }
+        let redo = ui
+            .add_enabled(redo_label.is_some(), egui::Button::new(icon("⟳")))
+            .on_hover_text(format!(
+                "Redo {} (Ctrl+Shift+Z)",
+                redo_label.as_deref().unwrap_or_default()
+            ))
+            .on_disabled_hover_text("Nothing to redo");
+        if redo.clicked() {
+            self.undo(true);
+        }
+    }
+
     fn view_bar(&mut self, ui: &mut egui::Ui) {
+        egui::Frame::NONE
+            .inner_margin(egui::Margin::symmetric(10, 6))
+            .show(ui, |ui| self.view_bar_buttons(ui));
+    }
+
+    fn view_bar_buttons(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.toggle_value(&mut self.view.screens, "Screens");
-            ui.toggle_value(&mut self.view.grid, "Grid");
-            ui.toggle_value(&mut self.view.entrances, "Entrances")
+            ui.toggle_value(&mut self.view.screens, icon("▥"))
+                .on_hover_text("Screen boundaries");
+            ui.toggle_value(&mut self.view.grid, icon("▦"))
+                .on_hover_text("The tile grid (G)");
+            ui.toggle_value(&mut self.view.entrances, icon("⚑"))
                 .on_hover_text(
-                    "Where the player enters: the start, the midway, and each secondary entrance",
+                    "Entrances: where the player enters, at the start, the midway, and each secondary entrance",
                 );
             ui.separator();
             let before = (self.view.sprites, self.view.player, self.view.hidden_layers);
@@ -1168,11 +1189,16 @@ impl App {
                 }
             }
             ui.separator();
-            ui.label(RichText::new("Sprites").color(theme::MUTED));
-            ui.selectable_value(&mut self.view.sprites, SpriteView::Drawn, "Drawn");
-            ui.selectable_value(&mut self.view.sprites, SpriteView::Markers, "IDs");
-            ui.selectable_value(&mut self.view.sprites, SpriteView::Hidden, "Off");
-            ui.toggle_value(&mut self.view.player, "Player");
+            for (view, glyph, about) in [
+                (SpriteView::Drawn, "🐢", "Sprites drawn as the game draws them"),
+                (SpriteView::Markers, "🔢", "Sprites as their numbers"),
+                (SpriteView::Hidden, "🚫", "Sprites hidden"),
+            ] {
+                ui.selectable_value(&mut self.view.sprites, view, icon(glyph))
+                    .on_hover_text(about);
+            }
+            ui.toggle_value(&mut self.view.player, icon("🏃"))
+                .on_hover_text("The player where the level starts");
             if before != (self.view.sprites, self.view.player, self.view.hidden_layers)
                 && let Some(number) = self.current
             {
@@ -1182,14 +1208,18 @@ impl App {
                 if let Some(open) = self.current_mut()
                     && let Some(camera) = &mut open.camera
                 {
-                    if ui.button("Fit").clicked() {
+                    if ui
+                        .button(icon("⛶"))
+                        .on_hover_text("Fit the level's height to the view")
+                        .clicked()
+                    {
                         camera.fit_height = true;
                     }
-                    if ui.button("+").clicked() {
+                    if ui.button(icon("+")).on_hover_text("Zoom in").clicked() {
                         camera.zoom_by(2.0);
                     }
                     ui.label(RichText::new(format!("{:.0}%", camera.zoom * 100.0)).monospace());
-                    if ui.button("−").clicked() {
+                    if ui.button(icon("−")).on_hover_text("Zoom out").clicked() {
                         camera.zoom_by(0.5);
                     }
                 }
@@ -1858,6 +1888,11 @@ impl eframe::App for App {
         self.close_requests(&ctx);
         self.screenshot(&ctx);
     }
+}
+
+/// A button's symbol, a little larger than its text would be.
+fn icon(glyph: &str) -> RichText {
+    RichText::new(glyph).size(15.0)
 }
 
 /// Colours for the panels.
