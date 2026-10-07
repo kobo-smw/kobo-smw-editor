@@ -67,3 +67,30 @@ settle it.
   while Kobo carries none of a project's. For a project imported from a hack they are the
   game's names, not the hack's, though true of what the build makes. To settle once the
   overworld is a project's (step 4): the project's names then.
+- **The level list by overworld level (2026-10-07).** The list groups each sublevel under
+  the first overworld level (by number) whose screen exits reach it, directly or through
+  other sublevels (`edit::reach`); an overworld level is one with a translevel
+  (`000`-`024`, `101`-`13B`), whether or not the overworld has a tile for it. Levels only
+  the game's code reaches (the credits' rooms, the bonus game) are listed apart as "not
+  reached by an exit". "Sublevel" is the community's and Lunar Magic's users' word; the
+  editor keeps "level" for every one of the 512, as Lunar Magic does. To settle: whether
+  the overworld's own tiles (step 4) should decide which are overworld levels instead.
+- **The game's unused levels hidden (2026-10-07).** A level whose objects are those of
+  the layer 1 data most of the clean ROM's levels point at (the "TEST" level at
+  `$068000`, 277 of the 512) is left out of the level list until asked for
+  (`reach::Placeholder`), whether or not the project lists it; a level with any object of
+  its own shows. To settle: whether a project's level that was never changed from the
+  game's (but is a real level) should be hidden too.
+- **Play from here without the title screen (2026-10-07).** The play build now hooks the
+  title screen's load (game mode `$03`) instead of the title screen, so play starts about
+  four seconds sooner; "Nintendo Presents" runs a frame, dark, since its game modes set
+  the screen up and decompress the player's graphics. The same hook uploads the level
+  music bank, which an entry by screen exit never does (without it the level's songs were
+  the overworld's). A click on the ground or a wall starts the player on its top: the
+  first tile of page 1 (`100`-`1FF`, by what it acts like) above the click with two free
+  tiles over it, within 16 rows; a click on the empty tile `025` starts there. Checked in
+  Mesen 2 on vanilla, an AddmusicK hack, and the SA-1 reference.
+- **The Objects tab along the level (2026-10-07).** The outline lists objects and sprites
+  together by place by default (by column, a vertical level by row from where the player
+  starts), under a heading per screen; drawing order, which Ctrl+[ and Ctrl+] change, is
+  the other choice. Screen exits sort at their screen's start; what has no place is last.

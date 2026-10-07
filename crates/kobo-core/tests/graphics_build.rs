@@ -223,7 +223,10 @@ fn objects_24_and_25_name_the_older_lists() {
     }
     on_layer2.levels = vec![(0x1CE, level)];
     let error = build::build(&clean, &on_layer2).unwrap_err().to_string();
-    assert!(error.contains("layer 1 only"), "{error}");
+    assert!(
+        error.contains("layer 2's object") && error.contains("from layer 1 alone"),
+        "{error}"
+    );
 }
 
 #[test]
