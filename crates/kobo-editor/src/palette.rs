@@ -269,22 +269,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 .desired_width(f32::INFINITY),
         );
     }
-    if let Some(placing) = &app.placing {
-        ui.label(
-            RichText::new(format!(
-                "Placing {}: click the level; Esc stops.",
-                placing.name(tileset)
-            ))
-            .small()
-            .color(theme::ACCENT),
-        );
-    } else {
-        ui.label(
-            RichText::new("Choose one, then click the level to place it.")
-                .small()
-                .color(theme::MUTED),
-        );
-    }
     if matches!(level.layer2, kobo_core::source::level::Layer2::Objects(_))
         && state.kind != Kind::Sprites
     {
@@ -456,11 +440,9 @@ fn map16(app: &mut App, ui: &mut egui::Ui, number: u16) {
         state.map16_sheet = Some((key, texture));
     }
     ui.label(
-        RichText::new(
-            "Placed as Lunar Magic's direct Map16 objects; a build installs Kobo's code for them.",
-        )
-        .small()
-        .color(theme::MUTED),
+        RichText::new("Compatible with Lunar Magic")
+            .small()
+            .color(theme::MUTED),
     );
     let Some((_, texture)) = &state.map16_sheet else {
         return;

@@ -547,8 +547,9 @@ fn the_outline_selects_what_the_canvas_cannot_and_keys_reorder() {
     let project = Project::new(&clean, "outline");
     let mut harness = harness(&project.0);
     wait_for(&mut harness, "the picture", drawn);
-    harness.get_by_label("Outline").click();
-    harness.state_mut().outline_filter = "exit".to_string();
+    harness.get_by_label("Objects").click();
+    harness.state_mut().outline.filter = "exit".to_string();
+    harness.state_mut().outline.drawing_order = true;
     harness.run_steps(3);
     // Level 105's screen exit has no place on the canvas.
     harness
@@ -752,7 +753,11 @@ fn changes_since_the_last_commit_are_listed_and_taken_back() {
     harness.key_press(Key::ArrowRight);
     harness.step();
 
-    harness.get_by_label("Changes").click();
+    harness.get_by_label("Git").click();
+    harness.run_steps(2);
+    harness
+        .get_by_label("Changes since the last commit")
+        .click();
     harness.run_steps(3);
     let count = |app: &App| app.current().unwrap().head.as_ref().map(|h| h.diff().len());
     assert_eq!(count(harness.state()), Some(2));
@@ -1558,4 +1563,89 @@ fn an_import_says_what_the_project_does_not_carry() {
     use egui_kittest::kittest::Queryable;
     harness.get_by_label_contains("locked by its author");
     harness.get_by_label_contains("outside its levels");
+}
+
+#[test]
+fn a_mouse_wheel_scrolls_along_the_level() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "wheel");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    let open = harness.state_mut().current_mut().unwrap();
+    open.camera.as_mut().unwrap().offset = egui::vec2(400.0, 0.0);
+    let middle = open.canvas.center();
+    harness.hover_at(middle);
+    harness.step();
+    let offset =
+        |harness: &Harness<'static, App>| harness.state().current().unwrap().camera.unwrap().offset;
+    let before = offset(&harness);
+    let wheel = |harness: &mut Harness<'static, App>, modifiers| {
+        harness.event(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, -3.0),
+            modifiers,
+            phase: egui::TouchPhase::Move,
+        });
+        harness.run_steps(20);
+    };
+    // Down the wheel goes on through a horizontal level.
+    wheel(&mut harness, Modifiers::NONE);
+    let after = offset(&harness);
+    assert!(after.x > before.x, "{before:?} to {after:?}");
+    assert_eq!(after.y, before.y);
+    // With Shift, back up the level's rows: none to go back past here,
+    // and the view stays where it was along it.
+    wheel(&mut harness, Modifiers::SHIFT);
+    assert_eq!(offset(&harness).x, after.x);
+}
+
+#[test]
+fn the_level_list_groups_sublevels_and_leaves_unused_levels_out() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "level-list");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    for number in [0x1CB, 0x025] {
+        let level = harness
+            .state()
+            .workspace()
+            .unwrap()
+            .clean_level(number)
+            .unwrap();
+        harness.state_mut().add_level(number, &level);
+    }
+    harness.state_mut().open_level(0x105);
+    // The status bar names what was added.
+    harness.state_mut().say("");
+    harness.run_steps(3);
+    // 105's pipe leads to 1CB, listed under it; 025 is the game's TEST
+    // level, left out until asked for.
+    harness.get_by_label_contains("105 Yoshi's Island 1");
+    harness.get_by_label_contains("1CB ");
+    assert!(harness.query_by_label_contains("025 ").is_none());
+    harness
+        .get_by_label_contains("Unused: the game's TEST level")
+        .click();
+    harness.run_steps(2);
+    harness.get_by_label_contains("025 ");
+    // Folding 105 hides its sublevel.
+    let row = harness.get_by_label_contains("105 Yoshi's Island 1");
+    let rect = row.rect();
+    harness.hover_at(egui::pos2(rect.left() + 8.0, rect.center().y));
+    harness.step();
+    press(
+        &mut harness,
+        egui::pos2(rect.left() + 8.0, rect.center().y),
+        true,
+    );
+    harness.step();
+    press(
+        &mut harness,
+        egui::pos2(rect.left() + 8.0, rect.center().y),
+        false,
+    );
+    harness.run_steps(2);
+    assert!(harness.query_by_label_contains("1CB ").is_none());
 }

@@ -11,6 +11,7 @@ mod commands;
 mod dialogs;
 mod find;
 mod inspector;
+mod levels;
 mod outline;
 mod overview;
 mod palette;
@@ -22,6 +23,7 @@ mod selection;
 mod source;
 mod start;
 mod theme;
+mod thumbnails;
 mod watch;
 
 #[cfg(test)]
@@ -49,7 +51,8 @@ struct Args {
     /// Show the palette of things to add rather than the level list.
     #[arg(long)]
     palette: bool,
-    /// The left panel's tab: levels, add, outline, or changes.
+    /// The left panel's tab (levels, objects, add, sprites, map16), or a window
+    /// (changes, overview, backgrounds, project).
     #[arg(long)]
     tab: Option<String>,
     /// Build the project once the level is open.

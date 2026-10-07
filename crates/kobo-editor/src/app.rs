@@ -175,10 +175,9 @@ impl OpenLevel {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum LeftTab {
     Levels,
+    /// Every object and sprite of the level (the outline).
+    Objects,
     Add,
-    Outline,
-    Changes,
-    Find,
 }
 
 /// Where the clean ROM comes from, or why it could not be loaded.
@@ -197,7 +196,7 @@ pub struct Startup {
     pub source: bool,
     /// Show the palette rather than the level list.
     pub palette: bool,
-    /// The left panel's tab: `levels`, `add`, `outline`, or `changes`.
+    /// The left panel's tab or a window to show, as `--tab` names them.
     pub tab: Option<String>,
     /// Build once the level is open.
     pub build: bool,
@@ -221,9 +220,8 @@ pub struct App {
     previewer: Previewer,
     watcher: Option<Watcher>,
     pub view: View,
-    level_filter: String,
-    /// List the levels the project leaves as the game's too.
-    all_levels: bool,
+    /// The level list.
+    pub levels: crate::levels::LevelsState,
     /// A level the user asked to add from the game's own, to confirm.
     pub(crate) adding: Option<u16>,
     /// The overworld's names of the levels, read when first asked for.
@@ -238,12 +236,16 @@ pub struct App {
     /// Where the level panel's copy goes.
     pub copy_to: u16,
     pub(crate) left: LeftTab,
+    /// The window of changes since the last commit is open.
+    pub changes_open: bool,
     /// The command palette and the shortcuts window.
     pub commands: crate::commands::CommandState,
     /// Every level as a picture, in place of the canvas.
     pub overview: crate::overview::Overview,
-    /// What the outline is narrowed to.
-    pub outline_filter: String,
+    /// Small pictures of levels, for the overview and the level list.
+    pub thumbnails: crate::thumbnails::Thumbnails,
+    /// The outline's search, order, and what it lists.
+    pub outline: crate::outline::OutlineState,
     pub find: crate::find::FindState,
     pub palette: PaletteState,
     /// What a click on the canvas places, while choosing from the palette.
@@ -318,8 +320,7 @@ impl App {
                 changes: false,
                 hidden_layers: 0,
             },
-            level_filter: String::new(),
-            all_levels: false,
+            levels: Default::default(),
             adding: None,
             history: Vec::new(),
             level_names: Default::default(),
@@ -329,15 +330,15 @@ impl App {
             copy_to: 0,
             left: match (startup.palette, startup.tab.as_deref()) {
                 (true, _) | (_, Some("add" | "sprites" | "map16")) => LeftTab::Add,
-                (_, Some("outline")) => LeftTab::Outline,
-                (_, Some("changes")) => LeftTab::Changes,
-                (_, Some("find")) => LeftTab::Find,
+                (_, Some("objects" | "outline")) => LeftTab::Objects,
                 _ => LeftTab::Levels,
             },
-            outline_filter: String::new(),
+            changes_open: startup.tab.as_deref() == Some("changes"),
+            outline: Default::default(),
             find: Default::default(),
             commands: Default::default(),
             overview: Default::default(),
+            thumbnails: Default::default(),
             palette: PaletteState::default(),
             placing: None,
             place_layer: edit::ObjectLayer::One,
@@ -417,7 +418,9 @@ impl App {
 
     /// Back to the start screen, dropping the open levels.
     pub(crate) fn close_project(&mut self) {
-        self.overview.forget();
+        self.thumbnails.forget();
+        self.levels = Default::default();
+        self.find.changed();
         self.overview.open = false;
         self.workspace = None;
         self.watcher = None;
@@ -618,8 +621,9 @@ impl App {
     /// Puts the level's document in the workspace and asks for its
     /// picture.
     pub fn request_preview(&mut self, number: u16) {
-        self.overview.changed(number);
+        self.thumbnails.changed(number);
         self.find.changed();
+        self.levels.changed();
         let (Some(workspace), Some(open)) = (&mut self.workspace, self.open.get_mut(&number))
         else {
             return;
@@ -870,7 +874,8 @@ impl App {
                     Ok(()) => {
                         self.project_error = None;
                         self.palette.forget_pictures();
-                        self.overview.forget();
+                        self.thumbnails.forget();
+                        self.levels.changed();
                         redraw.extend(self.current);
                     }
                     Err(e) => self.project_error = Some(e.to_string()),
@@ -938,6 +943,10 @@ impl App {
                 {
                     self.project_error = Some(e.to_string());
                 }
+                self.levels.changed();
+                for number in &report.levels {
+                    self.thumbnails.changed(*number);
+                }
                 let notes = report.notes.join("; ");
                 if let Some(&number) = report.levels.first() {
                     self.open_level(number);
@@ -990,7 +999,8 @@ impl App {
             )
         });
         if find {
-            self.left = LeftTab::Find;
+            self.left = LeftTab::Levels;
+            self.levels.focus_search = true;
         }
         if save {
             self.save_all();
@@ -1031,6 +1041,7 @@ impl App {
                 crate::start::menu(self, ui);
                 self.edit_menu(ui);
                 self.view_menu(ui);
+                crate::changes::menu(self, ui);
             }
             if let Some(workspace) = &self.workspace {
                 let root = &workspace.project().root;
@@ -1184,160 +1195,6 @@ impl App {
                 }
             });
         });
-    }
-
-    fn level_list(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(6.0);
-        if ui
-            .button("All levels as pictures")
-            .on_hover_text("Every level of the project at a glance")
-            .clicked()
-        {
-            self.overview.open = true;
-        }
-        ui.add(
-            egui::TextEdit::singleline(&mut self.level_filter)
-                .hint_text("Find a level: 105, castle…")
-                .desired_width(f32::INFINITY),
-        );
-        ui.add_space(4.0);
-        let Some(workspace) = &self.workspace else {
-            return;
-        };
-        ui.checkbox(&mut self.all_levels, "The game's own levels too")
-            .on_hover_text("Levels the project does not list build as the game has them. Choose one to add it.");
-        let filter = self.level_filter.trim().to_lowercase();
-        let listed: Vec<u16> = if self.all_levels {
-            (0..0x200).collect()
-        } else {
-            workspace.levels().collect()
-        };
-        // What a level is found by, and shown with: its name or else its
-        // tileset, and its screens and whether it is vertical.
-        let about = |number: u16| {
-            let name = self.level_name(number).map(str::to_string);
-            match workspace.level(number) {
-                Some(level) => {
-                    let tileset = kobo_core::names::object_tileset(level.header.object_tileset)
-                        .unwrap_or("?");
-                    let screens = level.header.screens;
-                    let size = match (level.header.level_mode.layer1_vertical(), screens) {
-                        (true, _) => format!("vertical, {screens}"),
-                        (false, 1) => "1 screen".to_string(),
-                        (false, n) => format!("{n} screens"),
-                    };
-                    (name, tileset.to_string(), size)
-                }
-                None => (name, "the game's own".to_string(), String::new()),
-            }
-        };
-        let levels: Vec<(u16, ListedLevel)> = listed
-            .into_iter()
-            .map(|n| (n, about(n)))
-            .filter(|(n, (name, tileset, _))| {
-                filter.is_empty()
-                    || format!("{n:03x}").contains(&filter)
-                    || tileset.to_lowercase().contains(&filter)
-                    || name
-                        .as_ref()
-                        .is_some_and(|name| name.to_lowercase().contains(&filter))
-            })
-            .collect();
-        let mut clicked = None;
-        let mut menu = None;
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.with_layout(Layout::top_down_justified(Align::Min), |ui| {
-                    for (number, (name, tileset, size)) in levels {
-                        let modified = self
-                            .open
-                            .get(&number)
-                            .is_some_and(|o| o.document.is_modified());
-                        let mut job = egui::text::LayoutJob::default();
-                        let font = egui::FontId::monospace(12.5);
-                        job.append(
-                            &format!("{number:03X}"),
-                            0.0,
-                            egui::TextFormat::simple(font, theme::TEXT),
-                        );
-                        if modified {
-                            job.append(
-                                " ●",
-                                0.0,
-                                egui::TextFormat::simple(
-                                    egui::FontId::proportional(12.0),
-                                    theme::ACCENT,
-                                ),
-                            );
-                        }
-                        let (text, color) = match &name {
-                            Some(name) => (name.as_str(), theme::TEXT),
-                            None => (tileset.as_str(), theme::MUTED),
-                        };
-                        job.append(
-                            &format!("  {text}"),
-                            0.0,
-                            egui::TextFormat::simple(egui::FontId::proportional(12.5), color),
-                        );
-                        let selected = self.current == Some(number);
-                        let row = egui::Button::selectable(selected, job)
-                            .right_text(RichText::new(size).size(11.5).color(theme::MUTED));
-                        let response = ui.add(row);
-                        let response = if name.is_some() {
-                            response.on_hover_text(tileset.as_str())
-                        } else {
-                            response
-                        };
-                        if response.clicked() {
-                            clicked = Some(number);
-                        }
-                        let listed = workspace.level_path(number).is_some();
-                        response.context_menu(|ui| {
-                            if ui
-                                .button(if listed {
-                                    "Open"
-                                } else {
-                                    "Add to the project…"
-                                })
-                                .clicked()
-                            {
-                                clicked = Some(number);
-                                ui.close();
-                            }
-                            if listed {
-                                ui.menu_button("Play from its start", |ui| {
-                                    for (i, name) in crate::play::POWERUPS.iter().enumerate() {
-                                        if ui.button(*name).clicked() {
-                                            menu = Some((number, ListAction::Play(i as u8)));
-                                            ui.close();
-                                        }
-                                    }
-                                });
-                                ui.separator();
-                                if ui.button("Take out of the project…").clicked() {
-                                    menu = Some((number, ListAction::Remove));
-                                    ui.close();
-                                }
-                            }
-                        });
-                    }
-                });
-            });
-        if let Some(number) = clicked {
-            if workspace.level_path(number).is_some() {
-                self.open_level(number);
-            } else {
-                self.adding = Some(number);
-            }
-        }
-        match menu {
-            Some((number, ListAction::Play(powerup))) => {
-                crate::play::from_level_start(self, number, powerup);
-            }
-            Some((number, ListAction::Remove)) => self.removing = Some(number),
-            None => {}
-        }
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui, hover: Option<canvas::Hover>) {
@@ -1658,6 +1515,7 @@ impl App {
         };
         match workspace.add_level(number, level) {
             Ok(path) => {
+                self.levels.changed();
                 self.say(format!("Added level {number:03X} as {}", path.display()));
                 self.open_level(number);
             }
@@ -1730,7 +1588,8 @@ impl App {
                             self.open_level(first);
                         }
                     }
-                    self.overview.changed(number);
+                    self.thumbnails.changed(number);
+                    self.levels.changed();
                     self.say(format!(
                         "Took level {number:03X} out; {} is deleted",
                         path.display()
@@ -1826,7 +1685,8 @@ impl App {
                 && !self.palette.busy()
                 && !self.build.busy()
                 && !self.backgrounds.busy()
-                && !(self.overview.open && self.overview.busy())
+                && !self.thumbnails.busy()
+                && !self.thumbnails.waiting()
         }) || matches!(self.clean, Clean::Missing(_))
             || self.workspace.is_none();
         match &mut self.screenshot_frames {
@@ -1899,16 +1759,6 @@ fn same_file(a: &Path, b: &Path) -> bool {
 
 /// How many levels keep their pictures while others are shown.
 const KEPT_PICTURES: usize = 4;
-/// What the level list's menu asks for of a level.
-enum ListAction {
-    Play(u8),
-    Remove,
-}
-
-/// What the level list shows of a level: its name on the overworld, its
-/// tileset, and its size.
-type ListedLevel = (Option<String>, String, String);
-
 /// Levels the Back command remembers.
 const HISTORY: usize = 100;
 
@@ -1925,6 +1775,7 @@ impl eframe::App for App {
         self.take_preview(&ctx);
         crate::start::poll(self, &ctx);
         crate::dialogs::poll(self);
+        self.thumbnails.poll(&ctx, self.workspace.as_ref());
         self.title(&ctx);
         self.follow_files();
         crate::build::poll(self);
@@ -1956,22 +1807,20 @@ impl eframe::App for App {
             .frame(theme::side_frame())
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.left, LeftTab::Levels, "Levels");
-                    ui.selectable_value(&mut self.left, LeftTab::Add, "Add");
-                    ui.selectable_value(&mut self.left, LeftTab::Outline, "Outline");
-                    ui.selectable_value(&mut self.left, LeftTab::Changes, "Changes")
-                        .on_hover_text("What differs from the last commit");
-                    ui.selectable_value(&mut self.left, LeftTab::Find, "Find")
-                        .on_hover_text("Objects and sprites in every level (Ctrl+Shift+F)");
+                    ui.selectable_value(&mut self.left, LeftTab::Levels, "Levels")
+                        .on_hover_text(
+                            "The project's levels, and finding what they hold (Ctrl+Shift+F)",
+                        );
+                    ui.selectable_value(&mut self.left, LeftTab::Objects, "Objects")
+                        .on_hover_text("Every object and sprite of the level");
+                    ui.selectable_value(&mut self.left, LeftTab::Add, "Add")
+                        .on_hover_text("Objects, sprites, and Map16 tiles to place");
                 });
                 ui.separator();
-                self.view.changes = self.left == LeftTab::Changes;
                 match self.left {
-                    LeftTab::Levels => self.level_list(ui),
+                    LeftTab::Levels => crate::levels::show(self, ui),
+                    LeftTab::Objects => outline::show(self, ui),
                     LeftTab::Add => palette::show(self, ui),
-                    LeftTab::Outline => outline::show(self, ui),
-                    LeftTab::Changes => crate::changes::show(self, ui),
-                    LeftTab::Find => crate::find::show(self, ui),
                 }
             });
         egui::Panel::right("inspector")
@@ -2001,6 +1850,7 @@ impl eframe::App for App {
         crate::backgrounds::window(self, &ctx);
         crate::project::window(self, &ctx);
         crate::commands::window(self, &ctx);
+        crate::changes::window(self, &ctx);
         crate::start::report_window(self, &ctx);
         self.confirm_adding(&ctx);
         self.confirm_removing(&ctx);

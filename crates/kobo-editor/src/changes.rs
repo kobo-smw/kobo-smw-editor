@@ -397,7 +397,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         open.head = None;
     }
     ui.label(
-        RichText::new("Green was added, amber changed, red removed; the canvas marks them while this tab is open.")
+        RichText::new("Green was added, amber changed, red removed; the canvas marks them while this window is open.")
             .small()
             .color(theme::MUTED),
     );
@@ -462,6 +462,82 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             open.selection.clear();
         }
     }
+}
+
+/// The changes, in a window of their own, which the Git menu opens; the
+/// canvas marks them while it is open.
+pub fn window(app: &mut App, ctx: &egui::Context) {
+    app.view.changes = app.changes_open && app.current().is_some();
+    if !app.changes_open {
+        return;
+    }
+    let mut open = true;
+    egui::Window::new("Changes since the last commit")
+        .open(&mut open)
+        .default_width(360.0)
+        .default_height(420.0)
+        .show(ctx, |ui| {
+            if app.current().is_some() {
+                show(app, ui);
+            } else {
+                ui.label(RichText::new("Open a level to see its changes.").color(theme::MUTED));
+            }
+        });
+    if !open {
+        app.changes_open = false;
+        app.view.changes = false;
+    }
+}
+
+/// Puts the open level back as the last commit has it, as one undo step.
+pub fn back_to_commit(app: &mut App) {
+    let Some(open) = app.current_mut() else {
+        return;
+    };
+    let result = match head_text(open.document.path()) {
+        Ok(text) => open
+            .document
+            .set_text("Back to the last commit", &text)
+            .map_err(|e| e.to_string()),
+        Err(NoHead::NotInGit) => Err("the project is not in a git repository".to_string()),
+        Err(NoHead::NotCommitted) => Err("the level's file is not committed yet".to_string()),
+        Err(NoHead::Unreadable(e)) => Err(e),
+    };
+    match result {
+        Ok(()) => {
+            let number = open.number;
+            app.request_preview(number);
+            if let Some(open) = app.current_mut() {
+                open.selection
+                    .retain(|item| item.exists(open.document.level()));
+            }
+        }
+        Err(e) => app.say(format!("Could not go back to the last commit: {e}")),
+    }
+}
+
+/// The Git menu: the changes since the last commit, and going back to it.
+pub fn menu(app: &mut App, ui: &mut egui::Ui) {
+    ui.menu_button("Git", |ui| {
+        if ui
+            .checkbox(&mut app.changes_open, "Changes since the last commit")
+            .on_hover_text("What differs from the level's file in git's last commit, each taken back on its own; marked on the canvas")
+            .clicked()
+        {
+            ui.close();
+        }
+        if ui
+            .add_enabled(
+                app.current().is_some(),
+                egui::Button::new("Back to the last commit"),
+            )
+            .on_hover_text("The level as git's last commit has it, as one step that undo takes back")
+            .clicked()
+        {
+            back_to_commit(app);
+            ui.close();
+        }
+    });
 }
 
 /// Marks the changes on the canvas: added green, changed amber (with

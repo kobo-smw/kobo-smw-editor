@@ -49,6 +49,11 @@ enum Command {
     /// Shows or hides a layer, by its screen designation bit.
     Layer(u8),
     Background,
+    /// Show or hide the changes since the last commit.
+    Changes,
+    BackToCommit,
+    /// The level list's search, for what every level holds.
+    Find,
 }
 
 /// Every command there is now: its name, its keys, and what it does.
@@ -90,24 +95,29 @@ fn commands(app: &App) -> Vec<(String, &'static str, Command)> {
             Command::Tab(LeftTab::Levels),
         ),
         (
+            "Show every object and sprite of the level".into(),
+            "",
+            Command::Tab(LeftTab::Objects),
+        ),
+        (
             "Show the palette (add objects and sprites)".into(),
             "",
             Command::Tab(LeftTab::Add),
         ),
         (
-            "Show the outline".into(),
-            "",
-            Command::Tab(LeftTab::Outline),
-        ),
-        (
             "Show changes since the last commit".into(),
             "",
-            Command::Tab(LeftTab::Changes),
+            Command::Changes,
+        ),
+        (
+            "Go back to the last commit".into(),
+            "",
+            Command::BackToCommit,
         ),
         (
             "Find objects and sprites in every level".into(),
             "Ctrl+Shift+F",
-            Command::Tab(LeftTab::Find),
+            Command::Find,
         ),
         ("Show or hide the source pane".into(), "", Command::Source),
         ("Show or hide the grid".into(), "G", Command::Grid),
@@ -235,6 +245,12 @@ fn run(app: &mut App, command: Command) {
         Command::Build => crate::build::start(app),
         Command::OpenLevel(number) => app.open_level(number),
         Command::Tab(tab) => app.left = tab,
+        Command::Changes => app.changes_open = !app.changes_open,
+        Command::BackToCommit => crate::changes::back_to_commit(app),
+        Command::Find => {
+            app.left = LeftTab::Levels;
+            app.levels.focus_search = true;
+        }
         Command::Source => view.source = !view.source,
         Command::Grid => view.grid = !view.grid,
         Command::Screens => view.screens = !view.screens,

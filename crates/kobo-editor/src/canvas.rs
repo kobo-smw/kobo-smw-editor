@@ -672,9 +672,35 @@ fn show_canvas(
             }
         }
 
-        // Zoom about the mouse, and scroll.
+        // Zoom about the mouse, and scroll: a mouse's wheel along the level
+        // (with Shift, across it), a trackpad any way.
+        // What turned last, kept while its turn is smoothed over frames:
+        // whether it was a wheel (by lines or pages, where a trackpad gives
+        // points), and whether Shift was held.
+        let wheel_id = egui::Id::new("canvas-wheel");
+        let wheel = ui.input(|i| {
+            i.raw.events.iter().rev().find_map(|e| match e {
+                egui::Event::MouseWheel {
+                    unit, modifiers, ..
+                } => Some((*unit != egui::MouseWheelUnit::Point, modifiers.shift)),
+                _ => None,
+            })
+        });
+        if let Some(wheel) = wheel {
+            ui.memory_mut(|m| m.data.insert_temp(wheel_id, wheel));
+        }
+        let (notched, across) = ui.memory(|m| m.data.get_temp(wheel_id).unwrap_or_default());
         if response.hovered() {
-            let (zoom, scroll) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta));
+            let (zoom, mut scroll) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta));
+            if notched && !vertical {
+                // Shift may have turned the wheel's turn sideways already.
+                let turned = scroll.x + scroll.y;
+                scroll = if across {
+                    Vec2::new(0.0, turned)
+                } else {
+                    Vec2::new(turned, 0.0)
+                };
+            }
             if zoom != 1.0
                 && let Some(at) = response.hover_pos()
             {
@@ -1130,8 +1156,8 @@ fn show_canvas(
         crate::play::start(app, start);
     }
     if let Some(query) = find_query {
-        app.find.query = query;
-        app.left = crate::app::LeftTab::Find;
+        app.levels.filter = query;
+        app.left = crate::app::LeftTab::Levels;
     }
     if let Some((action, at)) = clip {
         let ctx = ui.ctx().clone();

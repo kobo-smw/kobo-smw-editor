@@ -483,3 +483,31 @@ fn the_screens_a_level_uses_are_counted_from_its_load() {
         assert_eq!(used, level.header.screens, "level {number:03X}");
     }
 }
+
+#[test]
+fn sublevels_are_grouped_under_the_overworld_level_that_reaches_them() {
+    use kobo_core::edit::reach::{Placeholder, Reach};
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-reach");
+    fs::write(dir.join("kobo.toml"), "format = 1\n").unwrap();
+    let clean = Arc::new(clean);
+    let workspace = Workspace::open(&dir, clean.clone()).unwrap();
+    // The game's unused numbers share the TEST level; real levels do not.
+    let placeholder = Placeholder::of(&clean).unwrap();
+    let unused: Vec<u16> = (0..0x200)
+        .filter(|&n| placeholder.is(&workspace.clean_level(n).unwrap()))
+        .collect();
+    assert_eq!(unused.len(), 277);
+    assert!(unused.contains(&0x025) && !unused.contains(&0x105));
+    let listed: Vec<u16> = (0..0x200).filter(|n| !unused.contains(n)).collect();
+    let reach = Reach::of(&workspace, &listed);
+    // Yoshi's Island 1's pipe leads to 1CB; the Front Door's rooms are
+    // its sublevels.
+    assert_eq!(reach.group_of(0x1CB), Some(0x105));
+    let front_door = reach.groups.iter().find(|g| g.level == 0x10D).unwrap();
+    assert!(front_door.sublevels.len() >= 10, "{front_door:?}");
+    // The credits' rooms are reached by the game's code, not an exit.
+    assert!(reach.unreached.contains(&0x093));
+}

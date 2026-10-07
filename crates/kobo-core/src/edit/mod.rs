@@ -12,6 +12,7 @@ pub mod diff;
 mod document;
 pub mod find;
 mod previews;
+pub mod reach;
 mod workspace;
 
 pub use document::{LevelDocument, Reload};

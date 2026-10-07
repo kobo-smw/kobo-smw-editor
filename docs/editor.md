@@ -26,28 +26,41 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
 
 ## The window
 
-- **Top bar**: the Project, Edit, and View menus; back and forward between levels;
+- **Top bar**: the Project, Edit, View, and Git menus; back and forward between levels;
   Commands (Ctrl+K); Undo, Redo, Save, Play, and Build.
-- **Left**: five tabs.
-  - *Levels*: the project's levels by their names on the overworld (and with the box
-    ticked, the game's own, which are added when chosen), found by number, name, or
-    tileset; a level's menu plays it from its start or takes it out of the project; *All levels as pictures* shows every level as a card.
+- **Left**: three tabs.
+  - *Levels*: the project's levels as a player meets them: each overworld level (the
+    levels the overworld enters, `000`-`024` and `101`-`13B`, by their names there),
+    with the sublevels its screen exits lead to folded under it, then the levels no exit
+    reaches (the credits' rooms, the bonus game), then the game's own levels the project
+    does not have, which build as the game has them and are added when chosen. The
+    game's unused level numbers, which all hold its "TEST" level, are left out unless
+    asked for. Each row has a small picture of the level (hovering shows it larger), its
+    number and name (or tileset), and its screens, wide (↔) or tall (↕). The search finds
+    levels by number, name, or tileset and, below them, every object and sprite of every
+    level it names (Ctrl+Shift+F; `goomba`, `sprite 0F`, `extended 41`, `exit`); choosing
+    one opens its level with it selected. A level's menu plays it from its start or takes
+    it out of the project; *All levels as pictures* (View menu) shows every level as a
+    card.
+  - *Objects*: every object and sprite of the level, along the level as the player meets
+    them, screen by screen (a vertical level from where the player starts), or in drawing
+    order (later ones draw over earlier ones); all of them, or objects or sprites alone;
+    found by name, number, or place. It reaches what the canvas cannot click: screen
+    exits, Lunar Magic's settings objects, objects behind others.
   - *Add*: the palette. Objects, extended objects, and sprites, each drawn as the open level
     draws it (its tileset, sprite set, graphics, and palette); and Map16, a page at a time,
     for placing a tile directly. Choosing one places it at each click on the canvas, until
     Escape or a right click. In a level with layer 2 objects, the palette places on either.
-  - *Outline*: every object and sprite in drawing order (later ones draw over earlier ones),
-    found by name, number, or place. It reaches what the canvas cannot click: screen exits,
-    Lunar Magic's settings objects, objects behind others.
-  - *Changes*: what differs from the level's file in git's last commit, each change taken
-    back on its own; the canvas marks them while the tab is open (green added, amber
-    changed with where it was, red removed).
-  - *Find* (Ctrl+Shift+F): every object and sprite of every level in the project that a
-    search names, by name or number (`goomba`, `sprite 0F`, `extended 41`, `exit`), by
-    level; choosing one opens its level with it selected. The canvas's menu finds every
-    one like what is selected, or selects every one like it in the level.
+- **Git menu**: *Changes since the last commit* opens a window of what differs from the
+  level's file in git's last commit, each change taken back on its own; the canvas marks
+  them while it is open (green added, amber changed with where it was, red removed).
+  *Back to the last commit* puts the level as that commit has it, as one step undo takes
+  back. The canvas's menu finds every object like what is selected in every level (the
+  level list's search), or selects every one like it in the level.
 - **Canvas**: the level, with screen boundaries, the grid (G), markers where the player
-  enters (the start, the midway, each secondary entrance), and a minimap below. The status
+  enters (the start, the midway, each secondary entrance), and a minimap below. A mouse's
+  wheel scrolls along the level (sideways, or up and down in a vertical level; with Shift
+  the other way), Ctrl and the wheel zoom, and a trackpad pans freely. The status
   bar names the tile under the mouse: its place, screen, Map16 number, what it acts like
   when that is another tile, and the object that drew it.
   The view bar and the View menu show or hide layers 1, 2, and 3, the sprites, and the
@@ -137,7 +150,7 @@ leaves it out, as the game's own, and says so above the canvas.
 ## Running without a display
 
 `--screenshot out.png` saves the window once the level is drawn and quits, with `--tab`
-(`levels`, `add`, `sprites`, `map16`, `outline`, `changes`, `find`, `overview`,
-`backgrounds`), `--select`, and
+(`levels`, `objects`, `add`, `sprites`, `map16`, `changes`, `overview`, `backgrounds`),
+`--select`, and
 `--build` to set it up; under `xvfb-run -a` it needs no display. docs/step-3.md has what
 the development server needs for it.

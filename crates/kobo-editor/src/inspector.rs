@@ -702,7 +702,7 @@ fn header(
     change: &mut Option<Change>,
     more: impl FnOnce(&mut egui::Ui),
 ) {
-    heading(ui, "Level", "nothing selected: the level's settings");
+    heading(ui, "Level", "");
     let h = level.header;
     let mut set = |r: &Response, label: &str, header: PrimaryHeader| {
         if r.changed() {
