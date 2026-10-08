@@ -585,6 +585,14 @@ Magic's layout, lunar-magic-install.md, "The overworld").
 - The level a level tile enters (`CODE_05D83E`): the translevel at the player's place
   (or the overworld override, `$0109`, for the intro level), less `$24` from `$25` on,
   and the high byte 1 on any submap, 0 on the main map.
+- Tables the overworld reads in place: warps (`CODE_048509`: 27 entries from
+  `DATA_048431`, a place's x tile with its submap in the high byte, its y tile at
+  `DATA_048467`, the destination's x in pixels with the submap in bits 9-12 at
+  `DATA_04849D` and its y at `DATA_0484D3`), exit tiles between maps (`CODE_049A24`:
+  14 entries of a place's y and x in pixels and its submap from `DATA_049964`, the
+  destination's from `DATA_0499AA`, its tile from `DATA_0499F0`), each map's music
+  (`OverworldMusic`, `OverworldMusic2`), the sprite list (`OverworldSprites`, 13 of a
+  number, x, and y), and others (overworld::TABLES names them).
 - The level name (`CODE_049D07`) goes out as a stripe image (`DynamicStripeImage`,
   `$7F837D`, its size at `$7F837B`): 19 tiles at VRAM `$508B` with properties `$39`,
   composed from up to three parts per translevel (`LevelNames`), padded with spaces.

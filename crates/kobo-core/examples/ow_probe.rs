@@ -567,6 +567,7 @@ fn main() {
                 ("start", a.start == b.start),
                 ("opened", a.opened == b.opened),
                 ("level events", a.level_events == b.level_events),
+                ("tables", a.tables == b.tables),
             ] {
                 if !same {
                     differ.push(what);

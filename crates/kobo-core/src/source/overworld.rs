@@ -22,6 +22,9 @@
 //! [event_tiles]                  # where the event tile data's 2x2 blocks start
 //! split = 0x0900
 //!
+//! [tables]                       # the tables kept in place, their bytes (overworld::TABLES)
+//! music = "02 03 04 06 07 09 05"
+//!
 //! [crush]                        # events, places, VRAM: all 24 when any changes
 //! list = [[0x06, 0x0419, 0x2052], ...]
 //!
@@ -196,6 +199,14 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
         for (&t, name) in &changes.names {
             let quoted = toml_edit::Value::from(name_text(name)).to_string();
             text += &format!("{} = {}\n", hex(u32::from(t), 2), quoted.trim());
+        }
+        sections.push(text);
+    }
+    if !changes.tables.is_empty() {
+        let mut text = String::from("[tables]\n");
+        for (name, bytes) in &changes.tables {
+            let hex: Vec<String> = bytes.iter().map(|b| format!("{b:02X}")).collect();
+            text += &format!("{name} = \"{}\"\n", hex.join(" "));
         }
         sections.push(text);
     }
@@ -434,6 +445,30 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                     changes.names.insert(t, parse_name(&at, text)?);
                 }
             }
+            "tables" => {
+                let table = item
+                    .as_table()
+                    .ok_or_else(|| invalid(key, "must be a table"))?;
+                for (name, value) in table.iter() {
+                    let at = format!("tables.{name}");
+                    let Some(site) = crate::overworld::TABLES.iter().find(|t| t.name == name)
+                    else {
+                        return Err(invalid(&at, "is not a table of the overworld's"));
+                    };
+                    let text = value
+                        .as_str()
+                        .ok_or_else(|| invalid(&at, "must be hex bytes"))?;
+                    let bytes = text
+                        .split_whitespace()
+                        .map(|b| u8::from_str_radix(b, 16))
+                        .collect::<Result<Vec<u8>, _>>()
+                        .map_err(|_| invalid(&at, "must be hex bytes"))?;
+                    if bytes.len() != site.len {
+                        return Err(invalid(&at, format!("has {} bytes", site.len)));
+                    }
+                    changes.tables.insert(name.to_string(), bytes);
+                }
+            }
             "event_tiles" => {
                 let table = item
                     .as_table()
@@ -636,6 +671,9 @@ mod tests {
         changes.opened = Some(vec![(0x28, 0x03); 8]);
         changes.level_events.insert(0x13, 0x0A);
         changes.event_split = Some(0x0A00);
+        changes
+            .tables
+            .insert("music".into(), vec![2, 3, 4, 6, 7, 9, 5]);
         changes.events.insert(
             5,
             Event {

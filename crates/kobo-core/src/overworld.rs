@@ -48,6 +48,109 @@ pub const OPENED: usize = 8;
 /// submaps, a byte each, then two words each of their walking animation,
 /// their position in pixels, and that position in tiles.
 pub const START_PLAYERS: SnesAddr = SnesAddr::new(0x00_9EF0);
+/// A table of the overworld's that both layouts keep where the game does,
+/// and the game's own code reads (Lunar Magic's overworld editor changes it
+/// in place): carried as its bytes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct TableSite {
+    pub name: &'static str,
+    pub at: SnesAddr,
+    pub len: usize,
+    pub about: &'static str,
+}
+
+const fn site(name: &'static str, at: u32, len: usize, about: &'static str) -> TableSite {
+    TableSite {
+        name,
+        at: SnesAddr::new(at),
+        len,
+        about,
+    }
+}
+
+/// The overworld's tables kept in place (smw.md, "The overworld").
+pub const TABLES: [TableSite; 14] = [
+    site(
+        "boss_levels",
+        0x00_C9A7,
+        8,
+        "the levels whose boss passed plays a sequence (DATA_00C9A7)",
+    ),
+    site(
+        "boss_secret_exit",
+        0x00_CA0C,
+        1,
+        "the level whose boss passed takes the secret exit (CMP #$13)",
+    ),
+    site(
+        "earthquake_level",
+        0x00_CA13,
+        1,
+        "the level passed with an earthquake (CMP #$31)",
+    ),
+    site(
+        "warps",
+        0x04_8431,
+        0xD8,
+        "the star, pipe, and location warps: 27 places and destinations (DATA_048431)",
+    ),
+    site("music", 0x04_8D8A, 7, "each map's music (OverworldMusic)"),
+    site(
+        "music_2",
+        0x04_DBC8,
+        7,
+        "each map's music, as a warp plays it (OverworldMusic2)",
+    ),
+    site(
+        "koopa_teleports",
+        0x04_8E49,
+        12,
+        "where a player who fails a Koopa Kid's level goes (DATA_048E49)",
+    ),
+    site(
+        "no_auto_move_levels",
+        0x04_906C,
+        12,
+        "the levels passed without walking on (DATA_04906C)",
+    ),
+    site(
+        "exit_tiles",
+        0x04_9964,
+        0xA8,
+        "the exit tiles between maps: 14 places and destinations (DATA_049964)",
+    ),
+    site(
+        "sprites",
+        0x04_F625,
+        0x41,
+        "the sprite list: 13 of a number and a place (OverworldSprites)",
+    ),
+    site(
+        "ghosts",
+        0x04_F666,
+        12,
+        "the extra ghosts' places (ExtraOWGhostXPos)",
+    ),
+    site(
+        "fish",
+        0x04_FA2E,
+        12,
+        "the fish's places, by their path tiles (DATA_04FA2E)",
+    ),
+    site(
+        "koopa_kids",
+        0x04_FB88,
+        12,
+        "the Koopa Kids' places, by their tiles (DATA_04FB88)",
+    ),
+    site(
+        "sprite_by_submap",
+        0x04_FC1E,
+        8,
+        "a sprite's place on the main map and the first submap (DATA_04FC1E)",
+    ),
+];
+
 /// Each translevel's event (`DATA_05D608`), which a level passed makes (the
 /// next one for its secret exit); both layouts keep it here.
 pub const LEVEL_EVENTS: SnesAddr = SnesAddr::new(0x05_D608);
@@ -427,6 +530,8 @@ pub struct Overworld {
     pub opened: Vec<(u8, u8)>,
     /// Each translevel's event.
     pub level_events: Vec<u8>,
+    /// The tables kept in place, as [`TABLES`] lists them.
+    pub tables: Vec<Vec<u8>>,
 }
 
 fn read_word_ptr(rom: &Rom, low: SnesAddr, bank: SnesAddr) -> Result<SnesAddr, RomError> {
@@ -561,6 +666,10 @@ impl Overworld {
             ));
         }
         let level_events = rom.read(LEVEL_EVENTS, NAMES)?.to_vec();
+        let mut tables = Vec::with_capacity(TABLES.len());
+        for table in &TABLES {
+            tables.push(rom.read(table.at, table.len)?.to_vec());
+        }
         Ok(Self {
             layout,
             layer1,
@@ -572,6 +681,7 @@ impl Overworld {
             start,
             opened,
             level_events,
+            tables,
         })
     }
 }
@@ -1249,6 +1359,9 @@ impl Overworld {
             ));
         }
         plan.fixed.push((LEVEL_EVENTS, self.level_events.clone()));
+        for (table, bytes) in TABLES.iter().zip(&self.tables) {
+            plan.fixed.push((table.at, bytes.clone()));
+        }
         plan.fixed
             .push((operands::EVENT_SPLIT, events.split.to_le_bytes().to_vec()));
         plan.fixed.push((
@@ -1418,6 +1531,8 @@ pub struct Changes {
     pub level_events: std::collections::BTreeMap<u8, u8>,
     /// Where the event tile data's 2x2 blocks start.
     pub event_split: Option<u16>,
+    /// The tables kept in place, by name ([`TABLES`]): those that differ.
+    pub tables: std::collections::BTreeMap<String, Vec<u8>>,
 }
 
 impl Changes {
@@ -1544,6 +1659,11 @@ impl Overworld {
         if self.events.split != clean.events.split {
             changes.event_split = Some(self.events.split);
         }
+        for ((table, ours), theirs) in TABLES.iter().zip(&self.tables).zip(&clean.tables) {
+            if ours != theirs {
+                changes.tables.insert(table.name.to_string(), ours.clone());
+            }
+        }
         for (t, (&ours, &theirs)) in self
             .level_events
             .iter()
@@ -1592,6 +1712,15 @@ impl Overworld {
         }
         if let Some(opened) = &changes.opened {
             self.opened = opened.clone();
+        }
+        for (name, bytes) in &changes.tables {
+            let Some(i) = TABLES.iter().position(|t| t.name == name) else {
+                return Err(OverworldError::Decode("a table no overworld has"));
+            };
+            if bytes.len() != TABLES[i].len {
+                return Err(OverworldError::Decode("a table of another length"));
+            }
+            self.tables[i] = bytes.clone();
         }
         for (&t, &event) in &changes.level_events {
             if let Some(slot) = self.level_events.get_mut(usize::from(t)) {

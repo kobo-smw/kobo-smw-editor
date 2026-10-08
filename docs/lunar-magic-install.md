@@ -2033,6 +2033,20 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   place; most corpus hacks start elsewhere than the game. So does each translevel's
   event (`DATA_05D608`, read by the level load's `LDA $D608,Y` at `$05D9CC`, which 43
   corpus hacks keep).
+- Tables both layouts keep where the game does, which the game's own code reads and
+  Lunar Magic's overworld editor changes in place (`overworld::TABLES`, carried as
+  their bytes, `[tables]` in the overworld file): the boss sequence levels (`$00C9A7`,
+  and the levels compared at `$00CA0C` and `$00CA13`), the warps (`$048431`, 27, unused
+  ones `$FFFF`, which the game's loop passes over), each map's music (`$048D8A`,
+  `$04DBC8`), the Koopa teleports (`$048E49`), the no-auto-move levels (`$04906C`), the
+  exit tiles (`$049964`), the sprite list and the extra ghosts (`$04F625`, `$04F666`),
+  and the fish's, the Koopa Kids', and one sprite's places (`$04FA2E`, `$04FB88`,
+  `$04FC1E`). Found from a transfer of QW2's overworld, whose game-area changes are
+  these (2026-10-09); Kobo's build of QW2's overworld reads as QW2's, tables and all.
+  Lunar Magic's conversion of the vanilla overworld changes two of their values, Koopa
+  teleport 1 from 0, 0 to 8, 8 and sprite 6's y from -4 to 0; Kobo keeps the game's.
+  Its hooks at `$048509` and `$048566`, in the warps' lookup and use, are not Kobo's
+  yet.
 - Beating each level of the vanilla overworld, by either exit (`expand::beat_level`),
   plays the same steps to the same RAM and VRAM in the game, its transfer, and Kobo's
   build (2026-10-09). In hacks, events play faster where Lunar Magic's Extra Options
