@@ -126,6 +126,38 @@ fn the_vanilla_overworld_built_plays_its_levels_events_as_the_games_own() {
     assert_eq!(seen.len(), 92);
 }
 
+/// The clean ROM's overworld and Kobo's build of it draw the same, the
+/// main map and each submap.
+#[test]
+fn the_vanilla_overworld_built_draws_as_the_games_own() {
+    use kobo_core::build::{self, Project};
+
+    if common::asar().is_none() {
+        return;
+    }
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let project = Project {
+        root: std::path::PathBuf::from("."),
+        overworld: Some(overworld::Changes::default()),
+        ..Default::default()
+    };
+    let built = build::build(&clean, &project).unwrap();
+    for submap in 0..=6 {
+        let theirs = kobo_core::render::render_overworld(&clean, submap).unwrap();
+        let ours = kobo_core::render::render_overworld(&built, submap).unwrap();
+        assert!(theirs.pixels == ours.pixels, "submap {submap}");
+        // Not a blank picture: the map has more than a few colours.
+        let colours: std::collections::BTreeSet<_> = theirs.pixels.iter().collect();
+        assert!(
+            colours.len() > 16,
+            "submap {submap}: {} colours",
+            colours.len()
+        );
+    }
+}
+
 /// The level a translevel enters, in Kobo's build of the clean ROM's
 /// overworld: in Lunar Magic's layout by the translevel (`$1xx` from `$25`
 /// on), whichever map it is on, as Lunar Magic-saved ROMs' loads take it;

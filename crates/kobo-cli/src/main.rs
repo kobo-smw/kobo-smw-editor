@@ -60,6 +60,11 @@ enum Command {
         #[command(subcommand)]
         command: Map16Command,
     },
+    /// Render the overworld.
+    Overworld {
+        #[command(subcommand)]
+        command: OverworldCommand,
+    },
     /// Make a new project from a template: a widely used baserom, fetched
     /// from its own release and checked by hash.
     New {
@@ -451,6 +456,22 @@ enum MwlCommand {
 }
 
 #[derive(Subcommand)]
+enum OverworldCommand {
+    /// Render the overworld as a player on a submap sees it, as the ROM's
+    /// own load puts it up: layers 1 and 2 of its map, whole (512x512).
+    Png {
+        #[command(flatten)]
+        rom: RomArg,
+        /// The submap: 0 the main map, 1 to 6 the submaps (which share one
+        /// map, each with its own graphics and palette).
+        #[arg(long, default_value_t = 0)]
+        submap: u8,
+        /// Output PNG path.
+        out: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
 enum PaletteCommand {
     /// Render a level palette as a 16x16 swatch grid. With `--level`, the
     /// palette the ROM's loader uploaded for that level, custom palettes
@@ -620,6 +641,9 @@ fn main() -> Result<()> {
         Command::Palette {
             command: PaletteCommand::Png { rom, sel, out },
         } => palette_png(&rom.load()?, &sel, &out),
+        Command::Overworld {
+            command: OverworldCommand::Png { rom, submap, out },
+        } => overworld_png(&rom.load()?, submap, &out),
         Command::Map16 {
             command:
                 Map16Command::Png {
@@ -1215,6 +1239,16 @@ fn load_for_sheet(rom: &Rom, level: &str) -> Result<(u16, expand::LoadedLevel)> 
         eprintln!("warning: level {level:03X}: {line}");
     }
     Ok((level, loaded))
+}
+
+fn overworld_png(rom: &Rom, submap: u8, out: &PathBuf) -> Result<()> {
+    if submap > 6 {
+        bail!("the submap is 0 (the main map) to 6");
+    }
+    let img = render::render_overworld(rom, submap)?;
+    img.write_png(out)?;
+    println!("overworld, submap {submap} -> {}", out.display());
+    Ok(())
 }
 
 fn palette_png(rom: &Rom, sel: &PaletteArgs, out: &PathBuf) -> Result<()> {

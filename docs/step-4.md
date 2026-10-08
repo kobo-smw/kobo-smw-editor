@@ -90,6 +90,9 @@ from the editor where the user is working.
   code of their own.
 - Entering levels (2026-10-08): Kobo's code for the layout's level number hook
   (`$05D8B1`): a translevel's level by the translevel, on either map.
+- The overworld drawn (2026-10-09): `render::render_overworld`, layers 1 and 2 of the
+  map a player on a submap sees, from the ROM's own load; `kobo overworld png`. Kobo's
+  build of the vanilla overworld draws as the game's on every map.
 
 - The emulator to play in (2026-10-08, item 7): `play.emulator` in the config file, or
   `KOBO_EMULATOR`, opens Play's and Build and play's ROM in place of what the system

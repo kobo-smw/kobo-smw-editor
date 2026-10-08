@@ -536,6 +536,14 @@ fn main() {
                 }
             }
         }
+        Some("png") if args.len() == 4 => {
+            // `png rom.smc submap out.png`: the overworld as a player on
+            // that submap sees it.
+            let rom = Rom::load(&args[1]).unwrap();
+            let submap = args[2].parse().unwrap();
+            let img = kobo_core::render::render_overworld(&rom, submap).unwrap();
+            img.write_png(&args[3]).unwrap();
+        }
         Some("pair") if args.len() == 3 => {
             let a = Rom::load(&args[1]).unwrap();
             let b = Rom::load(&args[2]).unwrap();

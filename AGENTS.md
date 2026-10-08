@@ -131,7 +131,8 @@ Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-
   `render_loaded` for a level already loaded): it owns the drawing order (layers, sprite
   scene, the player behind the sprites, compose, markers on top; a boss arena skips the
   sprite capture). The CLI and `tests/video_oracle.rs` both call it; do not rebuild that
-  sequence in a shell.
+  sequence in a shell. `render_overworld(rom, submap)` is the overworld's, from the
+  ROM's own load (`expand::load_overworld_on`).
 - `render` has one of each PPU primitive, all public so a GUI can redraw a tile or a viewport
   through them; extend these instead of adding a second:
   `Tilemap::pixel` reads any background tilemap (layer 3, an arena's layer 1),
@@ -274,6 +275,7 @@ cargo run -- gfx list|export|png [-r rom]    # GFX files: table, LM-layout .bin 
 cargo run -- level info 105                  # primary header and data pointers
 cargo run -- palette png --level 105 out.png # 16x16 swatch of the palette the level loaded
 cargo run -- map16 png --level 105 out.png   # the level's Map16 tiles in colour (--layer 2: BG)
+cargo run -- overworld png out.png [--submap 1]  # the overworld as a player there sees it
 cargo run -- level png 105 out.png           # render a level by running the ROM's own loader
 cargo run -- level png 105 out.png --markers # ID boxes instead of sprite graphics (--no-sprites: none)
 cargo run -- level png 105 out.png --no-player # leave Mario out of the entrance (--hide 1,3: layer 2 alone)

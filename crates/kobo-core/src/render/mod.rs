@@ -275,6 +275,52 @@ impl LevelLayers {
     }
 }
 
+/// The overworld's side in pixels: 32 16x16 tiles, either map.
+pub const OVERWORLD_SIDE: u32 = 512;
+
+/// The overworld as a load left it in video memory: layers 1 and 2 of the
+/// map the players are on, whole, from their tilemaps, at the priorities
+/// their tiles have.
+pub fn overworld_layers(loaded: &crate::expand::LoadedOverworld) -> LevelLayers {
+    let mut layers = LevelLayers::new(OVERWORLD_SIDE, OVERWORLD_SIDE);
+    for (layer, priorities) in [
+        (BG2, [LAYER2_LOW, LAYER2_HIGH]),
+        (BG1, [LAYER1_LOW, LAYER1_HIGH]),
+    ] {
+        let map = Tilemap {
+            screens: loaded.bg_sc[layer],
+            character_base: usize::from(loaded.bg_character_base[layer]),
+            bpp: Bpp::Four,
+            tile_side: 8,
+        };
+        for y in 0..OVERWORLD_SIDE as i32 {
+            for x in 0..OVERWORLD_SIDE as i32 {
+                if let Some((color, high)) = map.pixel(&loaded.vram, x, y) {
+                    let at = (y as u32 * OVERWORLD_SIDE + x as u32) as usize;
+                    layers.put(layer, at, color, priorities[usize::from(high)]);
+                }
+            }
+        }
+    }
+    layers
+}
+
+/// The overworld as a player on `submap` (0 the main map) sees it, whole:
+/// layers 1 and 2 of its map in its graphics and palette, as the ROM's
+/// own load puts them up (`expand::load_overworld_on`).
+pub fn render_overworld(rom: &Rom, submap: u8) -> Result<RgbImage, crate::expand::ExpandError> {
+    let loaded = crate::expand::load_overworld_on(rom, submap)?;
+    let layers = overworld_layers(&loaded);
+    let screen = Screen {
+        main: 0x03,
+        sub: 0,
+        color_math: 0,
+        math_select: 0,
+        fixed_color: Color15(0),
+    };
+    Ok(layers.compose(&Palette::from_cgram(&loaded.cgram), &screen, None))
+}
+
 /// Adds or subtracts two colours per channel in the PPU's five bits,
 /// optionally halving the result, clamped to the channel range.
 fn color_math(main: Color15, operand: Color15, subtract: bool, halve: bool) -> Color15 {

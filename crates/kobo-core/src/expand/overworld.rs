@@ -29,6 +29,11 @@ pub struct LoadedOverworld {
     pub ram: Ram,
     pub vram: Vec<u8>,
     pub cgram: Vec<u8>,
+    /// `BG1SC`-`BG4SC` and the layers' character bases (bytes), as the
+    /// load left them: where in VRAM each layer's tilemap and characters
+    /// are.
+    pub bg_sc: [u8; 4],
+    pub bg_character_base: [u16; 4],
     /// Frames from power-on.
     pub frames: u32,
 }
@@ -55,6 +60,19 @@ pub fn load_overworld_passed(
     let (machine, frames) = load(rom, passed)?;
     Ok(loaded(&machine, frames))
 }
+
+/// [`load_overworld`] with the players on `submap` (0 the main map), so
+/// that the load puts up its graphics and palette: the overworld as a
+/// player there sees it.
+pub fn load_overworld_on(rom: &Rom, submap: u8) -> Result<LoadedOverworld, ExpandError> {
+    let pins = [(PLAYER_SUBMAPS, submap), (PLAYER_SUBMAPS_2, submap)];
+    let (machine, frames) = load_pinned(rom, &pins)?;
+    Ok(loaded(&machine, frames))
+}
+
+/// Each player's submap (`OWPlayerSubmap`).
+const PLAYER_SUBMAPS: RamAddr = RamAddr::new(0x7E_1F11);
+const PLAYER_SUBMAPS_2: RamAddr = RamAddr::new(0x7E_1F12);
 
 /// The game's last step of event `event` in play (`CODE_04E9EC`, the
 /// event process's eighth state, which makes the event's further tiles
@@ -188,22 +206,35 @@ fn loaded(machine: &Machine, frames: u32) -> LoadedOverworld {
         ram: bus.ram.clone(),
         vram: bus.vram.clone(),
         cgram: bus.cgram.clone(),
+        bg_sc: bus.bg_sc,
+        bg_character_base: bus.bg_character_base,
         frames,
     }
 }
 
 /// The machine at the first frame of game mode `$0E`, and the frames to it.
 fn load<'r>(rom: &'r Rom, passed: &[u8; EVENT_BYTES]) -> Result<(Machine<'r>, u32), ExpandError> {
-    let mut machine = Machine::new(rom, 0);
-    if passed.iter().any(|&b| b != 0) {
-        machine.bus.pinned = passed
+    let pins: Vec<(RamAddr, u8)> = if passed.iter().any(|&b| b != 0) {
+        passed
             .iter()
             .enumerate()
             .map(|(i, &b)| (RamAddr::new(EVENTS_PASSED.vanilla() + i as u32), b))
-            .collect();
-        for &(at, b) in &machine.bus.pinned.clone() {
-            machine.bus.ram.set_u8(at, b);
-        }
+            .collect()
+    } else {
+        Vec::new()
+    };
+    load_pinned(rom, &pins)
+}
+
+/// [`load`], with `pins` held from power-on (`SmwBus::pinned`).
+fn load_pinned<'r>(
+    rom: &'r Rom,
+    pins: &[(RamAddr, u8)],
+) -> Result<(Machine<'r>, u32), ExpandError> {
+    let mut machine = Machine::new(rom, 0);
+    machine.bus.pinned = pins.to_vec();
+    for &(at, b) in pins {
+        machine.bus.ram.set_u8(at, b);
     }
     machine.run_from_reset(routines::GAME_LOOP, RESET_STEP_LIMIT)?;
     let mut started = false;
