@@ -202,3 +202,129 @@ sha1 = "9e97a4547fc718b9873f9ef8648edfbdf7d53c6b"
 tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
 levels = "all"
 reason = "Its title screen wants other buttons than Start, so the new game never starts."
+
+[[failure]]
+hack = "Kaizo Kindergarten v1.06.smc"
+sha1 = "2e99a4c03755e91482f09e62853118d93fc80eab"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws two-line level names from a table of its own, the first line at VRAM $506B: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "Learn 2 Kaizo v1.1.smc"
+sha1 = "3e78ce8110b98074e0cd1856451ea88c5086ca03"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws two-line level names from a table of its own, the first line at VRAM $506B: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "SMW_2022-4-9.smc"
+sha1 = "0cba2601d6f8e6d9231a1680f91c29c6ac3962a7"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws two-line level names from a table of its own, the first line at VRAM $506B: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "corpus_more/Sakaya Sanctuary 1.2.smc"
+sha1 = "9e5142507905e04818456ca94fd1f3b09ef49e7d"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws two-line level names from a table of its own, the first line at VRAM $506B: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "Super Hark Bros 2.smc"
+sha1 = "ce5c989892e87f889b89899513c697841d987f6e"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws the level name 28 tiles wide from VRAM $5062: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "corpus_more/Extended Interactions V1.1.1.smc"
+sha1 = "066d943973d608d3afbba4497f6da9d2c00e4e0e"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws the level name 28 tiles wide from VRAM $5062: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "Luminescent v1.02.smc"
+sha1 = "4272e6c1750d5a6796c1a34d7cbf70a903d4ac41"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws the level name three tiles left, from VRAM $5088; Lunar Magic's own transfer of its overworld draws it at $508B, as Kobo's build does."
+
+[[failure]]
+hack = "corpus_more/ValuableAndBeautiful.smc"
+sha1 = "36aee7157e5f94f5cbc2f23a7d86b78ee47c7d22"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own file select ($009D39 on) changes the new game: with every event passed, the level its player starts on has another name than in Kobo's build."
+
+[[failure]]
+hack = "QLDC 2021/43_KevinM+margot.bps"
+sha1 = "2439df893493bdbc79250ec469c54fc54e51ae33"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws the level name its own way (a stripe at VRAM $506B, $24 bytes): Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "QLDC 2021/41_Nitrogen.bps"
+sha1 = "256a198f9c1a371047205ac35792ad499f1e227c"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws the level name 28 tiles wide from VRAM $5062: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "QLDC 2021/35_FrozenQuills.bps"
+sha1 = "466a27c79d7694b6c3dcaf39d702e138e831dc99"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws the level name 28 tiles wide from VRAM $5062: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "QLDC 2021/22_FerpyMcFrosting.bps"
+sha1 = "5057f85fa69851c4dea06b2d9c6c3409da578784"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws the level name 28 tiles wide from VRAM $5062: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "QLDC 2022/11_bebn_legg.bps"
+sha1 = "5cc0c29f5e7cc9d89e23089c383e39bbf702c94a"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws the level name its own way (a stripe at VRAM $5088, 4 bytes): Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "QLDC 2022/36_CosmicTiff.bps"
+sha1 = "67b6406372463de1acce8bf94c24356ffcf4f890"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws two-line level names from a table of its own, the first line at VRAM $506B: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "QLDC 2022/41_FrozenQuills.bps"
+sha1 = "88a3f5e943eeacbb53bc80c364ff116c4ce8dd15"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws the level name 28 tiles wide from VRAM $5062: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "QLDC 2022/03_TheBourgyman.bps"
+sha1 = "b5ef8033b4c9a21062410203718902e92662f9d3"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws two-line level names from a table of its own, the first line at VRAM $506B: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "QLDC 2021/11_CircleFriendo.bps"
+sha1 = "c4590c214afdfee3743a4ac0dea0143625b0e129"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws the level name 28 tiles wide from VRAM $5062: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "QLDC 2021/08_Lizstar.bps"
+sha1 = "c6d0a6ef65593086b1ae7fbbd9f1ccdfcc01b5ea"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+levels = "all"
+reason = "Its own code draws the level name 28 tiles wide from VRAM $5062: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."

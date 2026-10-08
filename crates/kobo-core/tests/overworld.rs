@@ -106,7 +106,9 @@ fn lunar_magic_overworlds_read_as_their_loads_leave_them() {
                         && back.names == ours.names
                         && back.event_list() == ours.event_list()
                         && back.events.crush == ours.events.crush
-                        && back.events.reveal == ours.events.reveal;
+                        && back.events.reveal == ours.events.reveal
+                        && back.start == ours.start
+                        && back.opened == ours.opened;
                     if !same {
                         failures.fail(
                             &rom,
@@ -180,7 +182,9 @@ fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
             && ours.names == theirs.names
             && ours.event_list() == theirs.event_list()
             && ours.events.crush == theirs.events.crush
-            && ours.events.reveal == theirs.events.reveal;
+            && ours.events.reveal == theirs.events.reveal
+            && ours.start == theirs.start
+            && ours.opened == theirs.opened;
         if !same {
             failures.fail(&rom, None, "the build reads back otherwise");
         }

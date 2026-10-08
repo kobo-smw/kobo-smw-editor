@@ -53,6 +53,28 @@ org $04D808 : db $FF            ; their bank
 org $04D822 : dw $FFFF          ; layer 1's pages' low word
 org $04D827 : db $FF            ; their bank
 
+; The level names: this layout keeps 19 tiles a name, a translevel's at
+; its number times 19 into a table whose 24-bit pointer is at $03BB57 (in
+; free space), where the game composed each from parts (LevelNames,
+; CODE_049D07). At the two places the game puts a level's name in the
+; stripe image (the overworld's load, and a level tile reached), Kobo's
+; code puts the table's, and the game goes on past the call.
+!names_at = $03BB57
+!stripe_size = $7F837B
+!stripe = $7F837D
+
+org $048E81
+    JSL level_name
+    BRA +
+    db $EA,$EA,$EA,$EA
++
+
+org $049549
+    JSL level_name
+    BRA +
+    db $EA,$EA,$EA,$EA
++
+
 ; The game's loop through its list, from its first branch on: Kobo's code
 ; makes the event's tiles, and the game goes on at $04E9FC.
 org $04E9F7
@@ -274,3 +296,63 @@ make_extras:
     PLA
     PLY
     RTS
+
+; A level's name in the stripe image, as CODE_049D07 puts one: 19 tiles to
+; layer 3 at VRAM $508B, each with properties $39. Entered with the
+; translevel in A, A and the index registers 16-bit, as the game's code
+; calls CODE_049D07; leaves them 16-bit, and $00-$03 changed, as that
+; does. The data bank is kept.
+level_name:
+    PHB
+    PHA
+    SEP #$20
+    LDA.l !names_at+2
+    PHA
+    PLB
+    REP #$20
+    PLA
+    AND #$00FF
+    STA $00
+    ASL A
+    ADC $00
+    STA $02
+    LDA $00
+    ASL A
+    ASL A
+    ASL A
+    ASL A
+    CLC
+    ADC $02
+    CLC
+    ADC.l !names_at
+    TAY
+    LDA.l !stripe_size
+    TAX
+    LDA #$8B50
+    STA.l !stripe,X
+    LDA #$2500
+    STA.l !stripe+2,X
+    LDA.w #19
+    STA $00
+.tile:
+    SEP #$20
+    LDA $0000,Y
+    STA.l !stripe+4,X
+    LDA #$39
+    STA.l !stripe+5,X
+    REP #$20
+    INX
+    INX
+    INY
+    DEC $00
+    BNE .tile
+    SEP #$20
+    LDA #$FF
+    STA.l !stripe+4,X
+    REP #$20
+    TXA
+    CLC
+    ADC #$0004
+    STA.l !stripe_size
+    PLB
+    RTL

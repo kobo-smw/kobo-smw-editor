@@ -576,6 +576,15 @@ Magic's layout, lunar-magic-install.md, "The overworld").
   an event's last step (`CODE_04E9EC`, the event process's state 7) makes its further
   tiles and marks it passed. `expand::load_overworld_passed` and `expand::end_event` run
   these on a ROM.
+- A new game's save file (`InitSaveData`) starts the players where
+  `InitPlayerOverworldData` (`$009EF0`) says: each one's submap (a byte; 0 the main map,
+  Yoshi's Island 1), walking animation (a word, 2), position in pixels (two words,
+  `$68`, `$78`), and that position in tiles (the pixels over 16); and it opens the
+  directions of 8 level tiles, by translevel (`InitLevelTileMovementData`, `$009EE0`,
+  Yoshi's House and the star warps).
+- The level name (`CODE_049D07`) goes out as a stripe image (`DynamicStripeImage`,
+  `$7F837D`, its size at `$7F837B`): 19 tiles at VRAM `$508B` with properties `$39`,
+  composed from up to three parts per translevel (`LevelNames`), padded with spaces.
 
 Lunar Magic rewrites all of this into a layout of its own on its first overworld save,
 with each level tile's translevel and the events' changes as data (its hook at `$04DCFA`

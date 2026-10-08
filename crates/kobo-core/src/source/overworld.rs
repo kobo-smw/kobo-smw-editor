@@ -22,6 +22,11 @@
 //! [reveal]                       # the layer 1 tiles events turn into others
 //! list = [[0x6E, 0x58], ...]
 //!
+//! [start]                        # where a new game puts Mario and Luigi: submap, x, y
+//! mario = [0x01, 0x0068, 0x0078] # (submap 0 the main map; x and y in pixels)
+//! luigi = [0x01, 0x0068, 0x0078]
+//! opened = [[0x28, 0x03], ...]   # 8 level tiles' translevel and directions it opens
+//!
 //! [[event]]
 //! number = 0x05
 //! layer1 = [0x0123, 0x2345]      # its layer 1 tile's place and VRAM address
@@ -39,7 +44,7 @@
 use toml_edit::{DocumentMut, Item, Table, Value};
 
 use super::{SourceError, hex, invalid};
-use crate::overworld::{Changes, Crush, Event, EventBlock, ExtraTile, NAME_TILES};
+use crate::overworld::{Changes, Crush, Event, EventBlock, ExtraTile, NAME_TILES, OPENED, Start};
 
 const MAP_NAMES: [&str; 2] = ["main", "submaps"];
 
@@ -210,6 +215,31 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
             );
         }
         sections.push(text + "]\n");
+    }
+    if changes.start.is_some() || changes.opened.is_some() {
+        let mut text = String::from("[start]\n");
+        if let Some(start) = &changes.start {
+            for (who, p) in ["mario", "luigi"].iter().zip(start) {
+                text += &format!(
+                    "{who} = [{}, {}, {}]\n",
+                    hex(u32::from(p.submap), 2),
+                    hex(u32::from(p.x), 4),
+                    hex(u32::from(p.y), 4)
+                );
+            }
+        }
+        if let Some(opened) = &changes.opened {
+            text += "opened = [\n";
+            for (t, d) in opened {
+                text += &format!(
+                    "    [{}, {}],\n",
+                    hex(u32::from(*t), 2),
+                    hex(u32::from(*d), 2)
+                );
+            }
+            text += "]\n";
+        }
+        sections.push(text);
     }
     for (&n, event) in &changes.events {
         let mut text = format!(
@@ -410,6 +440,45 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                     changes.reveal = Some(reveal);
                 }
             }
+            "start" => {
+                let table = item
+                    .as_table()
+                    .ok_or_else(|| invalid(key, "must be a table"))?;
+                let player = |who: &str| -> Result<Option<Start>, SourceError> {
+                    let Some(v) = table.get(who).and_then(Item::as_value) else {
+                        return Ok(None);
+                    };
+                    let at = format!("start.{who}");
+                    let n = numbers(&at, v, 3, 0xFFFF)?;
+                    if n[0] > 0xFF {
+                        return Err(invalid(&at, "a submap is a byte"));
+                    }
+                    Ok(Some(Start {
+                        submap: n[0] as u8,
+                        x: n[1] as u16,
+                        y: n[2] as u16,
+                    }))
+                };
+                match (player("mario")?, player("luigi")?) {
+                    (Some(m), Some(l)) => changes.start = Some([m, l]),
+                    (None, None) => {}
+                    _ => return Err(invalid(key, "has both mario and luigi or neither")),
+                }
+                if let Some(list) = table.get("opened") {
+                    let list = list
+                        .as_array()
+                        .ok_or_else(|| invalid(key, "opened must be a list"))?;
+                    let mut opened = Vec::new();
+                    for v in list.iter() {
+                        let n = numbers("start.opened", v, 2, 0xFF)?;
+                        opened.push((n[0] as u8, n[1] as u8));
+                    }
+                    if opened.len() != OPENED {
+                        return Err(invalid(key, "opens 8 level tiles"));
+                    }
+                    changes.opened = Some(opened);
+                }
+            }
             "event" => {
                 let events = item
                     .as_array_of_tables()
@@ -507,6 +576,19 @@ mod tests {
             vram: 0x2052,
         }]);
         changes.reveal = Some(vec![(0x6E, 0x58)]);
+        changes.start = Some([
+            Start {
+                submap: 1,
+                x: 0x68,
+                y: 0x78,
+            },
+            Start {
+                submap: 0,
+                x: 0x1C8,
+                y: 0x1C8,
+            },
+        ]);
+        changes.opened = Some(vec![(0x28, 0x03); 8]);
         changes.events.insert(
             5,
             Event {

@@ -1996,6 +1996,19 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   of them. The vanilla overworld's transfer loads as the game does in all three, every
   event alone and all together (2026-10-08). Kobo's code does the same, at the same two
   places, with its pointers at the four offsets.
+- Level names: a hook at `$048E81` and one at `$049549` (10 bytes each, over `ASL : TAX :
+  LDA LevelNames,X : STA $00 : JSR CODE_049D07`, entered with the translevel in a 16-bit
+  A) put the name from the names table (`$03BB57`) in the stripe image as the game's
+  routine does: 19 tiles at VRAM `$508B`, properties `$39`, the image grown by `$2A`
+  bytes. The vanilla overworld's transfer and Kobo's build leave the same stripe and VRAM;
+  so do Lunar Magic's transfer of Luminescent's overworld into a clean ROM and Kobo's
+  build of it, where the hack itself draws at `$5088` (2026-10-08). The corpus hacks
+  whose names come out otherwise draw them with code of their own: two lines from VRAM
+  `$506B`, 28 tiles from `$5062`, or elsewhere (known_failures.toml).
+- Where a new game starts (the players' submaps and positions, `InitPlayerOverworldData`
+  at `$009EF0`, and the 8 level tiles it opens, `InitLevelTileMovementData` at
+  `$009EE0`) stays in the game's tables, which Lunar Magic's overworld editor changes in
+  place; most corpus hacks start elsewhere than the game.
 - A transfer also changes the byte at `$0FF092` (0 in the vanilla ROM, `$AC` after the
   vanilla overworld's transfer, `$A7` after one with that list entry changed), outside
   any RATS block; not looked into yet.

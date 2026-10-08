@@ -40,6 +40,14 @@ pub const EVENT_RANGES: SnesAddr = SnesAddr::new(0x04_E359);
 pub const REVEAL_FROM: SnesAddr = SnesAddr::new(0x04_DA1D);
 pub const REVEAL_TO: SnesAddr = SnesAddr::new(0x04_DA33);
 pub const REVEALS: usize = 0x16;
+/// What a new game opens (`InitLevelTileMovementData`): 8 level tiles'
+/// save bytes, by translevel, and the directions they are left by.
+pub const START_OPENED: SnesAddr = SnesAddr::new(0x00_9EE0);
+pub const OPENED: usize = 8;
+/// Where a new game puts the players (`InitPlayerOverworldData`): their
+/// submaps, a byte each, then two words each of their walking animation,
+/// their position in pixels, and that position in tiles.
+pub const START_PLAYERS: SnesAddr = SnesAddr::new(0x00_9EF0);
 
 /// The game's instructions whose operands lead to tables, in both layouts.
 mod operands {
@@ -375,6 +383,15 @@ impl DataLayout {
     }
 }
 
+/// Where a new game puts a player: the submap (0 the main map) and the
+/// position in pixels, which the game keeps in tiles too.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Start {
+    pub submap: u8,
+    pub x: u16,
+    pub y: u16,
+}
+
 /// An overworld, as a ROM has it.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Overworld {
@@ -390,6 +407,10 @@ pub struct Overworld {
     pub layer2: Vec<u16>,
     pub names: Vec<[u8; NAME_TILES]>,
     pub events: Events,
+    /// Where a new game puts Mario and Luigi.
+    pub start: [Start; 2],
+    /// The level tiles a new game opens, as translevel and directions.
+    pub opened: Vec<(u8, u8)>,
 }
 
 fn read_word_ptr(rom: &Rom, low: SnesAddr, bank: SnesAddr) -> Result<SnesAddr, RomError> {
@@ -508,6 +529,21 @@ impl Overworld {
                 .collect(),
         };
         let events = read_events(rom, layout)?;
+        let player = |p: u32| -> Result<Start, RomError> {
+            Ok(Start {
+                submap: rom.read_u8(START_PLAYERS.add(p))?,
+                x: rom.read_u16(START_PLAYERS.add(6 + 4 * p))?,
+                y: rom.read_u16(START_PLAYERS.add(8 + 4 * p))?,
+            })
+        };
+        let start = [player(0)?, player(1)?];
+        let mut opened = Vec::with_capacity(OPENED);
+        for i in 0..OPENED as u32 {
+            opened.push((
+                rom.read_u8(START_OPENED.add(2 * i))?,
+                rom.read_u8(START_OPENED.add(2 * i + 1))?,
+            ));
+        }
         Ok(Self {
             layout,
             layer1,
@@ -516,6 +552,8 @@ impl Overworld {
             layer2,
             names,
             events,
+            start,
+            opened,
         })
     }
 }
@@ -787,23 +825,38 @@ pub fn load_differences(
     b: &crate::expand::LoadedOverworld,
 ) -> Vec<String> {
     use crate::ram::RamAddr;
-    [
+    let mut tables: Vec<(&str, Vec<u8>, Vec<u8>)> = [
         ("layer 1", 0x7E_C800, LAYER1_TILES),
         ("layer 1 pages", 0x7F_C800, LAYER1_TILES),
         ("translevels", 0x7E_D000, LAYER1_TILES),
         ("directions", 0x7E_D800, LAYER1_TILES),
         ("layer 2", 0x7F_4000, 2 * LAYER2_TILES),
+        // The stripe image the level's name went out in (CODE_049D07).
+        ("the name's stripe image", 0x7F_837D, 4 + 2 * NAME_TILES + 1),
     ]
     .into_iter()
-    .filter_map(|(what, at, len)| {
-        let (x, y) = (
+    .map(|(what, at, len)| {
+        (
+            what,
             a.ram.bytes(RamAddr::new(at), len),
             b.ram.bytes(RamAddr::new(at), len),
-        );
-        let differ = x.iter().zip(&y).filter(|(p, q)| p != q).count();
-        (differ > 0).then(|| format!("{what}: {differ} bytes differ"))
+        )
     })
-    .collect()
+    .collect();
+    // The name on layer 3, from VRAM word $508B.
+    let name = 2 * 0x508B..2 * (0x508B + NAME_TILES);
+    tables.push((
+        "the name in VRAM",
+        a.vram[name.clone()].to_vec(),
+        b.vram[name].to_vec(),
+    ));
+    tables
+        .into_iter()
+        .filter_map(|(what, x, y)| {
+            let differ = x.iter().zip(&y).filter(|(p, q)| p != q).count();
+            (differ > 0).then(|| format!("{what}: {differ} bytes differ"))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -1128,6 +1181,30 @@ impl Overworld {
             plan.blocks
                 .push((what, bytes, vec![Pointer::new(at, Form::Long)]));
         }
+        // Where a new game starts: the submaps, then the positions in
+        // pixels and in tiles, the animation words between left as they are.
+        if self.opened.len() != OPENED {
+            return Err(OverworldError::Decode(
+                "level tiles a new game opens, of which there are 8",
+            ));
+        }
+        plan.fixed.push((
+            START_OPENED,
+            self.opened.iter().flat_map(|&(t, d)| [t, d]).collect(),
+        ));
+        plan.fixed
+            .push((START_PLAYERS, self.start.iter().map(|p| p.submap).collect()));
+        let positions = |f: &dyn Fn(&Start) -> [u16; 2]| -> Vec<u8> {
+            self.start
+                .iter()
+                .flat_map(f)
+                .flat_map(u16::to_le_bytes)
+                .collect()
+        };
+        plan.fixed
+            .push((START_PLAYERS.add(6), positions(&|p| [p.x, p.y])));
+        plan.fixed
+            .push((START_PLAYERS.add(14), positions(&|p| [p.x >> 4, p.y >> 4])));
         let (from, to): (Vec<u8>, Vec<u8>) = events.reveal.iter().copied().unzip();
         plan.fixed.push((REVEAL_FROM, from));
         plan.fixed.push((REVEAL_TO, to));
@@ -1213,6 +1290,8 @@ pub struct Changes {
     pub events: std::collections::BTreeMap<u8, Event>,
     pub crush: Option<Vec<Crush>>,
     pub reveal: Option<Vec<(u8, u8)>>,
+    pub start: Option<[Start; 2]>,
+    pub opened: Option<Vec<(u8, u8)>>,
 }
 
 impl Changes {
@@ -1299,6 +1378,12 @@ impl Overworld {
         if self.events.reveal != clean.events.reveal {
             changes.reveal = Some(self.events.reveal.clone());
         }
+        if self.start != clean.start {
+            changes.start = Some(self.start);
+        }
+        if self.opened != clean.opened {
+            changes.opened = Some(self.opened.clone());
+        }
         changes
     }
 
@@ -1332,6 +1417,12 @@ impl Overworld {
         }
         let crush = changes.crush.clone().unwrap_or(self.events.crush.clone());
         let reveal = changes.reveal.clone().unwrap_or(self.events.reveal.clone());
+        if let Some(start) = changes.start {
+            self.start = start;
+        }
+        if let Some(opened) = &changes.opened {
+            self.opened = opened.clone();
+        }
         let blocks: Vec<Vec<EventBlock>> = events.iter().map(|e| e.blocks.clone()).collect();
         let extras: Vec<Vec<ExtraTile>> = events.iter().map(|e| e.extras.clone()).collect();
         self.events = Events::from_blocks(

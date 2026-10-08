@@ -83,6 +83,11 @@ from the editor where the user is working.
   which made the layer 2 load's loop Kobo's too. Loads with events passed
   (`expand::load_overworld_passed`) and events' ends (`expand::end_event`) of Kobo's
   builds are the hacks' own in every corpus hack whose own code leaves them alone.
+- Level names and where a new game starts (2026-10-08): Kobo's code for the layout's
+  two name hooks (`$048E81`, `$049549`), and the players' start and the level tiles a
+  new game opens carried (`[start]` in the overworld file). Kobo's builds of 33 of the
+  corpus's `.smc` hacks now load as the hacks do, name and all; the rest draw names with
+  code of their own.
 
 - The emulator to play in (2026-10-08, item 7): `play.emulator` in the config file, or
   `KOBO_EMULATOR`, opens Play's and Build and play's ROM in place of what the system

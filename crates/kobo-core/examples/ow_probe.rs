@@ -248,6 +248,12 @@ fn compare_with(hack: &Rom, built: &Rom, all: &[u8; 0x0F]) -> String {
             }
         }
     }
+    // The rest of what the library compares: the level name.
+    for d in kobo_core::overworld::load_differences(&a, &b) {
+        if d.contains("name") {
+            out += &format!(" {d};");
+        }
+    }
     let vram = (0..a.vram.len())
         .filter(|&i| a.vram[i] != b.vram[i])
         .count();
@@ -378,6 +384,24 @@ fn main() {
                 let d = kobo_core::overworld::load_differences(&base, &x);
                 if !d.is_empty() {
                     println!("event {e:#04x}: {}", d.join(", "));
+                }
+            }
+        }
+        Some("name") if args.len() >= 2 => {
+            // `name rom...`: the stripe image the level name went out in,
+            // with no event passed and with all.
+            use kobo_core::ram::RamAddr;
+            for path in &args[1..] {
+                let rom = Rom::load(path).unwrap();
+                for passed in [[0; 0x0F], [0xFF; 0x0F]] {
+                    match kobo_core::expand::load_overworld_passed(&rom, &passed) {
+                        Ok(l) => {
+                            let b = l.ram.bytes(RamAddr::new(0x7F_837B), 0x34);
+                            let hex: Vec<String> = b.iter().map(|x| format!("{x:02x}")).collect();
+                            println!("{path}: {}", hex.join(" "));
+                        }
+                        Err(e) => println!("{path}: {e}"),
+                    }
                 }
             }
         }
