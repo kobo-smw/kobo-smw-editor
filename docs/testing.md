@@ -670,7 +670,9 @@ or `entrances`, several joined by `+`. The probes below then compare the two ROM
   after the whole load with `KOBO_ENTRY_FULL`. Leave out of a comparison with a Lunar
   Magic ROM the RAM its taller levels set (`005B:80 0BE7 0BEE-0D75 13D7-13D8 1936-1937`)
   and scratch and pointers (`0065-006A 008A-008F 00CE-00D0 1BB2-1BBA 0BDA-0BDC`); against
-  the hack itself, also `00D1-00D4` and `1DEA`. The overworld can name a level only up to low byte `$DB`
+  the hack itself, also `00D1-00D4` and `1DEA`. The RAM both probes compare goes through
+  `clean_room::bytes`, which withholds the stack but keeps `$0100`-`$010F`, the game's
+  variables under it. The overworld can name a level only up to low byte `$DB`
   (`CODE_05D8A2` takes `$24` off a name of `$25` and up).
 - **Block contact probe**: `tools/lunar-magic/block-probe/make-rom out/` builds vanilla
   saved once by Lunar Magic with GPS's logging probe block in level `105` (needs Wine,

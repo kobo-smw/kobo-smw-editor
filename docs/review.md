@@ -14,12 +14,6 @@ settle it.
 
 ## Open
 
-- **The probes' RAM through `clean_room::bytes` (2026-10-05).** `entry_probe` and
-  `exlevel_probe` zeroed `$0100`-`$01FF` themselves; `clean_room::bytes` withholds the
-  stack (both processors' on SA-1) but keeps `$0100`-`$010F`, where the game keeps
-  variables, so their comparisons now include those 16 bytes. The ignore lists recorded in
-  docs/testing.md for `entry_probe` against a Lunar Magic ROM did not need them; a
-  comparison that differs there now shows it.
 - **The editor's dependencies' licences (2026-10-05).** `kobo-editor` brings four
   licences `deny.toml` did not allow: BSL-1.0 (clipboard-win and error-code, its clipboard
   on Windows), allowed generally as a permissive code licence; CC0-1.0 for `notify` only
