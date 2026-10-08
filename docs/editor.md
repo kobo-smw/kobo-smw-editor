@@ -81,7 +81,8 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
   and whether they replace the tilesets'), its palette (a click on a colour changes it; a
   palette of its own starts from the game's colours for it), its ExAnimation (which of
   the game's and Lunar Magic's animations run, and its list's slots: type, trigger,
-  frames, where they go, and the frames' words, with why a build would refuse the list),
+  frames, where they go, and the frames' words, with why a build would refuse the list;
+  *The global list* opens the project's global list in a window of its own),
   the secondary entrances into it, copying it, starting an empty level, or taking
   it out of the project; and diagnostics.
 - **Source** (top bar): the level's file beside the canvas, the selection's line marked.
@@ -130,9 +131,15 @@ back). Ctrl+S saves every changed level.
 ## Map16
 
 The Map16 window (View menu; a right click on a tile in the palette's Map16 page, or
-*Edit Map16 tile* in the canvas's menu) edits the project's foreground Map16 tiles as the
-open level shows them: its object tileset picks which definition of a tile the game keeps
-per tileset is meant, and its graphics and palette draw them. A click chooses a tile, a
+*Edit Map16 tile* in the canvas's menu) edits the project's Map16 tiles as the open level
+shows them: its object tileset picks which definition of a tile the game keeps per
+tileset is meant, and its graphics and palette draw them. *Background* shows the tiles
+of the level's BG Map16 table instead (its own background's table, else the game's),
+which have no acts-like setting. The vertical pipes' tiles (`133`-`13A`) have four
+colour sets, chosen by the screen they stand on: set 1 is page 1's own, and sets 0, 2,
+and 3 are chosen beside the tile and kept in the pipes file. In object tilesets 0 and 7
+the diagonal pipes' tiles (`1C4`-`1C7`, `1EC`-`1EF`) are the game's diagonal pipe table's,
+which changes go to. A click chooses a tile, a
 double click (or *Place it*) places it on the level. The tile's four quarters are
 chosen on its large picture; each has its 8x8 tile (typed, or clicked among the level's
 1024, drawn in the quarter's palette), its palette row, its flips, and its priority. *Acts
@@ -166,7 +173,9 @@ undo step, and the level is built and drawn again when it ends.
 A file the project does not have is the clean ROM's as a build stores it (16 colours
 where the project uses Lunar Magic's graphics formats), and saving adds it as
 `graphics/GFXnn.png`. An ExGFX file the project holds as a PNG is drawn in the same way;
-one held as `.bin` bytes is not, having no colours to draw in.
+one held as `.bin` bytes is not, having no colours to draw in. *Export* saves the file as
+an indexed PNG in the colours shown, to draw in another program; *Import* draws the file
+from such a PNG (its size, 16 tiles to a row, within its colours) as one undo step.
 
 ## Layer 3
 

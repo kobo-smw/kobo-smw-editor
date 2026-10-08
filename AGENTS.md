@@ -188,6 +188,7 @@ Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-
   edited a tile at a time for a tileset and written where the page files' rules put
   it; `GraphicsDocument` a GFX or ExGFX file as its indexed image; `PalettesDocument`
   the shared palettes; `TilemapDocument` a level's layer 3 tilemap file;
+  `GlobalAnimation` the global ExAnimation list;
   `Workspace` is the project in memory, built and a level rendered from it
   (`preview`). The editor makes no change any other way.
 - `kobo_core::names` holds the names Kobo writes after ids (objects by object set, extended

@@ -1976,3 +1976,100 @@ fn a_level_is_given_a_layer3_tilemap_drawn_on_and_saved() {
     let saved = std::fs::read_to_string(project.level_file()).unwrap();
     assert!(saved.contains("[graphics]"), "{saved}");
 }
+
+#[test]
+fn a_background_map16_tile_is_edited_and_saved() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "map16-background");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().map16_editor.open = true;
+    harness.state_mut().map16_editor.layer = crate::map16::Layer::Background;
+    harness.run_steps(2);
+    let before = harness.state().map16().unwrap().background(0x010);
+    let mut changed = before;
+    changed.top_left = kobo_core::map16::Tile8Ref::new(0x55, 1, false, true, false);
+    assert_ne!(changed, before);
+    harness
+        .state_mut()
+        .apply_map16_background("Edit", 0x010, changed, false);
+    harness.step();
+    assert_eq!(harness.state().map16().unwrap().background(0x010), changed);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    harness.step();
+    let page = std::fs::read_to_string(project.0.join("map16/bg-00.toml")).unwrap();
+    assert!(page.contains("0x010 = { gfx = ["), "{page}");
+    let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
+    assert!(manifest.contains("[map16_bg]"), "{manifest}");
+}
+
+#[test]
+fn the_global_animation_list_is_given_a_slot_and_saved() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "global-animation");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().global_animation_window.open = true;
+    harness.run_steps(2);
+    harness
+        .get_by_label("Give the project a global list")
+        .click();
+    harness.run_steps(2);
+    harness.get_by_label("Add a slot").click();
+    harness.run_steps(2);
+    let slots = |app: &mut App| {
+        app.global_animation()
+            .unwrap()
+            .list()
+            .map(|l| l.slots.len())
+    };
+    assert_eq!(slots(harness.state_mut()), Some(1));
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    assert_eq!(slots(harness.state_mut()), Some(0));
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    harness.step();
+    wait_for(&mut harness, "the picture", drawn);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    harness.step();
+    let file = std::fs::read_to_string(project.0.join("animation/global.toml")).unwrap();
+    assert!(file.contains("slots = ["), "{file}");
+    let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
+    assert!(
+        manifest.contains("global = \"animation/global.toml\""),
+        "{manifest}"
+    );
+}
+
+#[test]
+fn a_graphics_file_goes_out_as_a_png_and_comes_back_drawn_on() {
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "graphics-png");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().graphics_editor.open = true;
+    harness.run_steps(3);
+    let file = harness.state().graphics_editor.file.expect("a file chosen");
+    let png = project.0.join("out.png");
+    harness.state_mut().export_graphics(file, &png);
+    let mut image =
+        kobo_core::image::IndexedImage::from_png(&std::fs::read(&png).unwrap()).unwrap();
+    assert_eq!(
+        image.palette.len(),
+        harness.state().graphics_editor.preview.len()
+    );
+    image.pixels[1] = if image.pixels[1] == 2 { 3 } else { 2 };
+    let drawn_on = image.pixels[1];
+    std::fs::write(&png, image.to_png().unwrap()).unwrap();
+    harness.state_mut().import_graphics(file, &png);
+    harness.step();
+    let graphics = harness.state().open_graphics(file).unwrap();
+    assert_eq!(graphics.pixel(1, 0), Some(drawn_on));
+    assert_eq!(
+        graphics.undo_label(),
+        Some(format!("Import {file}").as_str())
+    );
+}

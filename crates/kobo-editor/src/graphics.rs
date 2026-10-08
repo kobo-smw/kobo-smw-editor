@@ -36,6 +36,8 @@ pub struct GraphicsEditor {
     stroke: Option<(u32, u32)>,
     /// The file's picture, and what it was drawn for.
     sheet: Option<(Key, TextureHandle)>,
+    /// The colours the file is drawn in now, for a PNG saved from it.
+    pub preview: Vec<[u8; 3]>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -129,6 +131,7 @@ fn show(app: &mut App, ui: &mut egui::Ui) {
         state.choose(file, Some(slot));
     }
     let mut action = None;
+    let mut dialog = None;
     ui.horizontal_top(|ui| {
         ui.vertical(|ui| {
             ui.set_width(150.0);
@@ -208,8 +211,28 @@ fn show(app: &mut App, ui: &mut egui::Ui) {
                     .on_hover_text("Draw with the left button; the right picks a colour");
                 ui.selectable_value(&mut state.tool, Tool::Fill, "Fill")
                     .on_hover_text("Fill an area of one colour, within its 8x8 tile");
+                ui.separator();
+                if ui
+                    .button("Import…")
+                    .on_hover_text(
+                        "Draw the file from an indexed PNG of its size, 16 tiles to a row",
+                    )
+                    .clicked()
+                {
+                    dialog = Some(crate::dialogs::Purpose::GraphicsImport(file));
+                }
+                if ui
+                    .button("Export…")
+                    .on_hover_text(
+                        "Save the file as an indexed PNG, in these colours, to draw in elsewhere",
+                    )
+                    .clicked()
+                {
+                    dialog = Some(crate::dialogs::Purpose::GraphicsExport(file));
+                }
             });
             let swatches = colours(&palette, state.row, colors);
+            state.preview = swatches.iter().map(|c| [c.r(), c.g(), c.b()]).collect();
             state.colour = state.colour.min(colors as u8 - 1);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
@@ -343,6 +366,21 @@ fn show(app: &mut App, ui: &mut egui::Ui) {
                 });
         });
     });
+    if let Some(purpose) = dialog {
+        let save = matches!(purpose, crate::dialogs::Purpose::GraphicsExport(_));
+        let name = state.file.map(|f| format!("{f}.png")).unwrap_or_default();
+        app.graphics_editor = state;
+        let picker = rfd::AsyncFileDialog::new()
+            .add_filter("Indexed PNG", &["png"])
+            .set_file_name(&name);
+        let pick = if save {
+            crate::dialogs::Pick::Save
+        } else {
+            crate::dialogs::Pick::File
+        };
+        crate::dialogs::ask(app, purpose, pick, picker);
+        return;
+    }
     let file = state.file;
     let colour = state.colour;
     let ended = state.stroke.is_none();

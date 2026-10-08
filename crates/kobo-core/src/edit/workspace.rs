@@ -234,6 +234,7 @@ impl Workspace {
         if project.map16 != self.project.map16
             || project.map16_game != self.project.map16_game
             || project.map16_tileset != self.project.map16_tileset
+            || project.map16_bg != self.project.map16_bg
             || project.manifest != self.project.manifest
         {
             self.project = Arc::new(project);
@@ -275,6 +276,18 @@ impl Workspace {
         let mut project = (*self.project).clone();
         tilemap.apply_to(&mut project);
         if project.exgfx != self.project.exgfx || project.manifest != self.project.manifest {
+            self.project = Arc::new(project);
+        }
+    }
+
+    /// Puts the global ExAnimation list as the editor has it in the
+    /// project, for the next build.
+    pub fn set_global_animation(&mut self, global: &super::GlobalAnimation) {
+        let mut project = (*self.project).clone();
+        global.apply_to(&mut project);
+        if project.animation_global != self.project.animation_global
+            || project.manifest != self.project.manifest
+        {
             self.project = Arc::new(project);
         }
     }

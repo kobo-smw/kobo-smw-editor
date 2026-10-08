@@ -57,20 +57,22 @@ from the editor where the user is working.
   tileset files, its changes as `TileChange`s for a tileset, undo by snapshot, saving
   new files into the manifest, and `Workspace::set_map16` for builds of unsaved edits;
   the editor's window, with the level's own tiles to pick 8x8 tiles from (editor.md,
-  "Map16"). Background Map16 and the pipes file are not edited yet.
+  "Map16"). Background Map16 and the pipes' colour sets and diagonal tiles followed
+  the same day.
 - The graphics window (2026-10-08): `edit::GraphicsDocument` over a GFX file (the
   clean ROM's until saved into the project) or a PNG ExGFX file, with pencil strokes,
   fills within a tile, undo, and `Workspace::set_graphics`; `edit::graphics::level_files`
-  for the files a level loads (editor.md, "Graphics"). Importing a PNG or `.bin` into a
-  slot, and drawing in `.bin` ExGFX, are not done yet.
+  for the files a level loads (editor.md, "Graphics"); importing and exporting a file as
+  an indexed PNG followed. Drawing in `.bin` ExGFX is not done: a file the project keeps
+  as bytes has no colours to draw in.
 - The shared palettes (2026-10-08): `source::palettes` (the game's 21 colour tables as
   a project changes them, `[palettes] shared`), written by the graphics stage, carried by
   ROM and Callisto imports, checked against Lunar Magic's shared palette export and
   import; `edit::PalettesDocument` and the editor's window (editor.md, "Shared palettes").
 - A level's ExAnimation in the inspector (2026-10-08): `Edit::SetAnimation`, refusing a
   list a build would refuse, and `exanimation::Slot::refit_frames` keeping a slot's
-  frames as its type, trigger, and count change. The global list is still edited in its
-  file, and the level's picture shows the frame the load leaves.
+  frames as its type, trigger, and count change; `edit::GlobalAnimation` and a window
+  for the project's global list. The level's picture shows the frame the load leaves.
 - Layer 3 tilemaps (2026-10-08): `edit::layer3` (where LT3's file goes, giving a level
   one with `T` set, `TilemapDocument` over the `.bin` file) and the editor's layer 3
   window (editor.md, "Layer 3"). Layer 3's own graphics files are drawn in through the

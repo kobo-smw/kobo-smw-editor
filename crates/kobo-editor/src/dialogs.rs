@@ -26,6 +26,10 @@ pub enum Purpose {
     Mwl,
     /// Where to save the open level's picture.
     Picture,
+    /// An indexed PNG to draw a graphics file from.
+    GraphicsImport(kobo_core::edit::GraphicsFile),
+    /// Where to save a graphics file as an indexed PNG.
+    GraphicsExport(kobo_core::edit::GraphicsFile),
 }
 
 /// What a dialog chooses.
@@ -92,5 +96,7 @@ pub fn poll(app: &mut App) {
         Purpose::NewFolder(new) => crate::start::folder_chosen(app, new, path),
         Purpose::Mwl => app.import_mwl(&path),
         Purpose::Picture => app.save_picture(&path),
+        Purpose::GraphicsImport(file) => app.import_graphics(file, &path),
+        Purpose::GraphicsExport(file) => app.export_graphics(file, &path),
     }
 }

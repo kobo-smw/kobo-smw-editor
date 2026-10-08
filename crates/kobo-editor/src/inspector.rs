@@ -75,7 +75,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .workspace()
         .and_then(|w| kobo_core::palette::game_palette(w.clean(), &level.header).ok());
     let mut show_table: Option<&'static str> = None;
-    let mut draw_graphics = false;
+    let mut windows = Windows::default();
     let strips = app.workspace().map(|w| palette_strips(w.clean()));
     // How each layer 2 scroll setting moves layer 2.
     let scroll_names = app.workspace().map(|w| {
@@ -121,7 +121,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             game_palette.as_ref(),
                             change,
                             &mut show_table,
-                            &mut draw_graphics,
+                            &mut windows,
                         );
                     });
                     level_action = copy_level(ui, &mut copy_to, &taken);
@@ -237,8 +237,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     {
         open.selection = select_past;
     }
-    if draw_graphics {
+    if windows.graphics {
         app.graphics_editor.open = true;
+    }
+    if windows.global_animation {
+        app.global_animation_window.open = true;
     }
     if let Some(table) = show_table {
         app.view.source = true;
@@ -1610,6 +1613,13 @@ fn entrances(
     }
 }
 
+/// The windows the level's sections ask to open.
+#[derive(Default)]
+struct Windows {
+    graphics: bool,
+    global_animation: bool,
+}
+
 /// Lunar Magic's graphics list and palette for the level, and its
 /// ExAnimation.
 fn graphics_and_palette(
@@ -1619,7 +1629,7 @@ fn graphics_and_palette(
     game: Option<&kobo_core::palette::CustomPalette>,
     change: &mut Option<Change>,
     show_table: &mut Option<&'static str>,
-    draw: &mut bool,
+    windows: &mut Windows,
 ) {
     use kobo_core::exgfx::{self, GraphicsList};
     use kobo_core::palette::Color15;
@@ -1628,7 +1638,7 @@ fn graphics_and_palette(
         .default_open(false)
         .show(ui, |ui| {
             ui.label(RichText::new("GRAPHICS").small().color(theme::MUTED));
-            *draw = ui
+            windows.graphics = ui
                 .button("✏ Draw in the level's files")
                 .on_hover_text("The graphics window (View menu)")
                 .clicked();
@@ -1811,9 +1821,15 @@ fn graphics_and_palette(
             if let Some((r, label, edit)) = crate::animation::section(ui, number, level) {
                 *change = Some(Change::new(&r, label, vec![edit]));
             }
-            if level.animation.is_some() && ui.button("Show in the file").clicked() {
-                *show_table = Some("animation");
-            }
+            ui.horizontal(|ui| {
+                windows.global_animation = ui
+                    .button("The global list…")
+                    .on_hover_text("The project's global ExAnimation, which every level runs unless it turns it off")
+                    .clicked();
+                if level.animation.is_some() && ui.button("Show in the file").clicked() {
+                    *show_table = Some("animation");
+                }
+            });
         });
 }
 

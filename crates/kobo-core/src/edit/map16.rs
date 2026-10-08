@@ -24,10 +24,14 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::build::Project;
-use crate::map16::{GameTables, Map16Tile, TILESET_COUNT, sharing_group, vanilla_map16};
+use crate::map16::{
+    GameTables, Map16Tile, PIPE_COLOUR_TILES, TILESET_COUNT, diagonal_pipe_tiles, pipe_address,
+    sharing_group, vanilla_map16,
+};
 use crate::rom::Rom;
 use crate::source::map16::{
-    DEFAULT_ACTS, GAME_PAGES, GamePage, Map16Entry, Map16Page, PAGES, PageComments, PageKind,
+    DEFAULT_ACTS, GAME_PAGES, GamePage, Map16Entry, Map16Page, PAGES, PIPE_SETS, PageComments,
+    PageKind, Pipes,
 };
 use crate::source::project::{MANIFEST, Manifest};
 
@@ -73,6 +77,24 @@ struct Files {
     /// Pages 0 and 1.
     game: BTreeMap<u8, PageFile<GamePage>>,
     tilesets: BTreeMap<u8, PageFile<Map16Page>>,
+    /// Background pages, `$00` to `$FF` (table * 16 + page).
+    background: BTreeMap<u8, PageFile<Map16Page>>,
+    /// The pipes file, if the project has one or a change made it.
+    pipes: Option<PipesFile>,
+}
+
+/// The pipes file: its place, its tiles, and the comments before them.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct PipesFile {
+    path: PathBuf,
+    pipes: Pipes,
+    top: Vec<String>,
+}
+
+/// Whether object tileset `tileset` draws `tile` from the diagonal pipes'
+/// table, which replaces those tiles in tilesets 0 and 7.
+fn diagonal(tile: u16, tileset: u8) -> bool {
+    matches!(tileset, 0 | 7) && diagonal_pipe_tiles().any(|t| t == tile)
 }
 
 impl Files {
@@ -127,6 +149,11 @@ pub struct Map16Document {
     tables: GameTables,
     /// The clean ROM's pages 0 and 1, per object tileset.
     clean: Vec<Vec<Map16Tile>>,
+    /// The clean ROM's background tiles: table 0's pages 0 and 1.
+    clean_background: Vec<Map16Tile>,
+    /// The clean ROM's other definitions of the pipes' tiles: by colour
+    /// set (0, 2, 3) or, with `None`, the diagonal pipes'.
+    clean_pipes: BTreeMap<(Option<u8>, u16), Map16Tile>,
     files: Files,
     saved: Files,
     undo: Vec<Step>,
@@ -190,15 +217,58 @@ impl Map16Document {
                 },
             );
         }
+        for (&page, file) in &manifest.map16_bg {
+            let path = root.join(file);
+            let (tiles, comments) = Map16Page::from_toml(PageKind::Background, page, &read(&path)?)
+                .map_err(|source| Map16EditError::File {
+                    path: path.clone(),
+                    source,
+                })?;
+            files.background.insert(
+                page,
+                PageFile {
+                    path: file.clone(),
+                    tiles,
+                    comments,
+                },
+            );
+        }
+        if let Some(file) = &manifest.map16_pipes {
+            let path = root.join(file);
+            let (pipes, top) =
+                Pipes::from_toml(&read(&path)?).map_err(|source| Map16EditError::File {
+                    path: path.clone(),
+                    source,
+                })?;
+            files.pipes = Some(PipesFile {
+                path: file.clone(),
+                pipes,
+                top,
+            });
+        }
+        let mut clean_pipes = BTreeMap::new();
+        let sets = PIPE_SETS
+            .iter()
+            .flat_map(|&set| PIPE_COLOUR_TILES.map(move |t| (Some(set), t)))
+            .chain(diagonal_pipe_tiles().map(|t| (None, t)));
+        for (set, tile) in sets {
+            let at = pipe_address(set, tile).expect("a pipe's tile");
+            let bytes: [u8; 8] = clean.read(at, 8)?.try_into().expect("eight bytes");
+            clean_pipes.insert((set, tile), Map16Tile::from_bytes(bytes));
+        }
         let mut clean_tiles = Vec::new();
+        let mut clean_background = Vec::new();
         for tileset in 0..TILESET_COUNT {
             let table = vanilla_map16(clean, tileset, false)?;
             clean_tiles.push(table.tiles[..0x200].to_vec());
+            clean_background = table.tiles[0x200..0x400].to_vec();
         }
         Ok(Self {
             root: root.to_path_buf(),
             tables: GameTables::read(clean)?,
             clean: clean_tiles,
+            clean_background,
+            clean_pipes,
             saved: files.clone(),
             files,
             undo: Vec::new(),
@@ -218,7 +288,9 @@ impl Map16Document {
                     .get(&((tile >> 8) as u8))
                     .and_then(|f| f.tiles.tiles.get(&tile).copied())
                     .unwrap_or_default();
-                let gfx = if self.tables.is_specific(tile) {
+                let gfx = if diagonal(tile, tileset) {
+                    Some(self.pipe(None, tile))
+                } else if self.tables.is_specific(tile) {
                     let owner = files.table_owner(&self.tables, tileset);
                     files
                         .tilesets
@@ -266,7 +338,72 @@ impl Map16Document {
     }
 
     fn clean_gfx(&self, tile: u16, tileset: u8) -> Map16Tile {
+        if diagonal(tile, tileset) {
+            return self.clean_pipes[&(None, tile)];
+        }
         self.clean[usize::from(tileset)][usize::from(tile)]
+    }
+
+    /// A pipe's other definition of `tile`, as the project has it: in
+    /// colour set `set` (0, 2, or 3), or with `None` the diagonal pipes'.
+    pub fn pipe(&self, set: Option<u8>, tile: u16) -> Map16Tile {
+        let changed = self.files.pipes.as_ref().and_then(|f| match set {
+            Some(set) => f.pipes.colours.get(&(set, tile)),
+            None => f.pipes.diagonal.get(&tile),
+        });
+        changed
+            .or_else(|| self.clean_pipes.get(&(set, tile)))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Sets a vertical pipe's tile in colour set `set` (0, 2, or 3), as
+    /// one undo step. Set 1 is page 1's own tiles.
+    pub fn apply_pipe_colour(
+        &mut self,
+        label: impl Into<String>,
+        set: u8,
+        tile: u16,
+        gfx: Map16Tile,
+    ) {
+        if !PIPE_SETS.contains(&set) || !PIPE_COLOUR_TILES.contains(&tile) {
+            return;
+        }
+        let mut files = self.files.clone();
+        self.set_pipe(&mut files, Some(set), tile, gfx);
+        if files != self.files {
+            self.undo.push(Step {
+                label: label.into(),
+                files: std::mem::replace(&mut self.files, files),
+            });
+            self.redo.clear();
+        }
+    }
+
+    fn set_pipe(&self, files: &mut Files, set: Option<u8>, tile: u16, gfx: Map16Tile) {
+        let file = files.pipes.get_or_insert_with(|| PipesFile {
+            path: PathBuf::from("map16").join("pipes.toml"),
+            pipes: Pipes::default(),
+            top: Vec::new(),
+        });
+        let clean = self.clean_pipes.get(&(set, tile)).copied();
+        match set {
+            Some(set) if Some(gfx) == clean => {
+                file.pipes.colours.remove(&(set, tile));
+            }
+            Some(set) => {
+                file.pipes.colours.insert((set, tile), gfx);
+            }
+            None if Some(gfx) == clean => {
+                file.pipes.diagonal.remove(&tile);
+            }
+            None => {
+                file.pipes.diagonal.insert(tile, gfx);
+            }
+        }
+        if file.pipes.is_empty() && self.saved.pipes.is_none() {
+            files.pipes = None;
+        }
     }
 
     /// Whether the project's files hold anything of tile `tile` for
@@ -281,6 +418,9 @@ impl Map16Document {
     /// itself alone for page 2 when that is per tileset.
     pub fn shown_in(&self, tile: u16, tileset: u8) -> Vec<u8> {
         let tileset = tileset % TILESET_COUNT;
+        if diagonal(tile, tileset) {
+            return vec![0, 7];
+        }
         match tile >> 8 {
             0 | 1 if self.tables.is_specific(tile) => self
                 .tables
@@ -291,6 +431,78 @@ impl Map16Document {
             2 if self.files.tileset_page2() => vec![tileset],
             _ => (0..TILESET_COUNT).collect(),
         }
+    }
+
+    /// Background tile `tile` (its table times `$1000`, plus its number in
+    /// the table) as the project has it.
+    pub fn background(&self, tile: u16) -> Map16Tile {
+        self.files
+            .background
+            .get(&((tile >> 8) as u8))
+            .and_then(|f| f.tiles.tiles.get(&tile))
+            .map_or_else(|| self.clean_background(tile), |e| e.gfx)
+    }
+
+    /// Background tile `tile` as the clean ROM has it: the game's in table
+    /// 0's pages 0 and 1, else empty.
+    pub fn clean_background(&self, tile: u16) -> Map16Tile {
+        if tile < 0x200 {
+            self.clean_background[usize::from(tile)]
+        } else {
+            Map16Tile::default()
+        }
+    }
+
+    pub fn is_background_changed(&self, tile: u16) -> bool {
+        self.background(tile) != self.clean_background(tile)
+    }
+
+    /// Sets background tiles, as one undo step called `label`. A tile set
+    /// as the clean ROM has it leaves its file.
+    pub fn apply_background(&mut self, label: impl Into<String>, changes: &[(u16, Map16Tile)]) {
+        let mut files = self.files.clone();
+        self.set_background(&mut files, changes);
+        if files != self.files {
+            self.undo.push(Step {
+                label: label.into(),
+                files: std::mem::replace(&mut self.files, files),
+            });
+            self.redo.clear();
+        }
+    }
+
+    /// Sets background tiles as part of the last undo step.
+    pub fn amend_background(&mut self, changes: &[(u16, Map16Tile)]) {
+        if self.undo.is_empty() {
+            return self.apply_background("Edit BG Map16", changes);
+        }
+        let mut files = self.files.clone();
+        self.set_background(&mut files, changes);
+        self.files = files;
+        self.redo.clear();
+    }
+
+    fn set_background(&self, files: &mut Files, changes: &[(u16, Map16Tile)]) {
+        for &(tile, gfx) in changes {
+            let page = (tile >> 8) as u8;
+            let file = files
+                .background
+                .entry(page)
+                .or_insert_with(|| new_file(background_path(page), Map16Page::default()));
+            if gfx == self.clean_background(tile) {
+                file.tiles.tiles.remove(&tile);
+            } else {
+                let entry = Map16Entry {
+                    gfx,
+                    acts: DEFAULT_ACTS,
+                };
+                file.tiles.tiles.insert(tile, entry);
+            }
+        }
+        let saved = &self.saved;
+        files
+            .background
+            .retain(|p, f| !f.tiles.tiles.is_empty() || saved.background.contains_key(p));
     }
 
     /// Applies `changes` in order as one undo step called `label`. If one
@@ -345,6 +557,22 @@ impl Map16Document {
         }
         let page = page as u8;
         match page {
+            1 if diagonal(tile, tileset) => {
+                // The diagonal pipes' table for the graphics; what it acts
+                // like, the same in every tileset, in page 1's file.
+                self.set_pipe(files, None, tile, entry.gfx);
+                let file = files
+                    .game
+                    .entry(page)
+                    .or_insert_with(|| new_file(page_path(page), GamePage::default()));
+                let mut game = file.tiles.tiles.get(&tile).copied().unwrap_or_default();
+                game.acts = (entry.acts != tile).then_some(entry.acts);
+                if game.acts.is_none() && game.gfx.is_none() {
+                    file.tiles.tiles.remove(&tile);
+                } else {
+                    file.tiles.tiles.insert(tile, game);
+                }
+            }
             0 | 1 => {
                 let specific = self.tables.is_specific(tile);
                 if specific {
@@ -502,6 +730,14 @@ impl Map16Document {
                 )?;
             }
         }
+        for (page, file) in &self.files.background {
+            if self.saved.background.get(page) != Some(file) {
+                write(
+                    &file.path,
+                    file.tiles.to_toml(PageKind::Background, &file.comments),
+                )?;
+            }
+        }
         let new_pages: Vec<(u8, PathBuf)> = self
             .files
             .pages
@@ -518,7 +754,27 @@ impl Map16Document {
             .filter(|(t, _)| !self.saved.tilesets.contains_key(t))
             .map(|(t, f)| (*t, f.path.clone()))
             .collect();
-        if !new_pages.is_empty() || !new_tilesets.is_empty() {
+        let mut new_pipes = None;
+        if let Some(file) = &self.files.pipes
+            && self.saved.pipes.as_ref() != Some(file)
+        {
+            write(&file.path, file.pipes.to_toml(&file.top))?;
+            if self.saved.pipes.is_none() {
+                new_pipes = Some(file.path.clone());
+            }
+        }
+        let new_background: Vec<(u8, PathBuf)> = self
+            .files
+            .background
+            .iter()
+            .filter(|(p, _)| !self.saved.background.contains_key(p))
+            .map(|(p, f)| (*p, f.path.clone()))
+            .collect();
+        if !new_pages.is_empty()
+            || !new_tilesets.is_empty()
+            || !new_background.is_empty()
+            || new_pipes.is_some()
+        {
             let manifest_path = self.root.join(MANIFEST);
             let (mut manifest, comments) =
                 Manifest::from_toml(&read(&manifest_path)?).map_err(|source| {
@@ -529,6 +785,10 @@ impl Map16Document {
                 })?;
             manifest.map16.extend(new_pages);
             manifest.map16_tileset.extend(new_tilesets);
+            manifest.map16_bg.extend(new_background);
+            if new_pipes.is_some() {
+                manifest.map16_pipes = new_pipes;
+            }
             fs::write(&manifest_path, manifest.to_toml(&comments)).map_err(|source| {
                 Map16EditError::Io {
                     path: manifest_path.clone(),
@@ -569,6 +829,22 @@ impl Map16Document {
         for (t, f) in files.tilesets.iter() {
             project.manifest.map16_tileset.insert(*t, f.path.clone());
         }
+        project.pipes = files
+            .pipes
+            .as_ref()
+            .map(|f| f.pipes.clone())
+            .unwrap_or_default();
+        if let Some(file) = &files.pipes {
+            project.manifest.map16_pipes = Some(file.path.clone());
+        }
+        project.map16_bg = files
+            .background
+            .iter()
+            .map(|(p, f)| (*p, f.tiles.clone()))
+            .collect();
+        for (p, f) in files.background.iter() {
+            project.manifest.map16_bg.insert(*p, f.path.clone());
+        }
     }
 }
 
@@ -582,6 +858,10 @@ fn new_file<T>(path: PathBuf, tiles: T) -> PageFile<T> {
 
 fn page_path(page: u8) -> PathBuf {
     PathBuf::from("map16").join(format!("{page:02X}.toml"))
+}
+
+fn background_path(page: u8) -> PathBuf {
+    PathBuf::from("map16").join(format!("bg-{page:02X}.toml"))
 }
 
 fn tileset_path(tileset: u8) -> PathBuf {
@@ -638,6 +918,11 @@ mod tests {
             root: PathBuf::new(),
             tables,
             clean,
+            clean_background: (0..0x200).map(|n| gfx(0x300 + n)).collect(),
+            clean_pipes: diagonal_pipe_tiles()
+                .map(|t| ((None, t), gfx(0x500 + t)))
+                .chain(PIPE_COLOUR_TILES.map(|t| ((Some(0), t), gfx(0x600 + t))))
+                .collect(),
             files: Files::default(),
             saved: Files::default(),
             undo: Vec::new(),
@@ -734,6 +1019,59 @@ mod tests {
             doc.files.pages[&2].tiles.tiles[&0x210].gfx,
             Map16Tile::default()
         );
+    }
+
+    #[test]
+    fn the_diagonal_pipes_tiles_go_in_the_pipes_file_in_tilesets_0_and_7() {
+        let mut doc = document();
+        assert_eq!(doc.entry(0x1C4, 7).gfx, gfx(0x6C4), "the diagonal pipe's");
+        let entry = Map16Entry {
+            gfx: gfx(0x11),
+            acts: 0x130,
+        };
+        change(&mut doc, 0x1C4, 0, entry);
+        assert_eq!(doc.entry(0x1C4, 7), entry, "tileset 7 shares it");
+        assert_eq!(
+            doc.files.pipes.as_ref().unwrap().pipes.diagonal[&0x1C4],
+            gfx(0x11)
+        );
+        let game = &doc.files.game[&1].tiles.tiles[&0x1C4];
+        assert_eq!((game.acts, game.gfx), (Some(0x130), None));
+        // Tileset 1 has the page's own tile.
+        assert_eq!(doc.entry(0x1C4, 1).gfx, gfx(0x1C5));
+        // A colour set's tile.
+        doc.apply_pipe_colour("Edit", 0, 0x133, gfx(0x22));
+        assert_eq!(doc.pipe(Some(0), 0x133), gfx(0x22));
+        doc.apply_pipe_colour("Back", 0, 0x133, gfx(0x733));
+        assert!(
+            !doc.files
+                .pipes
+                .as_ref()
+                .unwrap()
+                .pipes
+                .colours
+                .contains_key(&(0, 0x133))
+        );
+    }
+
+    #[test]
+    fn background_tiles_leave_their_file_as_the_clean_rom_has_them() {
+        let mut doc = document();
+        // Table 0's page 1, the game's: the clean ROM's until changed.
+        assert_eq!(doc.background(0x105), gfx(0x405));
+        doc.apply_background("Edit", &[(0x105, gfx(1)), (0x1203, gfx(2))]);
+        assert_eq!(doc.background(0x105), gfx(1));
+        assert_eq!(
+            doc.files.background[&0x12].path,
+            Path::new("map16/bg-12.toml")
+        );
+        assert!(doc.is_background_changed(0x1203));
+        doc.apply_background(
+            "Back",
+            &[(0x105, gfx(0x405)), (0x1203, Map16Tile::default())],
+        );
+        assert!(doc.files.background.is_empty());
+        assert!(!doc.is_modified());
     }
 
     #[test]

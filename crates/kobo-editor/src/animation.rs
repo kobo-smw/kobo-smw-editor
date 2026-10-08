@@ -10,6 +10,7 @@ use kobo_core::exanimation::{FIRST_ALT_FILE, Kind, List, SLOTS, Settings, Slot, 
 use kobo_core::names;
 use kobo_core::source::level::Level;
 
+use crate::app::App;
 use crate::inspector::named_picker;
 use crate::theme;
 
@@ -86,7 +87,21 @@ pub fn section(ui: &mut egui::Ui, number: u16, level: &Level) -> Option<Asked> {
         return asked;
     };
 
-    Grid::new("animation-list")
+    if let Some((r, label, new)) = list_fields(ui, "level", list) {
+        asked = Some((r, label, set(level, new)));
+    }
+    asked
+}
+
+/// A list's fields and slots; the list as changed, or none for "No list".
+/// `salt` keeps the widgets of two lists on screen apart.
+pub fn list_fields(
+    ui: &mut egui::Ui,
+    salt: &str,
+    list: &List,
+) -> Option<(Response, String, Option<List>)> {
+    let mut asked = None;
+    Grid::new(("animation-list", salt))
         .num_columns(2)
         .spacing([10.0, 4.0])
         .show(ui, |ui| {
@@ -103,7 +118,7 @@ pub fn section(ui: &mut egui::Ui, number: u16, level: &Level) -> Option<Asked> {
                     alt_file: (file - FIRST_ALT_FILE) as u8,
                     ..list.clone()
                 };
-                asked = Some((r, "Change the alternative file".into(), set(level, Some(new))));
+                asked = Some((r, "Change the alternative file".into(), Some(new)));
             }
             ui.end_row();
             for (text, tip, value, which) in [
@@ -120,7 +135,7 @@ pub fn section(ui: &mut egui::Ui, number: u16, level: &Level) -> Option<Asked> {
                     } else {
                         new.custom_set = v;
                     }
-                    asked = Some((r, format!("Change {}", text.to_lowercase()), set(level, Some(new))));
+                    asked = Some((r, format!("Change {}", text.to_lowercase()), Some(new)));
                 }
                 ui.end_row();
             }
@@ -130,25 +145,21 @@ pub fn section(ui: &mut egui::Ui, number: u16, level: &Level) -> Option<Asked> {
         let kind = names::exanimation_type(slot.kind).unwrap_or("?");
         let trigger = names::exanimation_trigger(slot.trigger).unwrap_or("?");
         egui::CollapsingHeader::new(format!("Slot {n:02X} · {kind}"))
-            .id_salt(("animation-slot", n))
+            .id_salt(("animation-slot", salt, n))
             .show(ui, |ui| {
                 ui.label(RichText::new(trigger).small().color(theme::MUTED));
-                if let Some(a) = slot_fields(ui, n, slot) {
+                if let Some(a) = slot_fields(ui, (salt, n), slot) {
                     let (r, label, new_slot) = a;
                     let mut new = list.clone();
                     new.slots.insert(n, new_slot);
-                    asked = Some((r, label, set(level, Some(new))));
+                    asked = Some((r, label, Some(new)));
                 }
                 let r = ui.small_button("Remove the slot");
                 if r.clicked() {
                     let mut new = list.clone();
                     new.slots.remove(&n);
                     new.count = new.slots_used();
-                    asked = Some((
-                        r,
-                        format!("Remove ExAnimation slot {n:02X}"),
-                        set(level, Some(new)),
-                    ));
+                    asked = Some((r, format!("Remove ExAnimation slot {n:02X}"), Some(new)));
                 }
             });
     }
@@ -172,15 +183,11 @@ pub fn section(ui: &mut egui::Ui, number: u16, level: &Level) -> Option<Asked> {
                 },
             );
             new.count = new.count.max(new.slots_used());
-            asked = Some((
-                r,
-                format!("Add ExAnimation slot {n:02X}"),
-                set(level, Some(new)),
-            ));
+            asked = Some((r, format!("Add ExAnimation slot {n:02X}"), Some(new)));
         }
         let r = ui.button("No list");
         if r.clicked() {
-            asked = Some((r, "Remove the ExAnimation list".into(), set(level, None)));
+            asked = Some((r, "Remove the ExAnimation list".into(), None));
         }
     });
     if let Some(why) = kobo_core::exanimation::refusal(list) {
@@ -190,25 +197,26 @@ pub fn section(ui: &mut egui::Ui, number: u16, level: &Level) -> Option<Asked> {
 }
 
 /// A slot's fields; the slot as changed, with its frames refitted.
-fn slot_fields(ui: &mut egui::Ui, n: u8, slot: &Slot) -> Option<(Response, String, Slot)> {
+fn slot_fields(ui: &mut egui::Ui, id: (&str, u8), slot: &Slot) -> Option<(Response, String, Slot)> {
+    let (salt, n) = id;
     let mut asked = None;
     let refit = |changed: Slot| {
         let mut changed = changed;
         changed.refit_frames(slot);
         changed
     };
-    Grid::new(("animation-slot-fields", n))
+    Grid::new(("animation-slot-fields", salt, n))
         .num_columns(2)
         .spacing([10.0, 4.0])
         .show(ui, |ui| {
             ui.label("Type");
-            let (r, picked) = named_picker(ui, &format!("animation-type-{n}"), slot.kind, 0x01..=0x1B, names::exanimation_type);
+            let (r, picked) = named_picker(ui, &format!("animation-type-{salt}-{n}"), slot.kind, 0x01..=0x1B, names::exanimation_type);
             if let Some(kind) = picked {
                 asked = Some((r, "Change an ExAnimation type".into(), refit(Slot { kind, ..slot.clone() })));
             }
             ui.end_row();
             ui.label("Trigger");
-            let (r, picked) = named_picker(ui, &format!("animation-trigger-{n}"), slot.trigger, 0x00..=0x4F, names::exanimation_trigger);
+            let (r, picked) = named_picker(ui, &format!("animation-trigger-{salt}-{n}"), slot.trigger, 0x00..=0x4F, names::exanimation_trigger);
             if let Some(trigger) = picked {
                 asked = Some((r, "Change an ExAnimation trigger".into(), refit(Slot { trigger, ..slot.clone() })));
             }
@@ -279,7 +287,7 @@ fn slot_fields(ui: &mut egui::Ui, n: u8, slot: &Slot) -> Option<(Response, Strin
                     };
                     ui.label(name).on_hover_text(tip);
                     let words = &slot.frames[set * per_set..(set + 1) * per_set];
-                    if let Some((r, new)) = words_field(ui, (n, set), words) {
+                    if let Some((r, new)) = words_field(ui, (salt, n, set), words) {
                         let mut frames = slot.frames.clone();
                         frames[set * per_set..(set + 1) * per_set].copy_from_slice(&new);
                         asked = Some((r, "Change an ExAnimation's frames".into(), Slot { frames, ..slot.clone() }));
@@ -293,7 +301,11 @@ fn slot_fields(ui: &mut egui::Ui, n: u8, slot: &Slot) -> Option<(Response, Strin
 
 /// Words as hex to edit, the same count as before; the new words once the
 /// field is left or Enter pressed, if they read as that many.
-fn words_field(ui: &mut egui::Ui, id: (u8, usize), words: &[u16]) -> Option<(Response, Vec<u16>)> {
+fn words_field(
+    ui: &mut egui::Ui,
+    id: (&str, u8, usize),
+    words: &[u16],
+) -> Option<(Response, Vec<u16>)> {
     let id = ui.id().with(("animation-words", id));
     let shown = words
         .iter()
@@ -326,4 +338,58 @@ fn words_field(ui: &mut egui::Ui, id: (u8, usize), words: &[u16]) -> Option<(Res
     let new = parsed.filter(|new| response.lost_focus() && new.as_slice() != words)?;
     response.mark_changed();
     Some((response, new))
+}
+
+/// The global list's window.
+#[derive(Default)]
+pub struct GlobalWindow {
+    pub open: bool,
+}
+
+pub fn window(app: &mut App, ctx: &egui::Context) {
+    if !app.global_animation_window.open {
+        return;
+    }
+    let mut open = true;
+    let mut asked = None;
+    egui::Window::new("Global ExAnimation")
+        .open(&mut open)
+        .default_width(360.0)
+        .show(ctx, |ui| {
+            let global = match app.global_animation() {
+                Ok(global) => global.list().cloned(),
+                Err(e) => {
+                    ui.label(RichText::new(e).color(theme::ERROR));
+                    return;
+                }
+            };
+            ui.label(
+                RichText::new(
+                    "The list every level runs unless its settings turn the global list off.",
+                )
+                .small()
+                .color(theme::MUTED),
+            );
+            egui::ScrollArea::vertical()
+                .max_height(560.0)
+                .show(ui, |ui| match &global {
+                    Some(list) => {
+                        asked = list_fields(ui, "global", list).map(|(_, label, new)| (label, new))
+                    }
+                    None => {
+                        if ui.button("Give the project a global list").clicked() {
+                            asked = Some((
+                                "Add a global ExAnimation list".into(),
+                                Some(List::default()),
+                            ));
+                        }
+                    }
+                });
+        });
+    if !open {
+        app.global_animation_window.open = false;
+    }
+    if let Some((label, list)) = asked {
+        app.set_global_animation(&label, list);
+    }
 }

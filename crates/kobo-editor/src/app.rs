@@ -217,6 +217,7 @@ enum LastEdit {
     Graphics(edit::GraphicsFile),
     Palettes,
     Layer3(u16),
+    GlobalAnimation,
 }
 
 pub struct App {
@@ -310,6 +311,9 @@ pub struct App {
     layer3_generation: u64,
     /// The layer 3 window.
     pub layer3_editor: crate::layer3::Layer3Editor,
+    /// The global ExAnimation list, opened when first shown.
+    global_animation: Option<Result<edit::GlobalAnimation, String>>,
+    pub global_animation_window: crate::animation::GlobalWindow,
     /// The Map16 window.
     pub map16_editor: crate::map16::Map16Editor,
     startup: Startup,
@@ -405,6 +409,8 @@ impl App {
             tilemaps: BTreeMap::new(),
             layer3_generation: 0,
             layer3_editor: Default::default(),
+            global_animation: None,
+            global_animation_window: Default::default(),
             map16_editor: Default::default(),
             startup: startup.clone(),
             screenshot_frames: None,
@@ -506,6 +512,7 @@ impl App {
         self.palettes = None;
         self.tilemaps.clear();
         self.layer3_editor.forget();
+        self.global_animation = None;
     }
 
     pub(crate) fn open_project(&mut self, ctx: &egui::Context, dir: &Path) {
@@ -851,6 +858,43 @@ impl App {
         }
     }
 
+    /// Changes a background Map16 tile, as one undo step or, while a value
+    /// is being dragged, part of the last.
+    pub fn apply_map16_background(
+        &mut self,
+        label: &str,
+        tile: u16,
+        gfx: kobo_core::map16::Map16Tile,
+        amend: bool,
+    ) {
+        let Some(Ok(map16)) = &mut self.map16 else {
+            return;
+        };
+        if amend {
+            map16.amend_background(&[(tile, gfx)]);
+        } else {
+            map16.apply_background(label, &[(tile, gfx)]);
+        }
+        self.last_edit = LastEdit::Map16;
+        self.map16_changed();
+    }
+
+    /// Changes a vertical pipe's tile in colour set 0, 2, or 3.
+    pub fn apply_pipe_colour(
+        &mut self,
+        label: &str,
+        set: u8,
+        tile: u16,
+        gfx: kobo_core::map16::Map16Tile,
+    ) {
+        let Some(Ok(map16)) = &mut self.map16 else {
+            return;
+        };
+        map16.apply_pipe_colour(label, set, tile, gfx);
+        self.last_edit = LastEdit::Map16;
+        self.map16_changed();
+    }
+
     /// After the Map16 changed: every level's picture may have, so the
     /// open one is drawn again and the rest when next shown.
     fn map16_changed(&mut self) {
@@ -923,6 +967,53 @@ impl App {
     /// level now, the rest when next shown.
     fn palettes_pictures_changed(&mut self) {
         self.palette.forget_pictures();
+        for open in self.open.values_mut() {
+            open.requested = u64::MAX;
+        }
+        if let Some(number) = self.current {
+            self.request_preview(number);
+        }
+    }
+
+    /// The global ExAnimation list, opened if it is not yet.
+    pub fn global_animation(&mut self) -> Result<&edit::GlobalAnimation, String> {
+        if self.global_animation.is_none() {
+            let Some(workspace) = &self.workspace else {
+                return Err("No project is open.".into());
+            };
+            self.global_animation =
+                Some(edit::GlobalAnimation::open(workspace.project()).map_err(|e| e.to_string()));
+        }
+        match self.global_animation.as_ref().expect("opened above") {
+            Ok(global) => Ok(global),
+            Err(e) => Err(e.clone()),
+        }
+    }
+
+    /// Sets the global ExAnimation list, as one undo step.
+    pub fn set_global_animation(
+        &mut self,
+        label: &str,
+        list: Option<kobo_core::exanimation::List>,
+    ) {
+        let Some(Ok(global)) = &mut self.global_animation else {
+            return;
+        };
+        match global.set(label, list) {
+            Ok(()) => {
+                self.last_edit = LastEdit::GlobalAnimation;
+                self.global_animation_changed();
+            }
+            Err(e) => self.say(e.to_string()),
+        }
+    }
+
+    /// After the global list changed: the levels are built with it.
+    fn global_animation_changed(&mut self) {
+        if let (Some(workspace), Some(Ok(global))) = (&mut self.workspace, &self.global_animation) {
+            workspace.set_global_animation(global);
+        }
+        self.thumbnails.forget();
         for open in self.open.values_mut() {
             open.requested = u64::MAX;
         }
@@ -1097,6 +1188,53 @@ impl App {
         }
     }
 
+    /// Draws a graphics file from an indexed PNG, as one undo step.
+    pub fn import_graphics(&mut self, file: edit::GraphicsFile, path: &Path) {
+        let image = std::fs::read(path)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| {
+                kobo_core::image::IndexedImage::from_png(&bytes).map_err(|e| e.to_string())
+            });
+        let result = match (image, self.graphics.get_mut(&file)) {
+            (Ok(image), Some(graphics)) => graphics
+                .replace(format!("Import {file}"), image)
+                .map_err(|e| e.to_string()),
+            (Err(e), _) => Err(e),
+            (_, None) => return,
+        };
+        match result {
+            Ok(()) => {
+                self.last_edit = LastEdit::Graphics(file);
+                self.graphics_changed(file);
+            }
+            Err(e) => self.say(format!("{}: {e}", path.display())),
+        }
+    }
+
+    /// Saves a graphics file as an indexed PNG, previewed in `palette`.
+    pub fn export_graphics(&mut self, file: edit::GraphicsFile, path: &Path) {
+        let Some(graphics) = self.graphics.get(&file) else {
+            return;
+        };
+        let palette = self.graphics_editor.preview.clone();
+        let image = kobo_core::image::IndexedImage {
+            palette: if palette.is_empty() {
+                graphics.image().palette.clone()
+            } else {
+                palette
+            },
+            ..graphics.image().clone()
+        };
+        let result = image
+            .to_png()
+            .map_err(|e| e.to_string())
+            .and_then(|png| std::fs::write(path, png).map_err(|e| e.to_string()));
+        match result {
+            Ok(()) => self.say(format!("Saved {file} as {}", path.display())),
+            Err(e) => self.say(format!("{}: {e}", path.display())),
+        }
+    }
+
     /// After a graphics file changed: the levels are built with it and
     /// drawn again, the open one now and the rest when next shown.
     pub fn graphics_changed(&mut self, file: edit::GraphicsFile) {
@@ -1151,6 +1289,7 @@ impl App {
             LastEdit::Graphics(file) => self.undo_graphics(file, redo),
             LastEdit::Palettes => self.undo_palettes(redo),
             LastEdit::Layer3(file) => self.undo_tilemap(file, redo),
+            LastEdit::GlobalAnimation => self.undo_global_animation(redo),
         };
         if done {
             return;
@@ -1193,6 +1332,26 @@ impl App {
         let done = if redo { map16.redo() } else { map16.undo() };
         if done {
             self.map16_changed();
+            let verb = if redo { "Redid" } else { "Undid" };
+            self.say(format!("{verb}: {}", label.unwrap_or_default()));
+        }
+        done
+    }
+
+    /// Undoes or redoes the global ExAnimation list's last step.
+    fn undo_global_animation(&mut self, redo: bool) -> bool {
+        let Some(Ok(global)) = &mut self.global_animation else {
+            return false;
+        };
+        let label = if redo {
+            global.redo_label()
+        } else {
+            global.undo_label()
+        }
+        .map(str::to_owned);
+        let done = if redo { global.redo() } else { global.undo() };
+        if done {
+            self.global_animation_changed();
             let verb = if redo { "Redid" } else { "Undid" };
             self.say(format!("{verb}: {}", label.unwrap_or_default()));
         }
@@ -1292,6 +1451,10 @@ impl App {
                 .tilemaps
                 .get(&file)
                 .map_or((None, None), |t| (t.undo_label(), t.redo_label())),
+            LastEdit::GlobalAnimation => match &self.global_animation {
+                Some(Ok(g)) => (g.undo_label(), g.redo_label()),
+                _ => (None, None),
+            },
         };
         (
             undo.map(str::to_owned).or(level.0),
@@ -1353,6 +1516,14 @@ impl App {
                     Err(e) => failed.push(e.to_string()),
                 }
             }
+            if let Some(Ok(global)) = &mut self.global_animation
+                && global.is_modified()
+            {
+                match global.save(&root) {
+                    Ok(_) => saved.push("the global ExAnimation".into()),
+                    Err(e) => failed.push(e.to_string()),
+                }
+            }
             for tilemap in self.tilemaps.values_mut().filter(|t| t.is_modified()) {
                 match tilemap.save(&root) {
                     Ok(_) => saved.push(format!("ExGFX{:X}", tilemap.file())),
@@ -1389,6 +1560,9 @@ impl App {
             .is_some_and(edit::PalettesDocument::is_modified)
         {
             names.push("the shared palettes".into());
+        }
+        if matches!(&self.global_animation, Some(Ok(g)) if g.is_modified()) {
+            names.push("the global ExAnimation".into());
         }
         names.extend(
             self.tilemaps
@@ -1464,6 +1638,9 @@ impl App {
             }
             self.tilemaps.retain(|_, t| t.is_modified());
             self.layer3_generation += 1;
+            if !matches!(&self.global_animation, Some(Ok(g)) if g.is_modified()) {
+                self.global_animation = None;
+            }
             if let Some(workspace) = &mut self.workspace {
                 let result = workspace.reload(&keep);
                 if let Some(Ok(map16)) = &self.map16
@@ -1479,6 +1656,9 @@ impl App {
                 }
                 for tilemap in self.tilemaps.values() {
                     workspace.set_tilemap(tilemap);
+                }
+                if let Some(Ok(global)) = &self.global_animation {
+                    workspace.set_global_animation(global);
                 }
                 match result {
                     Ok(()) => {
@@ -2545,6 +2725,7 @@ impl eframe::App for App {
         crate::graphics::window(self, &ctx);
         crate::palettes::window(self, &ctx);
         crate::layer3::window(self, &ctx);
+        crate::animation::window(self, &ctx);
         crate::project::window(self, &ctx);
         crate::commands::window(self, &ctx);
         crate::changes::window(self, &ctx);

@@ -8,6 +8,7 @@
 //! format. Every change, an outside one read back from disk included, is
 //! one undo step, kept as a snapshot of the level and its comments.
 
+pub mod animation;
 pub mod diff;
 mod document;
 pub mod find;
@@ -19,6 +20,7 @@ mod previews;
 pub mod reach;
 mod workspace;
 
+pub use animation::GlobalAnimation;
 pub use document::{LevelDocument, Reload};
 pub use graphics::{GraphicsDocument, GraphicsError, GraphicsFile};
 pub use layer3::{Layer3Error, TilemapDocument};

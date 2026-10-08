@@ -318,6 +318,28 @@ impl GraphicsDocument {
         Ok(())
     }
 
+    /// Replaces the whole image with `image` (an indexed PNG drawn
+    /// elsewhere, say), as one undo step: it must be the file's size, 16
+    /// tiles to a row, and keep to its colours.
+    pub fn replace(
+        &mut self,
+        label: impl Into<String>,
+        image: IndexedImage,
+    ) -> Result<(), GraphicsError> {
+        gfx::image_to_tiles(&image, self.tiles, self.colors).map_err(|message| {
+            GraphicsError::Image {
+                file: self.file,
+                message,
+            }
+        })?;
+        let image = IndexedImage {
+            palette: self.image.palette.clone(),
+            ..image
+        };
+        self.step(label.into(), image);
+        Ok(())
+    }
+
     pub fn is_modified(&self) -> bool {
         self.saved.as_ref() != Some(&self.image) && !(self.saved.is_none() && self.undo.is_empty())
     }
@@ -552,6 +574,23 @@ mod tests {
             doc.paint("Draw", &[(0, 0)], 8).is_err(),
             "3bpp has 8 colours"
         );
+    }
+
+    #[test]
+    fn an_image_replaces_the_file_whole_if_it_fits() {
+        let mut doc = document(8);
+        let mut image = doc.image().clone();
+        image.pixels[0] = 7;
+        doc.replace("Import", image.clone()).unwrap();
+        assert_eq!(doc.pixel(0, 0), Some(7));
+        image.pixels[0] = 8;
+        assert!(doc.replace("Import", image).is_err(), "past 8 colours");
+        let small = IndexedImage {
+            height: 8,
+            pixels: vec![0; 128 * 8],
+            ..doc.image().clone()
+        };
+        assert!(doc.replace("Import", small).is_err(), "too few tiles");
     }
 
     #[test]
