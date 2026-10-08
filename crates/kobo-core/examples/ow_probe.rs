@@ -79,6 +79,50 @@ fn blocks(a: &Rom, b: &Rom, wram: Option<&[u8]>) {
     }
 }
 
+/// Each table the reader gives, against the load's RAM.
+fn check(rom: &Rom) -> String {
+    use kobo_core::overworld::Overworld;
+    use kobo_core::ram::RamAddr;
+    let read = match Overworld::read(rom) {
+        Ok(read) => read,
+        Err(e) => return format!("read: {e}"),
+    };
+    let loaded = match kobo_core::expand::load_overworld(rom) {
+        Ok(loaded) => loaded,
+        Err(e) => return format!("{:?} layout, load: {e}", read.layout),
+    };
+    let ram = |at: u32, len: usize| loaded.ram.bytes(RamAddr::new(at), len);
+    let low: Vec<u8> = read.layer1.iter().map(|&t| t as u8).collect();
+    let high: Vec<u8> = read.layer1.iter().map(|&t| (t >> 8) as u8).collect();
+    let layer2: Vec<u8> = read.layer2.iter().flat_map(|w| w.to_le_bytes()).collect();
+    let props = &read.events.properties;
+    let mut out = format!("{:?} layout, {} events:", read.layout, read.events.count());
+    for (what, ours, theirs) in [
+        ("layer 1", low, ram(0x7E_C800, 0x800)),
+        ("pages", high, ram(0x7F_C800, 0x800)),
+        (
+            "translevels",
+            read.translevels.clone(),
+            ram(0x7E_D000, 0x800),
+        ),
+        ("directions", read.directions.clone(), ram(0x7E_D800, 0x800)),
+        ("layer 2", layer2, ram(0x7F_4000, 0x4000)),
+        (
+            "event properties",
+            props.clone(),
+            ram(0x7F_0000, props.len()),
+        ),
+    ] {
+        let differ = ours.iter().zip(&theirs).filter(|(a, b)| a != b).count();
+        out += &if differ == 0 {
+            format!(" {what} ok;")
+        } else {
+            format!(" {what} {differ} differ;")
+        };
+    }
+    out
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
@@ -88,6 +132,36 @@ fn main() {
             let wram = args.get(3).map(|p| std::fs::read(p).unwrap());
             blocks(&a, &b, wram.as_deref());
         }
-        _ => eprintln!("usage: ow_probe blocks a.smc b.smc [wram.bin]"),
+        Some("load") if args.len() >= 3 => {
+            // `load rom.smc dir`: the overworld as Kobo's machine loads it,
+            // as dump_overworld.sh writes it.
+            let rom = Rom::load(&args[1]).unwrap();
+            let loaded = kobo_core::expand::load_overworld(&rom).unwrap();
+            let dir = std::path::Path::new(&args[2]);
+            std::fs::create_dir_all(dir).unwrap();
+            let mut wram = loaded
+                .ram
+                .bytes(kobo_core::ram::RamAddr::new(0x7E_0000), 0x2_0000);
+            wram[0x110..0x200].fill(0);
+            std::fs::write(dir.join("overworld.wram.bin"), wram).unwrap();
+            std::fs::write(dir.join("overworld.vram.bin"), &loaded.vram).unwrap();
+            std::fs::write(dir.join("overworld.cgram.bin"), &loaded.cgram).unwrap();
+            println!("loaded at frame {}", loaded.frames);
+        }
+        Some("check") if args.len() >= 2 => {
+            // `check rom...`: the overworld as Overworld::read reads it,
+            // against what the ROM's own load leaves in RAM.
+            for path in &args[1..] {
+                let rom = Rom::load(path).unwrap();
+                let name = std::path::Path::new(path)
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy();
+                println!("{name}: {}", check(&rom));
+            }
+        }
+        _ => eprintln!(
+            "usage: ow_probe blocks a.smc b.smc [wram.bin] | load rom.smc dir | check rom..."
+        ),
     }
 }

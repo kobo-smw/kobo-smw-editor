@@ -17,7 +17,7 @@ use crate::video::{LevelScene, Screen, VideoMemory};
 pub const ENTRY_FRAME_COUNTER: u8 = 0x40;
 
 /// Instruction limit for the reset code, which uploads the SPC engine.
-const RESET_STEP_LIMIT: u64 = 200_000_000;
+pub(crate) const RESET_STEP_LIMIT: u64 = 200_000_000;
 
 /// Runs the ROM's level loader and level preparation for `level`.
 pub fn expand_level(rom: &Rom, level: u16) -> Result<LoadedLevel, ExpandError> {
@@ -336,7 +336,7 @@ fn play_frames(
 }
 
 /// The game loop's frame, up to where it waits for the vertical blank.
-fn run_game_mode(machine: &mut Machine, level: u16) -> Result<(), ExpandError> {
+pub(crate) fn run_game_mode(machine: &mut Machine, level: u16) -> Result<(), ExpandError> {
     const RUN_GAME_MODE: u32 = 0x00_8072;
     const AFTER_GAME_MODE: u32 = 0x00_8075;
     machine.bus.ram.set_u8(ram::LAG_FLAG, 1);
@@ -362,7 +362,7 @@ fn played<'a>(machine: &'a Machine) -> PlayedFrame<'a> {
 /// A frame's NMI and IRQs (the status bar's split, which sets layer 3's
 /// scroll and colour math for the rest of the screen), as the game loop
 /// left `$10`.
-fn vertical_blank(machine: &mut Machine, level: u16) -> Result<(), ExpandError> {
+pub(crate) fn vertical_blank(machine: &mut Machine, level: u16) -> Result<(), ExpandError> {
     machine
         .try_interrupt(Interrupt::Nmi)
         .map_err(|source| ExpandError::Cpu { level, source })?;

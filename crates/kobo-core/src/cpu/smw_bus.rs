@@ -139,6 +139,11 @@ pub struct SmwBus<'a> {
     /// from RAM instead (`write_register` lists them).
     pub stubbed_writes: u64,
     pub stubbed_reads: u64,
+    /// What controller 1 holds, as the auto-read leaves it in `$4218`
+    /// (low byte: A, X, L, R) and `$4219` (high: B, Y, Select, Start, and
+    /// the pad): none, unless a pass presses something, as the overworld's
+    /// new game does.
+    pub pad: u16,
     /// Every unmodelled access, including those beyond the report's cap.
     pub unmapped_reads: u64,
     pub unmapped_writes: u64,
@@ -221,6 +226,7 @@ impl<'a> SmwBus<'a> {
             unsupported: UnsupportedAccesses::default(),
             stubbed_writes: 0,
             stubbed_reads: 0,
+            pad: 0,
             unmapped_reads: 0,
             unmapped_writes: 0,
             fetching: false,
@@ -409,8 +415,10 @@ impl<'a> SmwBus<'a> {
                 self.wmadd = (self.wmadd + 1) & 0x1_FFFF;
                 value
             }
-            // Captures enter NMI explicitly and provide no controller input.
-            0x4016..=0x4017 | 0x4210 | 0x4218..=0x421F => {
+            0x4218 => self.pad as u8,
+            0x4219 => (self.pad >> 8) as u8,
+            // Captures enter NMI explicitly and provide no other input.
+            0x4016..=0x4017 | 0x4210 | 0x421A..=0x421F => {
                 self.stubbed_reads += 1;
                 0
             }

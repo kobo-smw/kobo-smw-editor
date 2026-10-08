@@ -63,6 +63,13 @@ from the editor where the user is working.
 
 ## Done
 
+- The overworld's research, first part (2026-10-08): the layout's sites
+  (lunar-magic-install.md, "The overworld"), `expand::load_overworld` (a new game played
+  by Kobo's machine to the overworld, the yardstick), and `overworld::Overworld::read`
+  (layer 1 and its pages, translevels, directions, layer 2, names, events) for the game's
+  layout and Lunar Magic's, equal to the load in every corpus hack that reaches an
+  overworld but locked and older-version ones.
+
 - The emulator to play in (2026-10-08, item 7): `play.emulator` in the config file, or
   `KOBO_EMULATOR`, opens Play's and Build and play's ROM in place of what the system
   opens a ROM with.

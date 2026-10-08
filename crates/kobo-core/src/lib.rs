@@ -27,6 +27,7 @@ pub mod map16_file;
 pub mod mwl;
 pub mod names;
 pub mod operation;
+pub mod overworld;
 pub mod palette;
 pub mod pixi;
 pub mod playtest;

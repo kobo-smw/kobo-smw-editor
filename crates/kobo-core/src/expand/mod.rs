@@ -30,6 +30,7 @@ mod machine;
 mod map16;
 mod oam;
 mod object_map;
+mod overworld;
 mod player;
 mod routines;
 mod sprite_capture;
@@ -47,6 +48,7 @@ pub use loaded::LoadedLevel;
 pub use map16::{FG_PAGES, PAGE_TILES};
 pub use oam::object_sizes;
 pub use object_map::{ObjectMap, ObjectRef};
+pub use overworld::{LoadedOverworld, load_overworld};
 pub(crate) use sprite_capture::capture_controlled;
 pub use sprite_capture::{LATE_SPRITE_FRAMES, capture_sprites, capture_sprites_with_control};
 pub use tiles::{
@@ -72,6 +74,8 @@ pub enum ExpandError {
         #[source]
         source: CpuError,
     },
+    #[error("the overworld did not load: game mode ${mode:02X} after {frames} frames")]
+    Overworld { mode: u8, frames: u32 },
     #[error("level {level:03X}: unknown background layout, {len:#x} bytes per screen")]
     BackgroundLayout { level: u16, len: usize },
 }

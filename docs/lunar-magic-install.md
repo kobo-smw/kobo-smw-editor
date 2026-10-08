@@ -1945,6 +1945,34 @@ graphics pieces above (`$009471`, `$00A140`, `$049DFD`, `$0583B8`, the lists at
   `$04DA98`); data edits at `$048E49`, `$04A04C`, and `$04F644`.
 - 23 RATS blocks (the ExGFX block among them).
 
+What the layout keeps where (`kobo_core::overworld` reads it; tests/overworld.rs checks
+it against the ROM's own load in every corpus hack that reaches an overworld):
+
+- Layer 1's tile numbers stay at `$0CF7DF`; their high bytes (the page, 0 or 1, in RAM at
+  `$7FC800`) are a `$800`-byte table, LC_LZ2, whose pointer is the low word at `$04D822` and the bank at
+  `$04D827`.
+- Translevels and directions are not numbered by the load as the game does but stored:
+  one LC_LZ2 table of `$1000` bytes, the translevel of each layer 1 place (`$7ED000`) then
+  its direction byte (`$7ED800`); pointer low word `$04D803`, bank `$04D808`.
+- Layer 2 keeps the game's two run-length streams, moved into one block (the game's
+  operands at `$04DC72`, `$04DC79`, `$04DC8D`).
+- Level names: `$60` names of 19 tiles, the game's characters padded with `$1F`, in a
+  block of `$720` bytes whose 24-bit pointer is at `$03BB57`.
+- Events: `$78` of them (the operand at `$04D859`); each table the game's format, moved
+  and grown, through the game's operands: layer 1 places (`$04DA74`), their VRAM (`$04EDB8`),
+  the event-tile entries (`$04E49F`: the tile data offset, `$900` on for a 2x2 block, and
+  the layer 2 place, 4 bytes each), the tile numbers (`$04EAF5`, raw), the properties
+  (`$04DD45`, bank `$04DD4A`, the game's run-length format to a `$FFFF` word), and the
+  crushed tiles, 24 (`$04E67C` events, `$04E69C` places, `$04EEC9` VRAM). The ranges of
+  entries per event stay at `DATA_04E359`, and the reveal list at `DATA_04DA1D` and
+  `DATA_04DA33`. The game's `BNE` at `$04DA98` is a `BRA`.
+- The pointers only Lunar Magic's code reads were found by moving their tables (a
+  transfer whose layer 2 is longer moves everything after it) and keeping the bytes whose
+  change matched the move; the translevel pointer holds in every Lunar Magic 3 hack of the
+  corpus, the page table's not in hacks of older versions (Kaizo Mario 1 and 2, Smb2dx),
+  which have one page.
+
+
 ## On an SA-1 ROM
 
 Found 2026-10-01 on the SA-1 reference ROM ([sa1.md](sa1.md): vanilla with SA-1 Pack

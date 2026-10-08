@@ -90,3 +90,115 @@ sha1 = "390583d5faa0cc02e0c4f414f7638228661b2dc9"
 tests = "map16_pages::map16_files_import_as_the_hacks_do"
 levels = "all"
 reason = "Its levels are hidden as a lock hides them (lunar-magic.md), and so is page 40's group: the hack has a table for it, which Lunar Magic's export does not show."
+
+[[failure]]
+hack = "Baby_Kaizo_World_3.smc"
+sha1 = "81c26ecd69e989c0c7cfbf66fd9dd6790d01f9b6"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Locked: its overworld's tables are not where Lunar Magic's layout keeps them."
+
+[[failure]]
+hack = "Invictus 1.0.smc"
+sha1 = "6dd24c31b5d8c568aab0de6d68855f609cbe8f08"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Locked: its overworld's tables are not where Lunar Magic's layout keeps them."
+
+[[failure]]
+hack = "SMW_2021-4-24.smc"
+sha1 = "be5b713dee4b9d6fd45990bf69793067b4823184"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Locked: its overworld's tables are not where Lunar Magic's layout keeps them."
+
+[[failure]]
+hack = "SMW_2021-4-3.smc"
+sha1 = "d198346efd8f385103d392329979a97250a41939"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Locked: its overworld's tables are not where Lunar Magic's layout keeps them."
+
+[[failure]]
+hack = "Super Dram World 2 v1.2.smc"
+sha1 = "f000177afc1809b53ba54a31adaf4353dc39bfcb"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Locked: its overworld's tables are not where Lunar Magic's layout keeps them."
+
+[[failure]]
+hack = "Super Dram World v1.2.smc"
+sha1 = "e876453387f92f645ac58a42650c8ea0f06e71cf"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Locked: its overworld's tables are not where Lunar Magic's layout keeps them."
+
+[[failure]]
+hack = "Kaizo Mario (English).smc"
+sha1 = "706ca2641347d7112c9ced31c906360e0403981d"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "An older Lunar Magic's overworld, with one page of layer 1 tiles and no table of their high bytes."
+
+[[failure]]
+hack = "Kaizo Mario 2 (English).smc"
+sha1 = "810f9dbe9f350d0371a87c2c5ac10b1f095e71a6"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "An older Lunar Magic's overworld, with one page of layer 1 tiles and no table of their high bytes."
+
+[[failure]]
+hack = "Smb2dx.smc"
+sha1 = "37ea8b33add914cb00983e41778d038d31b777f9"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Lunar Magic 1.63's overworld, with one page of layer 1 tiles and no table of their high bytes."
+
+[[failure]]
+hack = "Grand Poo World 2.smc"
+sha1 = "390583d5faa0cc02e0c4f414f7638228661b2dc9"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "19 layer 1 tiles differ after the load: the hack's own code changes them."
+
+[[failure]]
+hack = "QLDC 2022/34_HD_DankBaron.bps"
+sha1 = "0cc5598d57b0ddcca4feec0842d51e0a47eaefcd"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Its new game stops at a BRK before the overworld loads, in Kobo's machine."
+
+[[failure]]
+hack = "QLDC 2021/24_HD_DankBaron.bps"
+sha1 = "24c2acce1e0e099e85b9cbfb9849ef394a76580d"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Its own code uses $7ED000-$7EDFFF for something else by the time the overworld runs."
+
+[[failure]]
+hack = "QLDC 2022/05_Bumpty.bps"
+sha1 = "404be157c84d85c1d053d7fa9bbbb38516db3bdd"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Locked: its overworld's tables are not where Lunar Magic's layout keeps them."
+
+[[failure]]
+hack = "QLDC 2021/34_idol.bps"
+sha1 = "4236c2f097677097e2395928b2454898af3b9f11"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Its layer 1 page table's pointer leads to no table: not looked into yet."
+
+[[failure]]
+hack = "QLDC 2022/24_underway.bps"
+sha1 = "9476ed1815c94d78895fc1e66b7aa3b446299ee6"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Its own code uses $7ED000-$7EDFFF for something else by the time the overworld runs."
+
+[[failure]]
+hack = "QLDC 2021/28_Kitikuchan+MecchaSugoiTntn.bps"
+sha1 = "9e97a4547fc718b9873f9ef8648edfbdf7d53c6b"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+levels = "all"
+reason = "Its title screen wants other buttons than Start, so the new game never starts."
