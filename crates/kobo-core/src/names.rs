@@ -142,6 +142,7 @@ struct Source {
     object_tilesets: BTreeMap<String, String>,
     sprite_tilesets: BTreeMap<String, String>,
     music: BTreeMap<String, String>,
+    submaps: BTreeMap<String, String>,
     exanimation_types: BTreeMap<String, String>,
     exanimation_triggers: BTreeMap<String, String>,
     layer3_scroll: BTreeMap<String, String>,
@@ -158,6 +159,7 @@ struct Names {
     object_tilesets: Table,
     sprite_tilesets: Table,
     music: Table,
+    submaps: Table,
     exanimation_types: Table,
     exanimation_triggers: Table,
     layer3_scroll: Table,
@@ -190,6 +192,7 @@ static NAMES: LazyLock<Names> = LazyLock::new(|| {
         object_tilesets: Table::parse("object_tilesets", source.object_tilesets),
         sprite_tilesets: Table::parse("sprite_tilesets", source.sprite_tilesets),
         music: Table::parse("music", source.music),
+        submaps: Table::parse("submaps", source.submaps),
         exanimation_types: Table::parse("exanimation_types", source.exanimation_types),
         exanimation_triggers: Table::parse("exanimation_triggers", source.exanimation_triggers),
         layer3_scroll: Table::parse("layer3_scroll", source.layer3_scroll),
@@ -259,6 +262,11 @@ pub fn sprite_tileset(tileset: u8) -> Option<&'static str> {
 /// table maps it.
 pub fn music(setting: u8) -> Option<&'static str> {
     NAMES.music.get(setting)
+}
+
+/// An overworld submap (`OWPlayerSubmap`, `0`-`6`), as the game has them.
+pub fn submap(submap: u8) -> Option<&'static str> {
+    NAMES.submaps.get(submap)
 }
 
 /// One of the game's backgrounds (`level::game_backgrounds`), by its
@@ -359,6 +367,7 @@ mod tests {
             ("object_tilesets", &NAMES.object_tilesets, ids(0x00..=0x0F)),
             ("sprite_tilesets", &NAMES.sprite_tilesets, ids(0x00..=0x0F)),
             ("music", &NAMES.music, ids(0x00..=0x07)),
+            ("submaps", &NAMES.submaps, ids(0x00..=0x06)),
             (
                 "exanimation_types",
                 &NAMES.exanimation_types,

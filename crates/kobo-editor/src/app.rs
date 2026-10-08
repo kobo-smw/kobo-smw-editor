@@ -218,6 +218,7 @@ enum LastEdit {
     Palettes,
     Layer3(u16),
     GlobalAnimation,
+    Overworld,
 }
 
 pub struct App {
@@ -311,6 +312,13 @@ pub struct App {
     layer3_generation: u64,
     /// The layer 3 window.
     pub layer3_editor: crate::layer3::Layer3Editor,
+    /// The project's overworld, opened when first shown, or why it did
+    /// not open.
+    overworld: Option<Result<edit::OverworldDocument, String>>,
+    /// Counts the overworld's changes, for pictures drawn from it.
+    overworld_generation: u64,
+    /// The overworld window.
+    pub overworld_editor: crate::overworld::OverworldEditor,
     /// The global ExAnimation list, opened when first shown.
     global_animation: Option<Result<edit::GlobalAnimation, String>>,
     pub global_animation_window: crate::animation::GlobalWindow,
@@ -409,6 +417,9 @@ impl App {
             tilemaps: BTreeMap::new(),
             layer3_generation: 0,
             layer3_editor: Default::default(),
+            overworld: None,
+            overworld_generation: 0,
+            overworld_editor: Default::default(),
             global_animation: None,
             global_animation_window: Default::default(),
             map16_editor: Default::default(),
@@ -448,6 +459,7 @@ impl App {
         app.graphics_editor.open = startup.tab.as_deref() == Some("graphics");
         app.palettes_editor.open = startup.tab.as_deref() == Some("palettes");
         app.layer3_editor.open = startup.tab.as_deref() == Some("layer3");
+        app.overworld_editor.open = startup.tab.as_deref() == Some("overworld");
         if startup.tab.as_deref() == Some("map16-editor") {
             // At the cement block, which every tileset has.
             app.map16_editor.show_tile(0x130);
@@ -512,6 +524,9 @@ impl App {
         self.palettes = None;
         self.tilemaps.clear();
         self.layer3_editor.forget();
+        self.overworld = None;
+        self.overworld_generation += 1;
+        self.overworld_editor.forget();
         self.global_animation = None;
     }
 
@@ -1022,6 +1037,91 @@ impl App {
         }
     }
 
+    /// The project's overworld, opened if it is not yet.
+    pub fn overworld_document(&mut self) -> Result<&edit::OverworldDocument, String> {
+        if self.overworld.is_none() {
+            let (Some(workspace), Clean::Loaded(clean)) = (&self.workspace, &self.clean) else {
+                return Err("No project is open.".into());
+            };
+            let opened = edit::OverworldDocument::open(workspace.project(), clean)
+                .map_err(|e| e.to_string());
+            self.overworld = Some(opened);
+        }
+        match self.overworld.as_ref().expect("opened above") {
+            Ok(document) => Ok(document),
+            Err(e) => Err(e.clone()),
+        }
+    }
+
+    /// The project's overworld, if it is open.
+    pub fn open_overworld(&self) -> Option<&edit::OverworldDocument> {
+        match &self.overworld {
+            Some(Ok(document)) => Some(document),
+            _ => None,
+        }
+    }
+
+    pub fn overworld_generation(&self) -> u64 {
+        self.overworld_generation
+    }
+
+    /// The project as it is in memory, for a build on another thread.
+    pub fn workspace_copy(&self) -> Option<Workspace> {
+        self.workspace.clone()
+    }
+
+    /// Changes the overworld, as one undo step or, through a stroke, part
+    /// of the last.
+    pub fn change_overworld(
+        &mut self,
+        label: &str,
+        amend: bool,
+        change: impl FnOnce(&mut kobo_core::overworld::Overworld),
+    ) {
+        let Some(Ok(overworld)) = &mut self.overworld else {
+            return;
+        };
+        match overworld.change(label, amend, change) {
+            Ok(()) => {
+                self.last_edit = LastEdit::Overworld;
+                self.overworld_changed();
+            }
+            Err(e) => self.say(e.to_string()),
+        }
+    }
+
+    /// After the overworld changed: the project is built with it.
+    fn overworld_changed(&mut self) {
+        if let (Some(workspace), Some(Ok(overworld))) = (&mut self.workspace, &self.overworld) {
+            workspace.set_overworld(overworld);
+        }
+        self.overworld_generation += 1;
+    }
+
+    /// Undoes or redoes the overworld's last step, if it has one.
+    fn undo_overworld(&mut self, redo: bool) -> bool {
+        let Some(Ok(overworld)) = &mut self.overworld else {
+            return false;
+        };
+        let label = if redo {
+            overworld.redo_label()
+        } else {
+            overworld.undo_label()
+        }
+        .map(str::to_owned);
+        let done = if redo {
+            overworld.redo()
+        } else {
+            overworld.undo()
+        };
+        if done {
+            self.overworld_changed();
+            let verb = if redo { "Redid" } else { "Undid" };
+            self.say(format!("{verb}: {}", label.unwrap_or_default()));
+        }
+        done
+    }
+
     pub fn layer3_generation(&self) -> u64 {
         self.layer3_generation
     }
@@ -1290,6 +1390,7 @@ impl App {
             LastEdit::Palettes => self.undo_palettes(redo),
             LastEdit::Layer3(file) => self.undo_tilemap(file, redo),
             LastEdit::GlobalAnimation => self.undo_global_animation(redo),
+            LastEdit::Overworld => self.undo_overworld(redo),
         };
         if done {
             return;
@@ -1455,6 +1556,9 @@ impl App {
                 Some(Ok(g)) => (g.undo_label(), g.redo_label()),
                 _ => (None, None),
             },
+            LastEdit::Overworld => self
+                .open_overworld()
+                .map_or((None, None), |o| (o.undo_label(), o.redo_label())),
         };
         (
             undo.map(str::to_owned).or(level.0),
@@ -1524,6 +1628,14 @@ impl App {
                     Err(e) => failed.push(e.to_string()),
                 }
             }
+            if let Some(Ok(overworld)) = &mut self.overworld
+                && overworld.is_modified()
+            {
+                match overworld.save(&root) {
+                    Ok(_) => saved.push("the overworld".into()),
+                    Err(e) => failed.push(e.to_string()),
+                }
+            }
             let named = self.named_tilemaps();
             let pending = self
                 .tilemaps
@@ -1568,6 +1680,12 @@ impl App {
         }
         if matches!(&self.global_animation, Some(Ok(g)) if g.is_modified()) {
             names.push("the global ExAnimation".into());
+        }
+        if self
+            .open_overworld()
+            .is_some_and(edit::OverworldDocument::is_modified)
+        {
+            names.push("the overworld".into());
         }
         let named = self.named_tilemaps();
         names.extend(
@@ -2332,6 +2450,14 @@ impl App {
                 ui.close();
             }
             if ui
+                .button("Overworld")
+                .on_hover_text("The project's overworld, to draw on and name its levels")
+                .clicked()
+            {
+                self.overworld_editor.open = true;
+                ui.close();
+            }
+            if ui
                 .button("Shared palettes")
                 .on_hover_text("The game's colour tables, which levels without a palette of their own draw from")
                 .clicked()
@@ -2563,6 +2689,7 @@ impl App {
                 && !self.backgrounds.busy()
                 && !self.thumbnails.busy()
                 && !self.thumbnails.waiting()
+                && (!self.overworld_editor.open || self.overworld_editor.drawn())
         }) || matches!(self.clean, Clean::Missing(_))
             || self.workspace.is_none();
         match &mut self.screenshot_frames {
@@ -2742,6 +2869,7 @@ impl eframe::App for App {
         crate::graphics::window(self, &ctx);
         crate::palettes::window(self, &ctx);
         crate::layer3::window(self, &ctx);
+        crate::overworld::window(self, &ctx);
         crate::animation::window(self, &ctx);
         crate::project::window(self, &ctx);
         crate::commands::window(self, &ctx);

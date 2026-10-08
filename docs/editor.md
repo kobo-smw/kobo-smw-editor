@@ -201,6 +201,20 @@ chosen colour is set by its red, green, and blue (0 to 31 each), or put back as 
 game has it. Saving writes `palettes/shared.toml` (docs/build.md, "Source formats"),
 named in `kobo.toml` the first time.
 
+## The overworld
+
+The overworld window (View menu) shows the project's overworld as a player on the
+chosen map sees it: the main map, or the submaps' map in one submap's graphics and
+colours, drawn from a build of the project as it is in memory, as the ROM's own load
+puts it up (`render::render_overworld`), dimmed while a newer one is being drawn.
+Dragging draws layer 1's 16x16 tiles with the brush (a tile number, its page in the
+high digit); a right click takes the tile under it as the brush and chooses its level
+tile, whose level and name show below and whose name is edited there (19 tiles at most,
+`\xNN` for a tile that is not a letter; Enter sets it). Each change is one undo step, a
+stroke one in all. Saving writes `overworld.toml` (docs/build.md, "Source formats"),
+named in `kobo.toml`'s `[overworld]` the first time; a project with an overworld file
+builds it in Lunar Magic's layout (lunar-magic-install.md, "The overworld").
+
 ## The project
 
 *This project…* (Project menu) shows what the project holds (its levels, Map16, graphics,
@@ -255,7 +269,8 @@ leaves it out, as the game's own, and says so above the canvas.
 ## Running without a display
 
 `--screenshot out.png` saves the window once the level is drawn and quits, with `--tab`
-(`levels`, `objects`, `add`, `sprites`, `map16`, `changes`, `overview`, `backgrounds`),
+(`levels`, `objects`, `add`, `sprites`, `map16`, `changes`, `overview`, `backgrounds`,
+`map16-editor`, `graphics`, `palettes`, `layer3`, `overworld`),
 `--select`, and `--build` to set it up; under `xvfb-run -a` it needs no display. The
 development server has Mesa's GLX but not `libxkbcommon-x11`, which winit loads for X11:
 unpack `libxkbcommon-x11-0` and `libxcb-xkb1` from Debian's packages (`apt-get

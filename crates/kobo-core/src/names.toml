@@ -756,6 +756,17 @@ FF = "Unused"
 06 = "Boss"
 07 = "Bonus game"
 
+# The overworld's maps, by the player's submap (OWPlayerSubmap, $1F11): the
+# main map, then the six submaps, which share one map of tiles.
+[submaps]
+00 = "Main map"
+01 = "Yoshi's Island"
+02 = "Vanilla Dome"
+03 = "Forest of Illusion"
+04 = "Valley of Bowser"
+05 = "Special World"
+06 = "Star World"
+
 # Lunar Magic's ExAnimation slot types (help file, "Edit Level ExAnimated
 # Frames"; docs/lunar-magic-install.md, "ExAnimation").
 [exanimation_types]

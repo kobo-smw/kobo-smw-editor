@@ -18,6 +18,7 @@ mod levels;
 mod map16;
 mod outline;
 mod overview;
+mod overworld;
 mod palette;
 mod palettes;
 mod picture;

@@ -283,6 +283,17 @@ impl Workspace {
         }
     }
 
+    /// Puts the overworld as the editor has it in the project, for the next
+    /// build.
+    pub fn set_overworld(&mut self, overworld: &super::OverworldDocument) {
+        let mut project = (*self.project).clone();
+        overworld.apply_to(&mut project);
+        if project.overworld != self.project.overworld || project.manifest != self.project.manifest
+        {
+            self.project = Arc::new(project);
+        }
+    }
+
     /// Puts the global ExAnimation list as the editor has it in the
     /// project, for the next build.
     pub fn set_global_animation(&mut self, global: &super::GlobalAnimation) {

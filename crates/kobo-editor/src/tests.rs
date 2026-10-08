@@ -1901,6 +1901,64 @@ fn a_shared_colour_is_changed_undone_and_saved_into_the_project() {
 }
 
 #[test]
+fn the_overworld_is_drawn_on_renamed_undone_and_saved_into_the_project() {
+    use kobo_core::overworld::layer1_index;
+    use kobo_core::source::overworld::parse_name;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "overworld-window");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().overworld_editor.open = true;
+    harness.run_steps(2);
+    wait_for(&mut harness, "the overworld's picture", |app| {
+        app.overworld_editor.drawn()
+    });
+    let at = layer1_index(0, 3, 4);
+    let tile = |app: &App| app.open_overworld().unwrap().overworld().layer1[at];
+    let before = tile(harness.state());
+    harness
+        .state_mut()
+        .change_overworld("Draw on the overworld", false, |ow| ow.layer1[at] = 0x58);
+    let name = parse_name("name", "KOBO'S HOUSE").unwrap();
+    harness
+        .state_mut()
+        .change_overworld("Rename a level", false, |ow| ow.names[0x28] = name);
+    harness.step();
+    assert_eq!(tile(harness.state()), 0x58);
+    // A new picture of the build with the change.
+    wait_for(&mut harness, "the overworld's new picture", |app| {
+        app.overworld_editor.drawn()
+    });
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    let names = |app: &App| app.open_overworld().unwrap().overworld().names[0x28];
+    assert_ne!(names(harness.state()), name);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    assert_eq!(tile(harness.state()), before);
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    harness.step();
+    assert_eq!(tile(harness.state()), 0x58);
+    assert_eq!(names(harness.state()), name);
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    harness.step();
+    assert!(
+        !harness.state().open_overworld().unwrap().is_modified(),
+        "{:?}",
+        harness.state().status()
+    );
+    let file = std::fs::read_to_string(project.0.join("overworld.toml")).unwrap();
+    assert!(file.contains("[layer1.main]\n0x04 = "), "{file}");
+    assert!(file.contains("0x28 = \"KOBO'S HOUSE\""), "{file}");
+    let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
+    assert!(manifest.contains("file = \"overworld.toml\""), "{manifest}");
+}
+
+#[test]
 fn an_animation_list_is_given_and_a_slot_added_from_the_inspector() {
     use egui_kittest::kittest::Queryable;
 
