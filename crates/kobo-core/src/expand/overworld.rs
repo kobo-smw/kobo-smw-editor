@@ -206,15 +206,15 @@ fn beat(
     Ok(steps)
 }
 
+/// Where a warp puts a player: the submap, and x and y in pixels.
+pub type Warped = (u8, u16, u16);
+
 /// Where a warp takes a player on the warp tile at `place` (submap, x and
 /// y in 16x16 tiles) of the overworld [`load_overworld`] loads: the game's
 /// lookup (`CODE_048509`, the warp's index in `StarWarpIndex`) and its
 /// move (`CODE_04853B`), as a star or pipe runs them. `None` where no warp
 /// is; else the submap and the place in pixels the player is put at.
-pub fn warp(
-    rom: &Rom,
-    places: &[(u8, u8, u8)],
-) -> Result<Vec<Option<(u8, u16, u16)>>, ExpandError> {
+pub fn warp(rom: &Rom, places: &[(u8, u8, u8)]) -> Result<Vec<Option<Warped>>, ExpandError> {
     let (mut loaded, _) = load(rom, &[0; EVENT_BYTES])?;
     loaded.bus.pinned.clear();
     let at = |a: u32| RamAddr::new(0x7E_0000 | a);
