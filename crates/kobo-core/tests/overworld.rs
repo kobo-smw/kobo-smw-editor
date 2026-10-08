@@ -171,6 +171,40 @@ fn the_vanilla_overworld_built_draws_as_the_games_own() {
     }
 }
 
+/// Every star and pipe tile of the clean ROM's overworld warps to the same
+/// place in Kobo's build of it as in the game.
+#[test]
+fn the_vanilla_overworld_built_warps_as_the_games_own() {
+    use kobo_core::build::{self, Project};
+
+    if common::asar().is_none() {
+        return;
+    }
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let project = Project {
+        root: std::path::PathBuf::from("."),
+        overworld: Some(overworld::Changes::default()),
+        ..Default::default()
+    };
+    let built = build::build(&clean, &project).unwrap();
+    let read = Overworld::read(&clean).unwrap();
+    let mut places = Vec::new();
+    for (i, &tile) in read.layer1.iter().enumerate() {
+        if matches!(tile & 0xFF, 0x5B | 0x5F | 0x81 | 0x82) {
+            let (map, x, y) = overworld::layer1_place(i);
+            for submap in if map == 0 { 0..=0 } else { 1..=6 } {
+                places.push((submap, x, y));
+            }
+        }
+    }
+    let theirs = expand::warp(&clean, &places).unwrap();
+    let ours = expand::warp(&built, &places).unwrap();
+    assert_eq!(theirs, ours);
+    assert!(theirs.iter().filter(|w| w.is_some()).count() >= 18);
+}
+
 /// The level a translevel enters, in Kobo's build of the clean ROM's
 /// overworld: in Lunar Magic's layout by the translevel (`$1xx` from `$25`
 /// on), whichever map it is on, as Lunar Magic-saved ROMs' loads take it;

@@ -206,6 +206,51 @@ fn beat(
     Ok(steps)
 }
 
+/// Where a warp takes a player on the warp tile at `place` (submap, x and
+/// y in 16x16 tiles) of the overworld [`load_overworld`] loads: the game's
+/// lookup (`CODE_048509`, the warp's index in `StarWarpIndex`) and its
+/// move (`CODE_04853B`), as a star or pipe runs them. `None` where no warp
+/// is; else the submap and the place in pixels the player is put at.
+pub fn warp(
+    rom: &Rom,
+    places: &[(u8, u8, u8)],
+) -> Result<Vec<Option<(u8, u16, u16)>>, ExpandError> {
+    let (mut loaded, _) = load(rom, &[0; EVENT_BYTES])?;
+    loaded.bus.pinned.clear();
+    let at = |a: u32| RamAddr::new(0x7E_0000 | a);
+    let word = |ram: &Ram, a: u32| u16::from(ram.u8(at(a))) | u16::from(ram.u8(at(a + 1))) << 8;
+    places
+        .iter()
+        .map(|&(submap, x, y)| {
+            let mut machine = loaded.clone();
+            let ram = &mut machine.bus.ram;
+            ram.set_u8(at(0x0DD6), 0);
+            ram.set_u8(at(0x0DB3), 0);
+            ram.set_u8(at(0x1F11), submap);
+            for (a, value) in [
+                (0x1F17, u16::from(x) * 16),
+                (0x1F19, u16::from(y) * 16),
+                (0x1F1F, u16::from(x)),
+                (0x1F21, u16::from(y)),
+            ] {
+                ram.set_u8(at(a), value as u8);
+                ram.set_u8(at(a + 1), (value >> 8) as u8);
+            }
+            machine.call(Call::jsr(routines::WARP_LOOKUP).data_bank(0x04))?;
+            if machine.bus.ram.u8(at(0x1DF6)) >= 0x80 {
+                return Ok(None);
+            }
+            machine.call(Call::jsl(routines::WARP_MOVE).data_bank(0x04))?;
+            let ram = &machine.bus.ram;
+            Ok(Some((
+                ram.u8(at(0x13C3)),
+                word(ram, 0x1F17),
+                word(ram, 0x1F19),
+            )))
+        })
+        .collect()
+}
+
 /// Each translevel's event (`DATA_05D608`), which the level load gives the
 /// overworld.
 const LEVEL_EVENTS: crate::addr::SnesAddr = crate::addr::SnesAddr::new(0x05_D608);

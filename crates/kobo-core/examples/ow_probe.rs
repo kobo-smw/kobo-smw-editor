@@ -602,6 +602,34 @@ fn main() {
                 println!("differ: {}", differ.join(", "));
             }
         }
+        Some("warps") if args.len() == 3 => {
+            // `warps a.smc b.smc`: every star and pipe tile of a's (layer 1
+            // tiles 5B, 5F, 81, 82, 59...), warped from in both ROMs.
+            let a = Rom::load(&args[1]).unwrap();
+            let b = Rom::load(&args[2]).unwrap();
+            let read = kobo_core::overworld::Overworld::read(&a).unwrap();
+            let mut places = Vec::new();
+            for (i, &tile) in read.layer1.iter().enumerate() {
+                if matches!(tile & 0xFF, 0x5B | 0x5F | 0x82 | 0x81 | 0x59 | 0x58) {
+                    let (map, x, y) = kobo_core::overworld::layer1_place(i);
+                    for submap in if map == 0 { 0..=0 } else { 1..=6 } {
+                        places.push((submap, x, y));
+                    }
+                }
+            }
+            let x = kobo_core::expand::warp(&a, &places).unwrap();
+            let y = kobo_core::expand::warp(&b, &places).unwrap();
+            let mut same = 0;
+            for ((place, p), q) in places.iter().zip(&x).zip(&y) {
+                if p == q {
+                    same += 1;
+                } else {
+                    println!("{place:?}: {p:x?} {q:x?}");
+                }
+            }
+            let found = x.iter().filter(|w| w.is_some()).count();
+            println!("{same} of {} the same ({found} warps)", places.len());
+        }
         Some("pair") if args.len() == 3 => {
             let a = Rom::load(&args[1]).unwrap();
             let b = Rom::load(&args[2]).unwrap();

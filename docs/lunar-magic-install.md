@@ -2045,8 +2045,13 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   these (2026-10-09); Kobo's build of QW2's overworld reads as QW2's, tables and all.
   Lunar Magic's conversion of the vanilla overworld changes two of their values, Koopa
   teleport 1 from 0, 0 to 8, 8 and sprite 6's y from -4 to 0; Kobo keeps the game's.
-  Its hooks at `$048509` and `$048566`, in the warps' lookup and use, are not Kobo's
-  yet.
+  Its hooks at `$048509` and `$048566`, in the warps' lookup and use, are not Kobo's:
+  warping from every star and pipe tile of riff2, QW2, and Super Hark Bros (and the
+  warp tiles of Luminescent and Kaizo Kindergarten whose entries match) takes the
+  player to the same place in the hack as in Kobo's build of its overworld with the
+  game's code (`expand::warp`, `examples/ow_probe.rs warps`, 2026-10-09). Where no entry
+  matches, Lunar Magic's lookup leaves index 0 (entry 0's destination) and the game's a
+  negative one, which only a warp tile with no entry meets; Kobo keeps the game's.
 - Beating each level of the vanilla overworld, by either exit (`expand::beat_level`),
   plays the same steps to the same RAM and VRAM in the game, its transfer, and Kobo's
   build (2026-10-09). In hacks, events play faster where Lunar Magic's Extra Options
