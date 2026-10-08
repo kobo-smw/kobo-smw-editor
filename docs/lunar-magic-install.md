@@ -168,6 +168,7 @@ what Lunar Magic does differently is recorded here.
 | `$03FDFF` = `$00` (ExAnimation settings) | Lunar Magic's save keeps the per-level settings at `$03FE00` only with `$00` there; `$01`, `$80`, `$FE`, `$FF` all make it set every level's again (`$00`, level `104` `$30`), keeping the lists | `install-gate.py` over a Kobo build of Kaizo Kindergarten, then trying values, printing addresses only (2026-09-30) | written (`exanimation.asm`). With it a save also writes other values in the area it keeps for itself (`$0FEFA3`-`$0FF070`, `$0FFFFF`); tests/lunar_magic_save.rs checks both ways |
 | `$05DD7C`-`$05DD7D` = `"LM"` (layer 2 scroll settings) | Lunar Magic's save keeps the separate layer 2 scroll settings (`$06FA00`'s `S` and `H`, from 3.40) only with it; without it the save sets every level's `$06FA00` to `$20` (keeping the auto-screens bit) and installs its own code at `$009708`, `$00AF72`, `$00D2B2`, `$00E966`, the camera's `$00F77B`, `$00F79D`, and `$00F871`, `$05BCA5`, `$05D7BA`, `$05D97D`, `$05DA17`, and `$05DD30`-`$05DD75` | `install-gate.py` with `$06FA00`-`$06FBFF` watched found `$05DD30`-`$05DD7F`, then removing Lunar Magic's bytes from a Kobo build one group at a time left these two (2026-10-01) | written (`entrance.asm`). With it a save leaves every one of those sites as it found them: Kobo's entrance code and camera stay, with its own code for the six of the others that change anything, and the game's at two ("The sites a save keeps with the marker" below). `tests/lunar_magic_save.rs` checks both ways |
 | `$0FFFE6` = `$01` | Community patches take anything but `$00` and `$FF` there to mean Lunar Magic's VRAM patch is in, and refuse to assemble otherwise (the Romhack Races baserom's `sprite_scroll_fix.asm`) | the patch's source; Lunar Magic's install sets `$01` there ("Game loop, stripe images, and the rest") (2026-10-04) | written (`vram.asm`), in every build that uses Lunar Magic's layout. Lunar Magic's save writes the same; the RHR template's build survives it (`save-check`) |
+| `$008072` = `JMP $BA56`, and a `JML` (`$5C`), not a `JSL`, at `$00BA59` | Patches that do the VRAM patch's stripe move themselves take the same hook: the Romhack Races baserom's `vram_optimize.asm` writes `JSR $BA56` at `$008072` and its own code from `$00BA56`, with an `autoclean JSL` at `$00BA59`, which frees the RATS block a `JSL` already there leads to (Asar's `autoclean` acts only on its own opcode) | the patch's source and Asar's (2026-10-08); Lunar Magic 3.70's first save writes `$008072`-`$008074` and `$00BA56`-`$00BA5C` (a byte diff of vanilla saved once) | written (`vram.asm`), as the game loop hook of every build in Lunar Magic's layout; the template's build, with the patch over it, keeps Kobo's block whole (`rats::Snapshot`) and draws as the baserom's own build does. The save over a build is checked by `save-check` |
 | `$0FF0A0` not `$FF` (a build writes `$00`) | The retry system (kkevinm's, in the Romhack Races baserom and many hacks) asserts it, as "Lunar Magic has saved this ROM", where Lunar Magic's save writes its version string | the retry system's `check_incompatibilities.asm` (2026-10-04) | written (`level.asm`), one byte, not the string, so nothing reads a build as a version of Lunar Magic (`Rom::lunar_magic_version`); a save writes its string over it, and the RHR template's build survives a save. With and without it (Kaizo Kindergarten's build, 2026-10-05), Lunar Magic 3.70 prints the same messages, exports the same GFX, ExGFX, Map16, shared palette, and all 512 levels, and keeps every level through a level and a Map16 save; the first save writes other values at `$0FF017`-`$0FF018`, in the area it keeps for itself, the same each time for the same ROM. Kept in every build in Lunar Magic's layout, rather than only where a patch checks it (maintainer, 2026-10-05) |
 | `$00AACD`-`$00AACE` = `A2 10` (`LDX #$10`) | Patches that replace the GFX upload check for a 4bpp upload there, the game's 3bpp one having `A2 07` (freeplay's level graphics loading optimization: anything else stops it) | the patch's source (2026-10-04) | written (`graphics.asm`) when GFX are stored as 4bpp. Kobo's upload is elsewhere and this is dead code, so such a patch assembles and its hook at `$00AA80` never runs: it changes nothing in a Kobo build. Nothing is lost: what it adds, one DMA per file in place of the CPU loop, is what Kobo's upload (`dma_buffer`) already does, and Kobo's loader stays after a save. Kept so, rather than refusing such a patch (maintainer, 2026-10-05) |
 | A `JSL` (`$22`) at `$00A01F` (layer 3 settings) | Lunar Magic's save treats its layer 3 code as installed with it, whatever the operand: it leaves `$00A01F`, `$00A153`, `$0194B6`, and `$05C40C` alone; with a `JML` or the game's bytes it installs its own over all four | bisecting a save of a level with settings over a ROM with Lunar Magic's code, site by site and then byte by byte, printing addresses only (2026-09-30) | written (`layer3.asm`, whose setup hook it is). Without it a save installs Lunar Magic's code and keeps the lists (tests/lunar_magic_save.rs) |
@@ -846,18 +847,28 @@ and the rows follow what is on screen.
   (rows `Y/16-8`..`Y/16+23` too) at the game's own address (layer 1 at `$2000`); Lunar
   Magic's patch puts the ones in those rows at their place at `$3000` and leaves the
   rest out, not before another frame of the game loop has run (so, it seems, at its
-  game loop hook, `$008072`). Kobo's decides when the tile is made, from the camera
-  then, and queues Kobo's address, which leaves `$008072` and the stripe upload as the
-  game has them. The two agree for tiles made after the frame's camera update (sprites,
-  every case probed) and can differ for a tile the player makes at the top or bottom row
-  on a frame where the camera then crosses a row; the stripe buffer also holds Kobo's
-  address where Lunar Magic's holds the game's. Kept so on review (2026-10-04) until a
-  hack's code reads the stripe buffer or a difference is seen in play; the fix would be
-  Kobo's own code at the game loop hook. Found 2026-10-03 by
+  game loop hook, `$008072`). Found 2026-10-03 by
   calling the game's `GenerateTile` around the camera after frames of play in a
   horizontal, a vertical, and a layer 2 objects level, with the camera held at
   positions either side of a row, and reading the tile's place in VRAM after the next
-  frame (`exlevel_probe call ... frames=N path=... vramw=... then=frame`).
+  frame (`exlevel_probe call ... frames=N path=... vramw=... then=frame`). Kobo's does
+  the same since 2026-10-08: `GenerateTile` queues the game's address for the game's
+  window, and Kobo's code at the game loop hook (`$008072`: `JMP $BA56`; `$00BA56`:
+  `JSR RunGameMode : JML`, Lunar Magic's 3.70 bytes there by a save's byte diff) moves
+  each stripe for `$2000`-`$3FFF` to its place, the address's low 11 bits at `$3000`
+  (layer 1) or `$3800` (layer 2), or takes it out of the buffer when its Map16 row (mod
+  32, bit 11 being the row's bit 4 in the game's 64x64 tilemaps) is not one of
+  `cy`..`cy+14`, in game modes `$05`, `$07`, `$13`, and `$14` (review.md). Until then
+  Kobo's queued its own address and decided from the camera when the tile was made,
+  kept so on review (2026-10-04) until a hack's code read the stripe buffer: the Romhack
+  Races baserom's `vram_optimize.asm` (kkevinm's) does, taking that hook over to move
+  the stripes itself at the end of the game loop, so in a Kobo build it took Kobo's
+  layer 1 addresses for layer 2's and every tile changed in play went to layer 2's
+  tilemap (a block hit showed nothing on layer 1, and its new tile showed in the
+  background, scrolling with it). With it, a build of the template now leaves layer 1's
+  and 2's tilemaps as the baserom's own Lunar Magic build does, frame by frame through
+  an ON/OFF block's bounce and a custom block's change (Mesen 2, level `13B`,
+  2026-10-08; testing-log.md).
 - The load leaves the patch's own state in `$0695`-`$06BE`, `$06DD`, `$7F8183`-`$7F819F`,
   the vanilla layer 1 and 2 buffers `$1BE6`-`$1DE7`, and for a background
   `$7FBC00`-`$7FBF5F` and `$7FC300`-`$7FC65F` (per cell, a 16-bit address in the BG Map16
@@ -871,8 +882,9 @@ and the rows follow what is on screen.
 Kobo's version (`asm/lunar-magic/vram.asm`) hooks the level load's tilemap upload
 (`$0580BF`'s three `JSL`s, `$0580D3`), the scroll setup (`$05879D`), the frame's builds
 (`$0586F7`), the NMI's upload (`$008209`), the camera (`$00F6E4`, which PIXI checks), and
-`GenerateTile`'s address (`$00BF36`), and the NMI's lag path (`$0081E2`), and leaves
-`$00A5A2`, `$008072`, `$0085D2`, and `$0580A9` as the game has them. Lunar Magic's first save of a build puts
+`GenerateTile`'s address (`$00BF36`), the NMI's lag path (`$0081E2`), and the game loop
+(`$008072` and `$00BA56`, where a tile changed in play goes to its place), and leaves
+`$00A5A2`, `$0085D2`, and `$0580A9` as the game has them. Lunar Magic's first save of a build puts
 its own patch over all of them (its taller levels piece over `$0580D3`, `$05879D`, and
 `$00BF36`). Against Lunar Magic's on every vanilla level (2026-09-28): the same tilemaps
 after every load but for row -1 above, and no visible cell different for more than a
@@ -1873,7 +1885,8 @@ Initialised for all 512 levels; a save rewrites the saved level's entry (observe
 ### Game loop, stripe images, and the rest
 
 - `$008072`: `JSR RunGameMode` in the game loop becomes `JMP $BA56`, into what was vanilla
-  fill (`$00BA56`-`$00BA5C`); Kobo leaves `$008072` as the game has it. It belongs to the VRAM patch, with
+  fill (`$00BA56`-`$00BA5C`); Kobo's VRAM patch writes the same jump and its own
+  `JSR RunGameMode : JML` there ("Graphics" above). It belongs to the VRAM patch, with
   `LoadScrnImage`'s first instructions (`$0085D2`-`$0085DE`), which a save installs as a
   group ("Graphics" above); changes 3.70 says stripe uploads got faster. Not in any corpus
   ROM.

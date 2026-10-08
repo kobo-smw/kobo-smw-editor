@@ -20,6 +20,14 @@
 ; is what Lunar Magic's patch leaves in VRAM frame by frame, on every vanilla
 ; level along several camera paths (examples/gfx_probe.rs).
 ;
+; A tile changed in play is queued as a stripe image at the game's own
+; address, in its 64x64 tilemaps at $2000 and $3000, as with Lunar Magic's
+; patch; at the end of the game loop (stripe_remap) each stripe for those
+; tilemaps goes to its place in these, or is left out when its row is not
+; in view. Patches that read the stripe buffer expect the game's addresses
+; there (the Romhack Races baserom's vram_optimize.asm, which does that
+; move itself at the same hook, in Lunar Magic's place).
+;
 ; Lunar Magic decides whether its own patch is in a ROM by $00A5A2 alone
 ; (a JML there), which Kobo leaves as the game has it: Lunar Magic's first
 ; save then installs its patch over these sites (or, for $0580D3, $05879D,
@@ -131,12 +139,23 @@ org $008209
 org $00F6E4
     JML camera_left_edge
 
-; A tile changed in play (GenerateTile): its VRAM address in these
-; tilemaps, and whether it is in view, in place of the game's. The BEQ at
-; $00BF35 goes on to the JML either way.
+; A tile changed in play (GenerateTile): its VRAM address in the game's
+; tilemaps, and whether it is in the game's window, for a level of any
+; size. The BEQ at $00BF35 goes on to the JML either way.
 org $00BF36
     db $00
     JML tile_address
+
+; The game loop's JSR RunGameMode: then the frame's stripe images go to
+; these tilemaps. Lunar Magic's patch hooks the same bytes (JMP $BA56, and
+; $00BA56-$00BA5C, vanilla fill); a patch that does this itself puts its
+; own there (vram_optimize.asm: a JSR to $00BA56, with an autoclean JSL at
+; $00BA59, which a JML there does not set off).
+org $008072
+    JMP $BA56
+org $00BA56
+    JSR $9322                   ; RunGameMode
+    JML stripe_remap
 
 ; The NMI on a frame that lags (BEQ NotSpecialLevelNMI : JMP
 ; SpecialLevelNMI, after LDA $0D9B : LSR A): in a level that is not
@@ -1101,10 +1120,16 @@ dma:
 
 ; ---------------------------------------------------------------------------
 ; From GenerateTile at $00BF37: A 8-bit, X and Y 16-bit, the block's
-; position in $0C (X) and $0E (Y). Leaves the block's VRAM address in $06
-; (high byte) and $07 (low), and X and Y, which the game keeps as _8 and _A,
-; such that CODE_00C0FB's checks pass only for a block in the window below: equal to
-; the block's position, or $7FF0, past any.
+; position in $0C (X) and $0E (Y). Leaves the block's VRAM address in the
+; game's tilemaps in $06 (high byte) and $07 (low), and X and Y, which the
+; game keeps as _8 and _A, such that CODE_00C0FB's checks pass only for a
+; block in the window below: equal to the block's position, or $7FF0, past
+; any.
+;
+; The game's tilemaps are 64x64, layer 1's at $2000 and layer 2's at $3000:
+; a Map16 cell's row's bit 4 is the address's bit 11, its column's bit 10,
+; its row's low bits 6-9 and its column's 1-4. A row past 31, which only a
+; taller level has, wraps; stripe_remap takes the window's rows apart.
 tile_address:
     PHB
     PHK
@@ -1114,50 +1139,56 @@ tile_address:
     AND #$00FF
     ASL A
     TAX
+    LDA $0E
+    AND #$0100
+    ASL A
+    ASL A
+    ASL A
+    STA $00                     ; the row's bit 4
     LDA $0C
     AND #$0100
     ASL A
     ASL A
-    STA $00                     ; the tilemap's right half
+    TSB $00                     ; the column's
     LDA $0E
     AND #$00F0
     ASL A
     ASL A
-    ORA $00
-    STA $00
+    TSB $00
     LDA $0C
     AND #$00F0
     LSR A
     LSR A
     LSR A
     ORA $00
-    ORA #$3000
+    ORA #$2000
     CPX #$0000
     BEQ +
-    ORA #$0800
+    ORA #$1000
 +   SEP #$20
     STA $07
     XBA
     STA $06
     REP #$20
-    ; Written for rows cy to cy+14, the ones the frame's builds keep, and on
-    ; a layer that scrolls horizontally for columns X/16-8 to X/16+23, the
-    ; game's own window (32 columns, the tilemap's width), as Lunar Magic's
-    ; patch writes them.
+    ; Queued for the game's window: rows Y/16-8 to Y/16+23, and on a
+    ; layer that scrolls horizontally columns X/16-8 to X/16+23 (32 of
+    ; each, the game's tilemaps' height and width), as Lunar Magic's patch
+    ; queues them.
     JSR layer_kind
     STA $02
     TXA
     ASL A
     TAY
     LDA $001C|!dp,y
-    INC A
     JSR shift4
     STA $00
     LDA $0E
     JSR shift4
     SEC
     SBC $00
-    CMP #$000F
+    CLC
+    ADC #$0008
+    CMP #$0020
     BCS .hidden
     LDA $02
     CMP #!Horizontal
@@ -1187,6 +1218,144 @@ tile_address:
     LDY #$7FF0
     PLB
     JML $00BFB2
+
+; ---------------------------------------------------------------------------
+; At the end of the game loop, in a level (game modes $05, $07, $13, and
+; $14, the title screen's too): each stripe image queued for the game's
+; layer 1 or layer 2 tilemap ($2000-$2FFF, $3000-$3FFF) goes to its place
+; in these, its address's low 11 bits at $3000 or $3800, when its Map16 row
+; (mod 32) is one of cy to cy+14 that the frame's builds keep; else it is
+; taken out of the buffer, which a row of these tilemaps would show in its
+; place. Returns to the game loop after its JSR RunGameMode.
+!Stripes = $7F837D              ; the game's buffer of stripe images
+!StripesEnd = $7F837B           ; where its last one ends ($FF there)
+
+stripe_remap:
+    PHP
+    SEP #$20
+    LDA $0100|!addr
+    CMP #$14
+    BEQ .level
+    CMP #$13
+    BEQ .level
+    CMP #$07
+    BEQ .level
+    CMP #$05
+    BEQ .level
+    PLP
+    JML $008075
+.level:
+    PHB
+    PHK
+    PLB
+    REP #$30
+    LDA.w #!Stripes
+    STA $0A
+    LDA.w #!Stripes>>8
+    STA $0B
+    LDY #$0000
+.next:
+    LDA [$0A],y
+    BIT #$0080
+    BEQ +
+    JMP .done                   ; the end
++   XBA
+    STA $00                     ; the address
+    INY
+    INY
+    LDA [$0A],y
+    DEY
+    DEY
+    XBA
+    BIT #$4000
+    BEQ +
+    LDA #$0002                  ; a run of one word
+    BRA ++
++   AND #$3FFF
+    INC A
+++  CLC
+    ADC #$0004
+    STA $04                     ; the entry's length
+    LDA $00
+    CMP #$2000
+    BCC .skip
+    CMP #$4000
+    BCS .skip
+    ; The layer's camera row, cy.
+    LDX #$0000
+    AND #$1000
+    BEQ +
+    LDX #$0004
++   LDA $001C|!dp,x
+    INC A
+    JSR shift4
+    STA $02
+    ; The Map16 row, mod 32, less cy.
+    LDA $00
+    LSR A
+    LSR A
+    LSR A
+    LSR A
+    LSR A
+    LSR A
+    AND #$000F
+    STA $06
+    LDA $00
+    AND #$0800
+    BEQ +
+    LDA #$0010
+    TSB $06
++   LDA $06
+    SEC
+    SBC $02
+    AND #$001F
+    CMP #$000F
+    BCS .remove
+    LDA $00
+    AND #$07FF
+    ORA #$3000
+    CPX #$0000
+    BEQ +
+    ORA #$0800
++   XBA
+    STA [$0A],y
+.skip:
+    TYA
+    CLC
+    ADC $04
+    TAY
+    JMP .next
+.remove:
+    ; What follows the entry, the end's $FF too, moves back over it.
+    STY $06
+    LDA.l !StripesEnd
+    SEC
+    SBC $06
+    SEC
+    SBC $04                     ; bytes after the entry, less the $FF
+    PHA
+    LDA.l !StripesEnd
+    SEC
+    SBC $04
+    STA.l !StripesEnd
+    TYA
+    CLC
+    ADC.w #!Stripes
+    PHA
+    CLC
+    ADC $04
+    TAX                         ; from the entry's end
+    PLY                         ; to its start
+    PLA                         ; bytes - 1
+    PHB
+    MVN !Stripes>>16,!Stripes>>16
+    PLB
+    LDY $06
+    JMP .next
+.done:
+    PLB
+    PLP
+    JML $008075
 
 ; $0FFFE6 = $01, as Lunar Magic's install leaves it. Community patches take
 ; anything but $00 and $FF there to mean its VRAM patch is in, and refuse to

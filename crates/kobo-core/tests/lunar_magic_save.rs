@@ -1314,6 +1314,7 @@ fn kobos_vram_patch_lags_as_lunar_magics() {
         let mut kobo = Rom::from_headerless(lm.data().to_vec()).unwrap();
         for (start, end) in [
             (0x008072, 0x008074),
+            (0x00BA56, 0x00BA5C),
             (0x0081E2, 0x0081E5),
             (0x008209, 0x00820C),
             (0x0085D2, 0x0085DE),

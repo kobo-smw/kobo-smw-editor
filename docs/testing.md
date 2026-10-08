@@ -702,6 +702,15 @@ or `entrances`, several joined by `+`. The probes below then compare the two ROM
   Lunar Magic-saved ROM and a Kobo build of the same levels and compare the logs.
   `expand::play_level_entered`'s `entry` reaches Choc Island 2's rooms in Kobo's own
   machine (`tests/taller_levels.rs`).
+- **A level played in two ROMs**: `tools/oracle/play_probe.lua`, through
+  `dump_levels.lua`'s `KOBO_ORACLE_PROBE`, puts the player and the camera where
+  `PROBE_PLACE` says as the level is prepared, holds the buttons `PROBE_SCRIPT` gives
+  from each frame on, and every `PROBE_EVERY` frames takes a screenshot and logs the
+  player, the ON/OFF flag, and the OAM (`PROBE_VRAM=1`: VRAM too). Run it on a Kobo
+  build and on the hack's own Lunar Magic build and compare the shots, the logs, and the
+  tilemaps' words (`$3000`-`$3FFF`); it reads memory only, so either ROM may be one
+  Lunar Magic saved. It found tiles changed in play going to layer 2's tilemap in the
+  Romhack Races template's build (testing-log.md).
 
 ### Picture hashes
 

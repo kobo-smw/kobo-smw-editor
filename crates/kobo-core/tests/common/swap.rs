@@ -110,8 +110,9 @@ pub const LAYER3: [(u32, u32); 4] = [
 /// The VRAM patch's group (docs/lunar-magic-install.md, "Graphics"), and
 /// `CODE_00C0FB`'s branches, which Kobo's tile address code answers as the
 /// game's do; inclusive.
-pub const VRAM: [(u32, u32); 9] = [
+pub const VRAM: [(u32, u32); 10] = [
     (0x008072, 0x008074),
+    (0x00BA56, 0x00BA5C),
     (0x0081E2, 0x0081E5),
     (0x008209, 0x00820C),
     (0x0085D2, 0x0085DE),

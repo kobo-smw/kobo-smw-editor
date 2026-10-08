@@ -785,6 +785,69 @@ fn vram_patch(rom: &Rom) {
     }
 }
 
+/// A tile changed in play (`GenerateTile`) is queued as a stripe image at
+/// the game's own address, layer 1's tilemap at `$2000`, as Lunar Magic's
+/// patch queues it and patches that read the buffer expect (the Romhack
+/// Races baserom's `vram_optimize.asm`); once the game loop has ended, it is
+/// in layer 1's tilemap at `$3000`, and layer 2's is as it was.
+#[test]
+fn a_tile_changed_in_play_is_queued_at_the_games_address() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    use kobo_core::expand::{self, Registers};
+    use kobo_core::ram::RamAddr;
+    let at = |a: u32| RamAddr::new(0x7E_0000 | a);
+    for (_, rom) in installs(&clean) {
+        let changed = |tile: u8| {
+            let cell = std::cell::Cell::new((0usize, 0usize));
+            let called = expand::call_after_frames(
+                &rom,
+                &clean,
+                0x105,
+                20,
+                |_, _| {},
+                |ram| {
+                    // A cell in view: 8 columns right of the camera's, 4 down.
+                    let x = (ram.u16(at(0x1A)) / 16 + 8) * 16;
+                    let y = ((ram.u16(at(0x1C)) + 1) / 16 + 4) * 16;
+                    let (x, y) = (x as usize, y as usize);
+                    let low = ((y & 0xF0) << 2) | ((x & 0xF0) >> 3);
+                    cell.set((
+                        0x2000 | ((y & 0x100) << 3) | ((x & 0x100) << 2) | low,
+                        0x3000 | ((x & 0x100) << 2) | low,
+                    ));
+                    ram.set_u8(at(0x9C), tile);
+                    ram.set_u16(at(0x9A), x as u16);
+                    ram.set_u16(at(0x98), y as u16);
+                },
+                0x00_BEB0,
+                true,
+                Registers {
+                    p: 0x30,
+                    ..Default::default()
+                },
+                true,
+            )
+            .unwrap();
+            let (game, kobo) = cell.get();
+            let stripe = RamAddr::new(0x7F_837D);
+            let queued = (called.ram.u8(stripe) as usize) << 8
+                | called.ram.u8(RamAddr::new(0x7F_837E)) as usize;
+            let word = |w: usize| [called.vram[2 * w], called.vram[2 * w + 1]];
+            (game, queued, word(kobo), word(kobo + 0x800))
+        };
+        let (game, queued, used, layer2) = changed(0x05);
+        assert_eq!(
+            queued, game,
+            "queued at {queued:04X}, the game's {game:04X}"
+        );
+        let (_, _, before, layer2_before) = changed(0x00);
+        assert_ne!(used, before, "the used block is in layer 1's tilemap");
+        assert_eq!(layer2, layer2_before, "layer 2's tilemap is as it was");
+    }
+}
+
 /// Kobo's ExAnimation code with no lists leaves the game's own animated
 /// tiles and colour $64 flashing as they were, frame by frame.
 #[test]
