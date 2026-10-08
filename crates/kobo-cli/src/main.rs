@@ -146,6 +146,12 @@ enum Command {
         /// 0 small, 1 big, 2 cape, 3 fire.
         #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(u8).range(0..=3))]
         powerup: u8,
+        /// The switch palaces pressed, by their initials: `gybr` for all four.
+        #[arg(long, default_value = "")]
+        switches: String,
+        /// Start with the ON/OFF switch off.
+        #[arg(long)]
+        off: bool,
         /// Output ROM path.
         #[arg(long, short = 'o', default_value = "play.sfc")]
         out: PathBuf,
@@ -691,9 +697,26 @@ fn main() -> Result<()> {
             level,
             at,
             powerup,
+            switches,
+            off,
             out,
             rom,
-        } => play(&dir, &level, at.as_deref(), powerup, &out, rom.load()?),
+        } => {
+            let switches = switches.chars().try_fold(0u8, |bits, c| {
+                match "gybr".find(c.to_ascii_lowercase()) {
+                    Some(i) => Ok(bits | 1 << i),
+                    None => Err(anyhow::anyhow!(
+                        "--switches takes the palaces' initials, g, y, b, and r; not {c:?}"
+                    )),
+                }
+            })?;
+            let settings = kobo_core::playtest::Settings {
+                powerup,
+                switches,
+                off,
+            };
+            play(&dir, &level, at.as_deref(), settings, &out, rom.load()?)
+        }
         Command::Diff {
             a,
             b,
@@ -1525,7 +1548,7 @@ fn play(
     dir: &Path,
     level: &str,
     at: Option<&str>,
-    powerup: u8,
+    settings: kobo_core::playtest::Settings,
     out: &Path,
     clean: Rom,
 ) -> Result<()> {
@@ -1533,25 +1556,25 @@ fn play(
     use kobo_core::playtest::{self, Start};
     let level = parse_level(level)?;
     let workspace = Workspace::open(dir, std::sync::Arc::new(clean))?;
-    let (x, y) = match at {
-        Some(at) => {
-            let (x, y) = at
-                .split_once(',')
+    let at = match at {
+        Some(at) => Some(
+            at.split_once(',')
                 .and_then(|(x, y)| Some((x.trim().parse().ok()?, y.trim().parse().ok()?)))
-                .ok_or_else(|| anyhow::anyhow!("--at takes x,y in tiles, as 70,18"))?;
-            (x, y)
-        }
-        None => playtest::entrance_tile(&workspace, level)?,
+                .ok_or_else(|| anyhow::anyhow!("--at takes x,y in tiles, as 70,18"))?,
+        ),
+        None => None,
     };
     let start = Start {
         level,
-        x,
-        y,
-        powerup,
+        at,
+        settings,
     };
     let rom = playtest::build(&workspace, &start, &Asar::configured()?)?;
     rom.save(out)?;
-    println!("{}: level {level:03X} from ({x}, {y})", out.display());
+    match at {
+        Some((x, y)) => println!("{}: level {level:03X} from ({x}, {y})", out.display()),
+        None => println!("{}: level {level:03X} from its start", out.display()),
+    }
     Ok(())
 }
 

@@ -1,16 +1,20 @@
-//! Play from here: a build that starts in the open level at a tile
-//! (`kobo_core::playtest`), unsaved edits included, written into the
-//! user's cache (`playtest::rom_path`) and opened with what the system
-//! opens a ROM with.
+//! Play from here: a build that starts in the open level at a tile, or at
+//! its main entrance (`kobo_core::playtest`), unsaved edits included,
+//! written into the user's cache (`playtest::rom_path`) and opened with
+//! what the system opens a ROM with. The game starts as the play settings
+//! say (the power-up, the switch palaces, the ON/OFF switch), which the
+//! menu beside the Play button sets.
 
 use std::path::PathBuf;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use eframe::egui::{self, RichText};
 use kobo_core::asar::Asar;
-use kobo_core::playtest::{self, Start};
+use kobo_core::playtest::{self, SWITCHES, Settings, Start};
 
 use crate::app::{App, OpenLevel};
+use crate::theme;
 
 /// The power-ups the player can start with, by `Start::powerup`.
 pub const POWERUPS: [&str; 4] = ["Small Mario", "Super Mario", "Cape Mario", "Fire Mario"];
@@ -18,8 +22,9 @@ pub const POWERUPS: [&str; 4] = ["Small Mario", "Super Mario", "Cape Mario", "Fi
 #[derive(Default)]
 pub struct PlayState {
     running: Option<JoinHandle<Result<(PathBuf, Start), String>>>,
-    /// The power-up last chosen, which F5 starts with.
-    pub powerup: u8,
+    /// How the game starts: the power-up last chosen, which F5 and Play
+    /// start with, the switch palaces, and the ON/OFF switch.
+    pub settings: Settings,
 }
 
 impl PlayState {
@@ -28,13 +33,14 @@ impl PlayState {
     }
 }
 
-/// Builds the project to start at `start`, on a worker thread.
+/// Builds the project to start at `start`, on a worker thread, as the
+/// play settings say but for its power-up.
 pub fn start(app: &mut App, start: Start) {
-    spawn(app, start.level, Some((start.x, start.y)), start.powerup);
+    spawn(app, start.level, start.at, start.settings.powerup);
 }
 
-/// Builds the project to start in `level` where its main entrance puts
-/// the player, found by loading it, on a worker thread.
+/// Builds the project to start in `level` at its main entrance, on a
+/// worker thread.
 pub fn from_level_start(app: &mut App, level: u16, powerup: u8) {
     spawn(app, level, None, powerup);
 }
@@ -54,7 +60,8 @@ fn spawn(app: &mut App, level: u16, at: Option<(u16, u16)>, powerup: u8) {
     let Some(workspace) = app.workspace().cloned() else {
         return;
     };
-    app.play.powerup = powerup;
+    app.play.settings.powerup = powerup;
+    let settings = app.play.settings;
     let Some(out) = playtest::rom_path(&workspace.project().root) else {
         app.say("Could not build to play: there is no cache folder to put it in");
         return;
@@ -62,15 +69,10 @@ fn spawn(app: &mut App, level: u16, at: Option<(u16, u16)>, powerup: u8) {
     let ctx = app.ctx().clone();
     let handle = std::thread::spawn(move || {
         let result = (|| {
-            let (x, y) = match at {
-                Some(at) => at,
-                None => playtest::entrance_tile(&workspace, level).map_err(|e| e.to_string())?,
-            };
             let start = Start {
                 level,
-                x,
-                y,
-                powerup,
+                at,
+                settings,
             };
             let asar = Asar::configured().map_err(|e| e.to_string())?;
             let rom = playtest::build(&workspace, &start, &asar).map_err(|e| e.to_string())?;
@@ -103,12 +105,14 @@ pub fn poll(app: &mut App) {
     match handle.join() {
         Ok(Ok((path, start))) => {
             crate::start::reveal(app, &path);
+            let from = match start.at {
+                Some((x, y)) => format!("({x}, {y})"),
+                None => "its start".to_string(),
+            };
             app.say(format!(
-                "Playing level {:03X} from ({}, {}) as {}: {}",
+                "Playing level {:03X} from {from} as {}: {}",
                 start.level,
-                start.x,
-                start.y,
-                POWERUPS[usize::from(start.powerup & 3)],
+                POWERUPS[usize::from(start.settings.powerup & 3)],
                 path.display()
             ));
         }
@@ -145,10 +149,45 @@ pub fn start_at(open: &OpenLevel, (x, y): (f32, f32), powerup: u8) -> Start {
     }
     Start {
         level: open.number,
-        x,
-        y: y.saturating_sub(1),
-        powerup,
+        at: Some((x, y.saturating_sub(1))),
+        settings: Settings {
+            powerup,
+            ..Settings::default()
+        },
     }
+}
+
+/// The menu beside the Play button: how the game starts, for every way
+/// of playing.
+pub fn settings_menu(app: &mut App, button: &egui::Response) {
+    let settings = &mut app.play.settings;
+    egui::Popup::from_toggle_button_response(button)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .show(|ui| {
+            ui.set_min_width(200.0);
+            ui.label(RichText::new("Start as").small().color(theme::MUTED));
+            for (i, name) in POWERUPS.iter().enumerate() {
+                ui.radio_value(&mut settings.powerup, i as u8, *name);
+            }
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new("Switch palaces pressed")
+                    .small()
+                    .color(theme::MUTED),
+            );
+            for (i, name) in SWITCHES.iter().enumerate() {
+                let mut on = settings.switches & 1 << i != 0;
+                if ui.checkbox(&mut on, *name).changed() {
+                    settings.switches ^= 1 << i;
+                }
+            }
+            ui.add_space(4.0);
+            ui.label(RichText::new("ON/OFF switch").small().color(theme::MUTED));
+            ui.horizontal(|ui| {
+                ui.radio_value(&mut settings.off, false, "On");
+                ui.radio_value(&mut settings.off, true, "Off");
+            });
+        });
 }
 
 /// The empty tile.

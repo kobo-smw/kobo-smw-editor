@@ -133,6 +133,14 @@ file by hand; when they do, the editor follows.
   bank, which an entry by screen exit never does, and sets the translevel (`$13BF`) the
   overworld would have entered by (a sublevel's is its overworld level's, `edit::reach`),
   which midway points and patches keep their state by.
+- From a tile the play build adds a secondary entrance there; from the level's start it
+  takes a screen exit to the level itself, so the main entrance is the level's own, its
+  action too (until 2026-10-08 it put an entrance at the tile the main entrance's load
+  left the player on, which for a level that starts out of a pipe, `0E9`, was inside
+  it). How the game starts is the play settings' (`playtest::Settings`, the menu beside
+  Play): the power-up, the switch palaces (`$1F27`-`$1F2A`), and the ON/OFF switch
+  (`$14AF`, set again on each entry). Decided 2026-10-08 at the maintainer's request;
+  more can join them (Yoshi, the item box) the same way.
 - With kkevinm's Retry System in the project's UberASM Tool folder (its
   `retry_config/ram.asm`), the play build sets its respawn point to the entrance, as an
   entry from the overworld would have set it to the level's start: without that it was

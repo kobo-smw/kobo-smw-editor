@@ -148,9 +148,14 @@ menu is open, a PLAY marker shows where the player will start: standing where it
 opened, or, opened on the ground or a wall, on top of it. The game goes from power-on
 straight to that tile, with no title screen (a moment of dark "Nintendo Presents", whose
 game modes set the screen up), through a secondary entrance put there in a copy of the
-level, which is water or slippery when the level is; it plays the level's own music, and
-comes back there after a death, a game over (with four lives again), or the level's end;
-the project is not changed. A hack with kkevinm's Retry System (the Romhack Races
+level, which is water or slippery when the level is; from the level's start (Play,
+the level list's menu) it goes in by the level's own main entrance, out of a pipe if
+that is how the level starts. It plays the level's own music, and comes back there
+after a death, a game over (with four lives again), or the level's end, with the
+level as it was at first (coins collected are back); the project is not changed. The
+**▾** beside Play sets how the game starts, for every way of playing: the power-up
+(which the menus' choice of one also sets), the switch palaces pressed, and the ON/OFF
+switch. A hack with kkevinm's Retry System (the Romhack Races
 baserom's, and many others') retries there too, or at a midway point once the player has
 touched one. The pixelated fade on the way in is the game's own, as from
 the overworld. `kobo play` does the same from the command line.

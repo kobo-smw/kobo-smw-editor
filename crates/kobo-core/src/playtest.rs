@@ -1,10 +1,11 @@
 //! Play from here: a build of a project that goes from power-on straight
-//! into a level, with the player at a tile of the editor's choosing. The
-//! level gets a secondary entrance there, placed by tile (Lunar Magic's
-//! position method 2), in a copy of the project; the build of that copy
-//! gets [`PATCH`], which where the title screen would load starts a game
-//! and takes a screen exit to the entrance. The project itself is not
-//! changed.
+//! into a level, with the player at a tile of the editor's choosing, or
+//! where the level's main entrance puts him. For a tile the level gets a
+//! secondary entrance there, placed by tile (Lunar Magic's position method
+//! 2), in a copy of the project; the build of that copy gets [`PATCH`],
+//! which where the title screen would load starts a game, as [`Settings`]
+//! say, and takes a screen exit to the entrance (or to the level, for its
+//! main entrance). The project itself is not changed.
 
 use std::path::{Path, PathBuf};
 
@@ -33,12 +34,27 @@ const WATER_ACTION: u8 = 7;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Start {
     pub level: u16,
-    /// The tile the player stands on, in the level's tiles.
-    pub x: u16,
-    pub y: u16,
+    /// The tile the player stands on, in the level's tiles; `None` for
+    /// the level's main entrance, as the level has it (out of a pipe,
+    /// say).
+    pub at: Option<(u16, u16)>,
+    pub settings: Settings,
+}
+
+/// The game's state at the start.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct Settings {
     /// 0 small, 1 big, 2 cape, 3 fire.
     pub powerup: u8,
+    /// The switch palaces pressed, by [`SWITCHES`]' bits.
+    pub switches: u8,
+    /// The ON/OFF switch off.
+    pub off: bool,
 }
+
+/// The switch palaces, by their bit in [`Settings::switches`] (`$1F27`
+/// onwards).
+pub const SWITCHES: [&str; 4] = ["Green", "Yellow", "Blue", "Red"];
 
 /// Where the editor writes a project's play build: in `kobo/play` in the
 /// user's cache directory, not the project's folder, named after the
@@ -84,12 +100,12 @@ pub enum PlaytestError {
 /// cannot take, since 7 brings the player out of a pipe: it takes Lunar
 /// Magic's bits for them instead, which its placing by tile installs the
 /// code for anyway.
-pub fn entrance(level: &crate::source::level::Level, start: &Start, id: u16) -> Entrance {
+pub fn entrance(level: &crate::source::level::Level, (x, y): (u16, u16), id: u16) -> Entrance {
     let vertical = level.header.level_mode.layer1_vertical();
     let (screen, x, y) = if vertical {
-        (start.y / 16, start.x & 31, start.y % 16)
+        (y / 16, x & 31, y % 16)
     } else {
-        (start.x / 16, start.x % 16, start.y & 1023)
+        (x / 16, x % 16, y & 1023)
     };
     let main = level.entrance;
     let camera = Camera::from_bits(
@@ -118,36 +134,36 @@ pub fn entrance(level: &crate::source::level::Level, start: &Start, id: u16) -> 
     }
 }
 
-/// The tile the level's main entrance puts the player on, by its load in
-/// a build of `workspace`.
-pub fn entrance_tile(workspace: &Workspace, level: u16) -> Result<(u16, u16), PlaytestError> {
-    let (rom, _) = workspace.build_leaving_out(Some(level))?;
-    let loaded = crate::expand::expand_level(&rom, level).map_err(Box::new)?;
-    let x = loaded.ram.u16(crate::ram::PLAYER_X);
-    let y = loaded.ram.u16(crate::ram::PLAYER_Y);
-    Ok((x / 16, y / 16))
-}
-
 /// A build of `workspace` that starts at `start`.
 pub fn build(workspace: &Workspace, start: &Start, asar: &Asar) -> Result<Rom, PlaytestError> {
     let level = workspace
         .level(start.level)
         .ok_or(PlaytestError::NoLevel(start.level))?;
-    let id = workspace
-        .free_entrance(start.level)
-        .ok_or(PlaytestError::NoEntrance(start.level))?;
     let mut level = level.clone();
-    level.entrances.push(entrance(&level, start, id));
     let mut copy = workspace.clone();
-    copy.set_level(start.level, &level);
+    let (destination, secondary) = match start.at {
+        Some(at) => {
+            let id = workspace
+                .free_entrance(start.level)
+                .ok_or(PlaytestError::NoEntrance(start.level))?;
+            level.entrances.push(entrance(&level, at, id));
+            copy.set_level(start.level, &level);
+            (id, 1)
+        }
+        None => (start.level, 0),
+    };
     let (rom, _) = copy.build_leaving_out(Some(start.level))?;
+    let settings = start.settings;
     let mut patch = crate::install::patch(PATCH)
-        .define("entrance", format!("${id:03X}"))
+        .define("entrance", format!("${destination:03X}"))
+        .define("secondary", format!("{secondary}"))
         .define(
             "translevel",
             format!("${:02X}", translevel(workspace, start.level)),
         )
-        .define("powerup", format!("{}", start.powerup & 3))
+        .define("powerup", format!("{}", settings.powerup & 3))
+        .define("switches", format!("{}", settings.switches & 0xF))
+        .define("off", format!("{}", u8::from(settings.off)))
         .define("time", format!("{}", level.header.time & 3));
     let project = workspace.project();
     let retry = project

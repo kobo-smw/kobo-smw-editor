@@ -1092,6 +1092,10 @@ impl App {
                 if build.clicked() {
                     crate::build::start(self);
                 }
+                let settings = ui
+                    .button("▾")
+                    .on_hover_text("How the game starts: power-up, switch palaces, ON/OFF");
+                crate::play::settings_menu(self, &settings);
                 let play = ui
                     .add_enabled(
                         self.current().is_some() && !self.play.busy(),
@@ -1101,7 +1105,7 @@ impl App {
                         "Play the level from its start (F5: from where the mouse is; the canvas's menu: from there, with a power-up)",
                     );
                 if play.clicked() {
-                    crate::play::from_start(self, self.play.powerup);
+                    crate::play::from_start(self, self.play.settings.powerup);
                 }
                 let modified = self.modified().count();
                 let save = ui

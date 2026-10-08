@@ -1346,7 +1346,7 @@ fn play_from_here_builds_a_rom_that_starts_there() {
         (70.0 * 16.0, 19.0 * 16.0),
         2,
     );
-    assert_eq!((start.x, start.y), (70, 18));
+    assert_eq!(start.at, Some((70, 18)));
     crate::play::start(harness.state_mut(), start);
     wait_for(&mut harness, "the build to play", |app| !app.play.busy());
     let message = harness.state().status().unwrap_or_default().to_string();
@@ -1366,15 +1366,15 @@ fn play_from_here_builds_a_rom_that_starts_there() {
     // The project's files are as they were: the edit is not saved.
     assert!(harness.state().is_modified(0x105));
 
-    // From the level's start, found by loading it: level 105's player
-    // starts on tile (1, 22).
+    // From the level's start: its main entrance, as the level has it.
     crate::play::from_level_start(harness.state_mut(), 0x105, 0);
     wait_for(&mut harness, "the build to play", |app| !app.play.busy());
     let message = harness.state().status().unwrap_or_default().to_string();
     assert!(
-        message.starts_with("Playing level 105 from (1, 22) as Small Mario"),
+        message.starts_with("Playing level 105 from its start as Small Mario"),
         "{message}"
     );
+    std::fs::remove_file(&path).unwrap();
 }
 
 #[test]
@@ -1691,8 +1691,30 @@ fn play_from_a_click_in_the_ground_starts_on_it() {
     // Inside the ground ledge whose top is row 20: on top of it, his feet
     // in row 19 and his top in 18.
     let start = crate::play::start_at(open, at(65.0, 22.0), 0);
-    assert_eq!((start.x, start.y), (65, 18));
+    assert_eq!(start.at, Some((65, 18)));
     // In the air, where it was clicked.
     let start = crate::play::start_at(open, at(65.0, 12.0), 0);
-    assert_eq!((start.x, start.y), (65, 11));
+    assert_eq!(start.at, Some((65, 11)));
+}
+
+#[test]
+fn the_play_settings_menu_sets_how_the_game_starts() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "play-settings");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.get_by_label("▾").click();
+    harness.run_steps(2);
+    harness.get_by_label("Cape Mario").click();
+    harness.run_steps(2);
+    harness.get_by_label("Red").click();
+    harness.run_steps(2);
+    harness.get_by_label("Off").click();
+    harness.run_steps(2);
+    let settings = harness.state().play.settings;
+    assert_eq!(settings.powerup, 2);
+    assert_eq!(settings.switches, 0b1000);
+    assert!(settings.off);
 }

@@ -583,7 +583,7 @@ fn show_canvas(
     let mut find_query: Option<String> = None;
     let mut copy_drop: Option<(Vec<Item>, (i32, i32))> = None;
     let mut play: Option<kobo_core::playtest::Start> = None;
-    let app_powerup = app.play.powerup;
+    let app_powerup = app.play.settings.powerup;
     // A screen exit's label double-clicked: go where it leads.
     let mut follow: Option<kobo_core::level::objects::ScreenExit> = None;
     let mut clip: Option<(crate::clipboard::Action, Option<(u16, u16)>)> = None;
@@ -1920,7 +1920,10 @@ fn draw_play_start(
     camera: &Camera,
     start: kobo_core::playtest::Start,
 ) {
-    let (x, y) = (f32::from(start.x) * TILE, f32::from(start.y) * TILE);
+    let Some((x, y)) = start.at else {
+        return;
+    };
+    let (x, y) = (f32::from(x) * TILE, f32::from(y) * TILE);
     let body = camera.rect_to_screen(
         canvas,
         Rect::from_min_size(Pos2::new(x, y), Vec2::new(TILE, TILE * 2.0)),

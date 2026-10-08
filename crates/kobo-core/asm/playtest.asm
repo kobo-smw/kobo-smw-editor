@@ -35,10 +35,14 @@
 ; level's time, as that entry would have told it the level's start. A
 ; midway point then moves its respawn point as it does in the game.
 ;
-; Defines: !entrance, the secondary entrance (000-1FF); !translevel, the
+; Defines: !entrance, the secondary entrance (000-1FF), or with
+; !secondary 0 the level, entered by its main entrance as a screen exit to
+; it enters it (out of a pipe, say, as the level has it); !translevel, the
 ; translevel; !powerup, the player's power-up (0 small, 1 big, 2 cape, 3
-; fire); !time, the level's time setting (0-3), which an entry into a
-; sublevel does not load; !retry, 1 with the Retry System's RAM.
+; fire); !switches, the switch palaces pressed (bits 0-3: green, yellow,
+; blue, red); !off, 1 to start with the ON/OFF switch off; !time, the
+; level's time setting (0-3), which an entry into a sublevel does not load;
+; !retry, 1 with the Retry System's RAM.
 
 incsrc "memory.asm"
 if !retry
@@ -94,6 +98,12 @@ playtest:
     STZ $13C9|!addr                 ; no continue prompt
     LDA.b #!powerup
     STA $0019|!dp
+    ; The switch palaces, as a save file keeps them.
+    LDX #$03
+-   LDA.l .switches,x
+    STA $1F27|!addr,x
+    DEX
+    BPL -
     STZ $0109|!addr                 ; no overworld override
     JSR enter
     ; Into the level, as the overworld's load goes into one at once.
@@ -102,6 +112,9 @@ playtest:
     LDA #$10
     STA $0100|!addr
     RTL
+
+.switches:
+    db !switches&1, (!switches>>1)&1, (!switches>>2)&1, (!switches>>3)&1
 
 ; Game mode $0C, the overworld's load, once it has turned the screen off
 ; and cleared the level's RAM, where it checks for a level to go into at
@@ -142,12 +155,14 @@ enter:
     STZ $0F33|!addr
     LDA.b #!translevel
     STA $13BF|!addr
+    LDA.b #!off
+    STA $14AF|!addr                 ; the ON/OFF switch
 if defined("retry_ram_respawn") && defined("retry_ram_timer")
     ; The Retry System's respawn point, in the screen exits' format but
     ; Lunar Magic's bit (2), which it adds, and its copy of the time.
     LDA.b #(!entrance&$FF)
     STA.l !retry_ram_respawn
-    LDA.b #($02|((!entrance>>8)&1))
+    LDA.b #((!secondary<<1)|((!entrance>>8)&1))
     STA.l !retry_ram_respawn+1
     LDA $0F31|!addr
     STA.l !retry_ram_timer
@@ -157,17 +172,19 @@ if defined("retry_ram_respawn") && defined("retry_ram_timer")
 endif
     ; A screen exit to the entrance from every screen, so that whichever
     ; the player is on takes it: the entrance's low byte, and in Lunar
-    ; Magic's exit format (bit 2) secondary (bit 1) with its bit 8 ...
+    ; Magic's exit format (bit 2) whether secondary (bit 1), with its bit
+    ; 8 ...
     LDX #$1F
 .exits:
     LDA.b #(!entrance&$FF)
     STA $19B8|!addr,x
-    LDA.b #($06|((!entrance>>8)&1))
+    LDA.b #($04|(!secondary<<1)|((!entrance>>8)&1))
     STA $19D8|!addr,x
     DEX
     BPL .exits
-    ; ... and in the game's own: secondary, with bit 8 from the submap.
-    LDA #$01
+    ; ... and in the game's own: whether secondary, with bit 8 from the
+    ; submap.
+    LDA.b #!secondary
     STA $1B93|!addr
     LDA.b #((!entrance>>8)&1)
     STA $1F11|!addr
