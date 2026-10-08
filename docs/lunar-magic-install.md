@@ -1974,6 +1974,10 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   change matched the move; the translevel pointer holds in every Lunar Magic 3 hack of the
   corpus, the page table's not in hacks of older versions (Kaizo Mario 1 and 2, Smb2dx),
   which have one page.
+- The event tile data's split between 6x6 blocks and 2x2 ones is the operand of the
+  game's `CPY #$0900` at `$04E4BF` (`CODE_04E4A9`), which Lunar Magic's "Change Max
+  Event 6x6 Tile Area" moves; every corpus hack keeps `$0900` but Kaizo Mario 2 (`$0000`,
+  an older version's). Kobo reads it there and writes it back (`Events::split`).
 - What Lunar Magic checks to read the layout (bisected 2026-10-09 by copying a hack's
   bytes into Kobo's build of its overworld and having Lunar Magic transfer the result
   into a clean ROM, printing addresses only): `$A2` at `$04D7F9`, without which it takes

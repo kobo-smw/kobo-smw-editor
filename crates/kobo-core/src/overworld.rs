@@ -86,6 +86,8 @@ mod operands {
     pub const EXTRA_KINDS: SnesAddr = SnesAddr::new(0x04_EA27);
     pub const EXTRA_DATA: SnesAddr = SnesAddr::new(0x04_EA32);
     pub const EXTRA_PLACES: SnesAddr = SnesAddr::new(0x04_EA38);
+    /// `CPY #$0900`: where the event tile data's 2x2 blocks start.
+    pub const EVENT_SPLIT: SnesAddr = SnesAddr::new(0x04_E4C0);
 }
 
 /// Where Lunar Magic's layout keeps the pointers only its code reads.
@@ -151,9 +153,10 @@ pub struct EventTile {
 }
 
 impl EventTile {
-    /// The tiles the block has: 36 or 4.
-    pub fn tiles(&self) -> usize {
-        if self.data >= 0x900 { 4 } else { 36 }
+    /// The tiles the block has, with 2x2 blocks' data from `split`: 36 or
+    /// 4.
+    pub fn tiles(&self, split: u16) -> usize {
+        if self.data >= split { 4 } else { 36 }
     }
 }
 
@@ -202,6 +205,9 @@ pub struct Events {
     pub reveal: Vec<(u8, u8)>,
     /// Each event's further tiles, in the order they are made.
     pub extras: Vec<Vec<Extra>>,
+    /// Where the event tile data of 2x2 blocks starts, 6x6 blocks' below
+    /// (`CPY #$0900` in `CODE_04E4A9`), which Lunar Magic can move.
+    pub split: u16,
 }
 
 /// A block of an event's layer 2 change, as a project holds it: where it
@@ -213,7 +219,8 @@ pub struct EventBlock {
     pub tiles: Vec<u16>,
 }
 
-/// Where the event tile data of 2x2 blocks starts; 6x6 blocks are below.
+/// Where the game's event tile data of 2x2 blocks starts; 6x6 blocks are
+/// below.
 pub const SMALL_BLOCKS: u16 = 0x900;
 /// The end of the event tile data: the game's own size, what its
 /// properties decode into at `$7F0000` without reaching what follows.
@@ -233,7 +240,7 @@ impl Events {
     fn block(&self, t: &EventTile) -> EventBlock {
         EventBlock {
             place: t.place,
-            tiles: (0..t.tiles())
+            tiles: (0..t.tiles(self.split))
                 .map(|i| {
                     let at = usize::from(t.data) + i;
                     let number = self.numbers.get(at).copied().unwrap_or(0);
@@ -269,10 +276,11 @@ impl Events {
         extra_tiles: &[Vec<ExtraTile>],
         crush: Vec<Crush>,
         reveal: Vec<(u8, u8)>,
+        split: u16,
     ) -> Result<Self, OverworldError> {
         let mut ranges = vec![0u16];
         let mut tiles = Vec::new();
-        let mut layout = DataLayout::new();
+        let mut layout = DataLayout::new(split);
         for event in blocks {
             for block in event {
                 let data = layout.lay(block)?;
@@ -307,6 +315,7 @@ impl Events {
             crush,
             reveal,
             extras,
+            split,
         })
     }
 
@@ -321,6 +330,7 @@ impl Events {
 /// [`SMALL_BLOCKS`], a block whose tiles another has already taking its
 /// data, as the game's own data shares blocks between entries.
 struct DataLayout {
+    split: u16,
     large: u16,
     small: u16,
     numbers: Vec<u8>,
@@ -330,10 +340,11 @@ struct DataLayout {
 }
 
 impl DataLayout {
-    fn new() -> Self {
+    fn new(split: u16) -> Self {
         Self {
+            split,
             large: 0,
-            small: SMALL_BLOCKS,
+            small: split,
             numbers: vec![0; usize::from(EVENT_DATA_END)],
             properties: vec![0; usize::from(EVENT_DATA_END)],
             used: 0,
@@ -350,7 +361,7 @@ impl DataLayout {
             36 => {
                 let at = self.large;
                 self.large += 36;
-                if self.large > SMALL_BLOCKS {
+                if self.large > self.split {
                     return Err(OverworldError::Full("6x6 event blocks"));
                 }
                 at
@@ -659,13 +670,14 @@ fn read_events(rom: &Rom, _layout: Layout) -> Result<Events, OverworldError> {
         });
     }
     let extras = read_extras(rom, count)?;
+    let split = rom.read_u16(operands::EVENT_SPLIT)?;
     let used = tiles
         .iter()
         .chain(extras.iter().flatten().filter_map(|e| match e {
             Extra::Layer2(t) => Some(t),
             Extra::Layer1 { .. } => None,
         }))
-        .map(|t| usize::from(t.data) + t.tiles())
+        .map(|t| usize::from(t.data) + t.tiles(split))
         .max()
         .unwrap_or(0);
     let numbers = rom.read(operand(operands::EVENT_NUMBERS)?, used)?.to_vec();
@@ -710,6 +722,7 @@ fn read_events(rom: &Rom, _layout: Layout) -> Result<Events, OverworldError> {
         crush,
         reveal,
         extras,
+        split,
     })
 }
 
@@ -934,7 +947,7 @@ mod tests {
                 data: 0x8FC,
                 place: 0
             }
-            .tiles(),
+            .tiles(SMALL_BLOCKS),
             36
         );
         assert_eq!(
@@ -942,7 +955,7 @@ mod tests {
                 data: 0x900,
                 place: 0
             }
-            .tiles(),
+            .tiles(SMALL_BLOCKS),
             4
         );
     }
@@ -1236,6 +1249,8 @@ impl Overworld {
             ));
         }
         plan.fixed.push((LEVEL_EVENTS, self.level_events.clone()));
+        plan.fixed
+            .push((operands::EVENT_SPLIT, events.split.to_le_bytes().to_vec()));
         plan.fixed.push((
             START_OPENED,
             self.opened.iter().flat_map(|&(t, d)| [t, d]).collect(),
@@ -1401,6 +1416,8 @@ pub struct Changes {
     pub opened: Option<Vec<(u8, u8)>>,
     /// By translevel: its event.
     pub level_events: std::collections::BTreeMap<u8, u8>,
+    /// Where the event tile data's 2x2 blocks start.
+    pub event_split: Option<u16>,
 }
 
 impl Changes {
@@ -1451,6 +1468,7 @@ impl Overworld {
             &extras,
             self.events.crush.clone(),
             self.events.reveal.clone(),
+            self.events.split,
         )?;
         Ok(())
     }
@@ -1523,6 +1541,9 @@ impl Overworld {
         if self.opened != clean.opened {
             changes.opened = Some(self.opened.clone());
         }
+        if self.events.split != clean.events.split {
+            changes.event_split = Some(self.events.split);
+        }
         for (t, (&ours, &theirs)) in self
             .level_events
             .iter()
@@ -1585,6 +1606,7 @@ impl Overworld {
             &extras,
             crush,
             reveal,
+            changes.event_split.unwrap_or(self.events.split),
         )?;
         Ok(self)
     }
