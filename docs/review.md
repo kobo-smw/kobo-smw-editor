@@ -14,6 +14,14 @@ settle it.
 
 ## Open
 
+- **The FG1-2 merge's byte (2026-10-09).** Lunar Magic keeps its overworld option to
+  merge FG1-2 into SP3-4 as `$D0` at `$0FF9F0`, in its own area, where unmerged ROMs
+  have `$F0` (lunar-magic-install.md, "The overworld"). Kobo writes `$D0` there for a
+  merged project, Lunar Magic's transfer reading it (tested with and without), and
+  Kobo's own loader reads the same byte to decide the merge, rather than keep a flag
+  of its own beside it; an unmerged Kobo build has `$FF` there, which Lunar Magic
+  reads as unmerged. Settled by agreeing, or by a rule for such option bytes.
+
 - **The overworld's ExAnimation (2026-10-09).** Kobo carries each submap's list, the
   global list, and the settings, with its own code for the three hooks
   (lunar-magic-install.md, "The overworld"). Taken without asking: a submap change

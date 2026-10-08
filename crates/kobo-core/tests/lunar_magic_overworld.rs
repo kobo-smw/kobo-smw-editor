@@ -5,7 +5,8 @@
 //! Lunar Magic checks it (`$04D818`), when Lunar Magic must lose layer 1's
 //! pages and nothing else, without the bank of layer 1's 16x16 tiles
 //! where Lunar Magic reads it (`$058B22`), and without the `JSL` at
-//! `$00A4E3` it takes the overworld's ExAnimation as installed by, as
+//! `$00A4E3` it takes the overworld's ExAnimation as installed by, and
+//! without the byte it keeps the FG1-2 merge as (`$0FF9F0`), as
 //! docs/lunar-magic-install.md records.
 //!
 //! Opt-in: the Lunar Magic tier, with the vanilla ROM and Asar.
@@ -14,7 +15,7 @@ mod common;
 
 use common::lm;
 use kobo_core::build::{self, Project};
-use kobo_core::overworld::{EventBlock, Overworld, Start, layer1_index, layer2_index};
+use kobo_core::overworld::{self, EventBlock, Overworld, Start, layer1_index, layer2_index};
 use kobo_core::{Rom, SnesAddr};
 
 /// The byte Lunar Magic reads layer 1's pages only with, and the game's.
@@ -84,6 +85,7 @@ fn lunar_magic_reads_a_built_overworld() {
     animation.submaps[1] = Some(list.clone());
     animation.global = Some(list);
     ours.animation = Some(animation);
+    ours.merge_fg = true;
     ours.start[0] = Start {
         submap: 0,
         x: 12 * 16 + 8,
@@ -106,6 +108,7 @@ fn lunar_magic_reads_a_built_overworld() {
     assert_eq!(theirs.start, read.start);
     assert_eq!(theirs.level_events, read.level_events);
     assert_eq!(theirs.animation, read.animation);
+    assert!(theirs.merge_fg, "FG1-2 merged");
 
     // Without the check byte, Lunar Magic takes layer 1 for one page.
     let mut unchecked = Rom::from_bytes(built.data().to_vec()).unwrap();
@@ -135,6 +138,14 @@ fn lunar_magic_reads_a_built_overworld() {
     unhooked.write(ANIMATION_CHECK, &[0xC2]).unwrap();
     let theirs = transferred(&lunar_magic, &clean, &unhooked, "overworld-unhooked");
     assert_eq!(theirs.animation, None, "ExAnimation without its check");
+
+    // Lunar Magic reads the FG1-2 merge from the byte at $0FF9F0: with
+    // the unmerged value there, the transfer leaves the overworld unmerged.
+    let mut unmerged = Rom::from_bytes(built.data().to_vec()).unwrap();
+    unmerged.write(overworld::MERGE_FG, &[0xF0]).unwrap();
+    let theirs = transferred(&lunar_magic, &clean, &unmerged, "overworld-unmerged");
+    assert!(!theirs.merge_fg, "FG1-2 without the byte");
+    assert!(theirs.layer1 == read.layer1, "layer 1, without the merge");
     assert!(
         theirs.layer1 == read.layer1,
         "layer 1, without the ExAnimation check"

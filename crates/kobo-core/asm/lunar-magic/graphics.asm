@@ -543,7 +543,13 @@ load_graphics:
     AND #$0080
     BEQ .standard
     JSR load_slots
-    JSR tileset_files
+    JSR merged
+    BCC +
+    SEP #$20
+    LDA #$77                    ; layers 1 and 2's characters at $E000
+    STA $210B
+    REP #$20
++   JSR tileset_files
     BRA .layer3
 .standard:
     JSR load_standard
@@ -614,6 +620,30 @@ tilemap_places:
     dw $50A0, $5000, $5080, $5800
 tilemap_skips:
     dw $0140, $0000, $0100, $0000
+
+; Lunar Magic's overworld option to merge FG1-2 into SP3-4, as it keeps it:
+; $D0 at $0FF9F0. The list then has FG1's and FG2's files in SP3's and
+; SP4's words, which load where those slots always do, and FG3-FG6 in
+; FG1's to FG4's; merged, layers 1 and 2's characters start at $E000
+; (bytes), so that their tiles 000-0FF are SP3 and SP4, and the game's
+; animated tiles go with them, to $7750 (the build writes the game's
+; LDY #$0750 for that). Found from riff2's load and its list
+; (docs/lunar-magic-install.md, "The overworld").
+; Carry set when the overworld's load is to merge them. A, X, Y 16-bit.
+merged:
+    LDA $0100|!addr
+    AND #$00FF
+    CMP #$000C
+    BNE .no
+    LDA.l $0FF9F0
+    AND #$00FF
+    CMP #$00D0
+    BNE .no
+    SEC
+    RTS
+.no:
+    CLC
+    RTS
 
 ; A, X, Y 16-bit.
 load_slots:

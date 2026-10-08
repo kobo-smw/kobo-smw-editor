@@ -396,7 +396,7 @@ impl Project {
             || self
                 .overworld
                 .as_ref()
-                .is_some_and(|o| !o.graphics.is_empty())
+                .is_some_and(|o| !o.graphics.is_empty() || o.merge_fg)
             || !self.manifest.bypass_lists.is_empty()
             || self.levels.iter().any(|(_, level)| {
                 level.graphics.is_some() || level.layer1.iter().any(graphics_object)

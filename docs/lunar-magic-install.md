@@ -2092,8 +2092,17 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   paths; earlier runs through the wrapper with relative ones stalled), and in that
   transfer the unmerged transfer's byte at `$0FF9F0` alone puts the load back to
   `$0000`, the sprite table changing nothing: the option is that byte, which Lunar
-  Magic's code reads. Carrying it needs Kobo's own code for the merged layout and the
-  byte written for Lunar Magic.
+  Magic's code reads. The slots load where they always do: a merged list has FG1's and
+  FG2's files in SP3's and SP4's words (riff2's VRAM is a plain load of its list), so
+  the option is the characters' base (`$77` in `BG12NBA`, so that layers 1 and 2's
+  tiles `000`-`0FF` are SP3-4) and the animated tiles at `$7750`. Kobo carries it
+  (`[options] merge_fg`, `overworld::MERGE_FG`): the byte written for Lunar Magic and
+  read by Kobo's loader, which then sets the base in the overworld's load, and the
+  game's `LDY #$0750` (`$00A4EB`) made `$7750`. riff2's import builds to the hack's
+  overworld on every submap but for its layer 3 and the player's tiles; Lunar Magic's
+  transfer of a build keeps the merge, and drops it with `$F0` at `$0FF9F0`
+  (`tests/lunar_magic_overworld.rs`). An install of the overworld's ExAnimation with
+  no list (riff2's) is carried too, for its waterfall fix.
 - Beating each level of the vanilla overworld, by either exit (`expand::beat_level`),
   plays the same steps to the same RAM and VRAM in the game, its transfer, and Kobo's
   build (2026-10-09). In hacks, events play faster where Lunar Magic's Extra Options

@@ -576,7 +576,22 @@ pub struct Overworld {
     pub palettes: Option<Vec<u8>>,
     /// Lunar Magic's overworld ExAnimation, if the ROM has it installed.
     pub animation: Option<crate::exanimation::OverworldAnimation>,
+    /// Lunar Magic's option to merge FG1 and FG2 into SP3 and SP4
+    /// ([`MERGE_FG`]).
+    pub merge_fg: bool,
 }
+
+/// Lunar Magic's option to merge the overworld's FG1 and FG2 into SP3 and
+/// SP4, as it keeps it: [`MERGE_FG_ON`] here, which its code reads (found
+/// by putting the unmerged byte back in a transfer of a merged hack's
+/// overworld, docs/lunar-magic-install.md). Merged, layers 1 and 2's
+/// characters start at `$E000` and the game's animated tiles go to
+/// [`MERGED_ANIMATED_TILES`], which the game's `LDY #$0750` at
+/// [`ANIMATED_TILES`] gives.
+pub const MERGE_FG: SnesAddr = SnesAddr::new(0x0F_F9F0);
+pub const MERGE_FG_ON: u8 = 0xD0;
+pub const ANIMATED_TILES: SnesAddr = SnesAddr::new(0x00_A4EB);
+pub const MERGED_ANIMATED_TILES: u16 = 0x7750;
 
 /// Lunar Magic's overworld palettes: 14 of 256 colours.
 pub const PALETTES_LEN: usize = 14 * 0x200;
@@ -750,6 +765,7 @@ impl Overworld {
         let palettes = read_palettes(rom)?;
         let tiles = read_tiles(rom)?;
         let animation = crate::exanimation::read_overworld(rom)?;
+        let merge_fg = rom.read_u8(MERGE_FG)? == MERGE_FG_ON;
         Ok(Self {
             layout,
             layer1,
@@ -765,6 +781,7 @@ impl Overworld {
             tables,
             palettes,
             animation,
+            merge_fg,
         })
     }
 }
@@ -1518,6 +1535,13 @@ impl Overworld {
                 ],
             ));
         }
+        // Lunar Magic's FG1-2 merge: its byte, and the game's animated tiles
+        // where the merged layout has them.
+        if self.merge_fg {
+            plan.fixed.push((MERGE_FG, vec![MERGE_FG_ON]));
+            plan.fixed
+                .push((ANIMATED_TILES, MERGED_ANIMATED_TILES.to_le_bytes().to_vec()));
+        }
         // Lunar Magic's ExAnimation, whose tables Kobo's code for it keeps.
         if let Some(animation) = &self.animation {
             use crate::exanimation::{
@@ -1730,9 +1754,11 @@ pub struct Changes {
     /// differ from the clean ROM's (which has none).
     pub palettes: Option<Vec<u8>>,
     /// Lunar Magic's overworld ExAnimation, when there is any (the clean
-    /// ROM has none): installed as Kobo's code, which the lists and
-    /// settings are written behind.
+    /// ROM has none), or none but the install: installed as Kobo's code,
+    /// which the lists and settings are written behind.
     pub animation: Option<crate::exanimation::OverworldAnimation>,
+    /// Lunar Magic's option to merge FG1 and FG2 into SP3 and SP4.
+    pub merge_fg: bool,
     /// Lunar Magic's option to turn the event path fade off, with how much
     /// each frame adds to a step's timer (a step every `$40`): installed as
     /// Kobo's code, not read from the ROM's tables (an import finds it with
@@ -1870,8 +1896,9 @@ impl Overworld {
             changes.palettes = self.palettes.clone();
         }
         if self.animation != clean.animation {
-            changes.animation = self.animation.clone().filter(|a| !a.is_empty());
+            changes.animation = self.animation.clone();
         }
+        changes.merge_fg = self.merge_fg && !clean.merge_fg;
         for (n, ours) in self.tiles.iter().enumerate() {
             if clean.tiles.get(n) != Some(ours) {
                 changes.tiles.insert(n as u16, *ours);
@@ -1944,6 +1971,7 @@ impl Overworld {
         if let Some(animation) = &changes.animation {
             self.animation = Some(animation.clone());
         }
+        self.merge_fg |= changes.merge_fg;
         for (&n, words) in &changes.tiles {
             let n = usize::from(n);
             if n >= MAX_TILES {

@@ -37,8 +37,9 @@
 //!                                # Triggers 01-08 are events (manual frames 8-F name them),
 //!                                # each with a second set.
 //!
-//! [options]                      # Lunar Magic's: the event path fade off, a speed to reveal at
-//! reveal_speed = 0x06
+//! [options]                      # Lunar Magic's: the event path fade off, a speed to reveal at,
+//! reveal_speed = 0x06            # and FG1-2 merged into SP3-4 (the list then has FG1-2's
+//! merge_fg = true                # files in SP3-4's slots)
 //!
 //! [tables]                       # the tables kept in place, their bytes (overworld::TABLES)
 //! music = "02 03 04 06 07 09 05"
@@ -280,15 +281,22 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
             super::animation::write_as(&mut out, "animation.global", "", true, None, Some(list));
         }
         let text = out.finish();
-        if !text.is_empty() {
-            sections.push(text);
-        }
+        // The install alone, with no list or setting: the table empty.
+        sections.push(if text.is_empty() {
+            "[animation]\n".to_string()
+        } else {
+            text
+        });
     }
-    if let Some(speed) = changes.reveal_speed {
-        sections.push(format!(
-            "[options]\nreveal_speed = {}\n",
-            hex(u32::from(speed), 2)
-        ));
+    if changes.reveal_speed.is_some() || changes.merge_fg {
+        let mut text = String::from("[options]\n");
+        if let Some(speed) = changes.reveal_speed {
+            text += &format!("reveal_speed = {}\n", hex(u32::from(speed), 2));
+        }
+        if changes.merge_fg {
+            text += "merge_fg = true\n";
+        }
+        sections.push(text);
     }
     if !changes.tables.is_empty() {
         let mut text = String::from("[tables]\n");
@@ -645,15 +653,22 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                     .as_table()
                     .ok_or_else(|| invalid(key, "must be a table"))?;
                 for (name, _) in table.iter() {
-                    if name != "reveal_speed" {
+                    if name != "reveal_speed" && name != "merge_fg" {
                         return Err(invalid(format!("options.{name}"), "is not an option"));
                     }
                 }
-                let speed = int("options.reveal_speed", table.get("reveal_speed"), 0x40)?;
-                if speed == 0 {
-                    return Err(invalid("options.reveal_speed", "is 1 to 0x40"));
+                if table.contains_key("reveal_speed") {
+                    let speed = int("options.reveal_speed", table.get("reveal_speed"), 0x40)?;
+                    if speed == 0 {
+                        return Err(invalid("options.reveal_speed", "is 1 to 0x40"));
+                    }
+                    changes.reveal_speed = Some(speed as u8);
                 }
-                changes.reveal_speed = Some(speed as u8);
+                if let Some(item) = table.get("merge_fg") {
+                    changes.merge_fg = item
+                        .as_bool()
+                        .ok_or_else(|| invalid("options.merge_fg", "must be true or false"))?;
+                }
             }
             "tables" => {
                 let table = item
@@ -887,6 +902,7 @@ mod tests {
         changes.level_events.insert(0x13, 0x0A);
         changes.event_split = Some(0x0A00);
         changes.reveal_speed = Some(6);
+        changes.merge_fg = true;
         changes
             .tiles
             .insert(0x1C1, [0x0CA0, 0x0CB0, 0x4CA0, 0x4CB0]);
