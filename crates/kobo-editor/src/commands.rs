@@ -41,6 +41,7 @@ enum Command {
     Place(Placing),
     Shortcuts,
     CloseProject,
+    Quit,
     Overview,
     /// Back to the level before, or with `true` forward again.
     Back(bool),
@@ -158,6 +159,7 @@ fn commands(app: &App) -> Vec<(String, &'static str, Command)> {
         ("Keyboard shortcuts".into(), "F1", Command::Shortcuts),
         ("All levels as pictures".into(), "", Command::Overview),
         ("Close the project".into(), "", Command::CloseProject),
+        ("Quit".into(), "Ctrl+Q", Command::Quit),
     ];
     if let Some(workspace) = app.workspace() {
         for number in workspace.levels() {
@@ -300,21 +302,24 @@ fn run(app: &mut App, command: Command) {
         }
         Command::Shortcuts => app.commands.shortcuts = true,
         Command::CloseProject => app.switch_project(None),
+        Command::Quit => app.quit(),
         Command::Overview => app.overview.open = true,
     }
 }
 
-/// Ctrl+K and F1, whatever has the keyboard.
+/// Ctrl+K, F1, and Ctrl+Q, whatever has the keyboard.
 pub fn keys(app: &mut App, ctx: &egui::Context) {
-    let (palette, help) = ctx.input_mut(|i| {
+    let command = |key| egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, key);
+    let (palette, help, quit) = ctx.input_mut(|i| {
         (
-            i.consume_shortcut(&egui::KeyboardShortcut::new(
-                egui::Modifiers::COMMAND,
-                Key::K,
-            )),
+            i.consume_shortcut(&command(Key::K)),
             i.consume_key(egui::Modifiers::NONE, Key::F1),
+            i.consume_shortcut(&command(Key::Q)),
         )
     });
+    if quit {
+        app.quit();
+    }
     if palette && app.workspace().is_some() {
         app.commands.open = !app.commands.open;
         app.commands.query.clear();
@@ -454,6 +459,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                             "Back to the level before, forward again",
                         ),
                         ("F1", "These"),
+                        ("Ctrl+Q", "Quit"),
                     ] {
                         ui.label(RichText::new(keys).monospace().color(theme::ACCENT));
                         ui.label(what);

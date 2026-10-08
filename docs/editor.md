@@ -28,12 +28,14 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
 
 - **Top bar**: the Project, Edit, View, and Git menus; undo and redo (⟲ ⟳, each naming
   the step it takes); back and forward between levels; Commands (Ctrl+K); Save (💾),
-  Play, and Build.
+  Play, and Build. *Quit* (Project menu, Ctrl+Q, or the start screen's top bar) closes
+  the editor as the window's own close does, asking first to save any unsaved edits.
 - **Left**: three tabs.
   - *Levels*: the project's levels as a player meets them: each overworld level (the
     levels the overworld enters, `000`-`024` and `101`-`13B`, by their names there),
     with the sublevels its screen exits lead to folded under it, set in (choosing a
-    level opens its group, and choosing it again folds it), then the levels no exit
+    level opens its group, and choosing it again folds it; a group, like the lists the
+    headings below fold, slides open and shut), then the levels no exit
     reaches (the credits' rooms, the bonus game), then the game's own levels the project
     does not have, which build as the game has them and are added when chosen;
     *By number* lists the project's levels flat instead, in the ROM's order. The

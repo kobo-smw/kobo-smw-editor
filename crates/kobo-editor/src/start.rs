@@ -574,7 +574,7 @@ fn body(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
     }
 }
 
-/// The project menu in the top bar: open, new, recent, close.
+/// The project menu in the top bar: open, new, recent, close, quit.
 pub fn menu(app: &mut App, ui: &mut egui::Ui) {
     ui.menu_button("Project", |ui| {
         if ui.button("Open a project folder…").clicked() {
@@ -665,6 +665,13 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
         if ui.button("Close the project").clicked() {
             ui.close();
             app.switch_project(None);
+        }
+        if ui
+            .add(egui::Button::new("Quit").shortcut_text("Ctrl+Q"))
+            .clicked()
+        {
+            ui.close();
+            app.quit();
         }
     });
 }

@@ -4,7 +4,8 @@
 //! levels by number. The game's unused
 //! level numbers, which all hold its "TEST" level, are left out unless
 //! asked for. One search finds levels by number, name, or tileset, and
-//! what every level holds (`edit::find`).
+//! what every level holds (`edit::find`). A group, and each list the
+//! headings fold, opens and closes as one, sliding.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -150,6 +151,46 @@ enum Toggle {
     Unused,
 }
 
+impl Toggle {
+    fn fold(self) -> Fold {
+        match self {
+            Toggle::Others => Fold::Others,
+            Toggle::Unused => Fold::Unused,
+        }
+    }
+}
+
+/// Rows that open and close together: an overworld level's sublevels,
+/// or the levels under a heading.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Fold {
+    Group(u16),
+    Others,
+    Unused,
+}
+
+/// A row, and how open the fold it is in is, from 0 to 1.
+struct Line {
+    row: Row,
+    fold: Option<Fold>,
+    openness: f32,
+}
+
+impl From<Row> for Line {
+    fn from(row: Row) -> Self {
+        Line {
+            row,
+            fold: None,
+            openness: 1.0,
+        }
+    }
+}
+
+/// How open `fold` is, as it moves to `open`.
+fn openness(ctx: &egui::Context, fold: Fold, open: bool) -> f32 {
+    ctx.animate_bool_responsive(egui::Id::new(("level-list-fold", fold)), open)
+}
+
 /// What the list's menu asks for of a level.
 enum ListAction {
     Play(u8),
@@ -216,58 +257,97 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let Some(known) = app.levels.known.take() else {
         return;
     };
-    let rows = rows(app, &known, &filter, &found);
+    let lines = rows(app, &known, &filter, &found);
     let mut clicked = None;
     let mut menu = None;
     let mut toggled = None;
     let mut expand = None;
     let mut chosen = None;
+    // Where each row is: a fold's rows keep their places as it opens or
+    // closes, shown down to as far as it is open, and what follows moves
+    // with that edge.
+    let step = ROW + ui.spacing().item_spacing.y;
+    let mut places = Vec::with_capacity(lines.len());
+    let mut y = 0.0;
+    let mut i = 0;
+    while i < lines.len() {
+        let (fold, openness) = (lines[i].fold, lines[i].openness);
+        let count = lines[i..]
+            .iter()
+            .take_while(|l| fold.is_some() && l.fold == fold)
+            .count()
+            .max(1);
+        let shown = y + count as f32 * step * openness;
+        for k in 0..count {
+            places.push((y + k as f32 * step, shown));
+        }
+        y = shown;
+        i += count;
+    }
+    let height = (y - ui.spacing().item_spacing.y).max(0.0);
     let mut scroll = egui::ScrollArea::vertical()
         .id_salt("level-list")
         .auto_shrink([false, false]);
     if std::mem::take(&mut app.levels.scroll_to_current)
-        && let Some(row) = rows
+        && let Some(row) = lines
             .iter()
-            .position(|r| matches!(r, Row::Level { number, .. } if Some(*number) == current))
+            .position(|l| matches!(l.row, Row::Level { number, .. } if Some(number) == current))
     {
-        // A third of the way down, so what comes before shows.
-        let spacing = ui.spacing().item_spacing.y;
-        let offset = row as f32 * (ROW + spacing) - ui.available_height() / 3.0;
+        // A third of the way down, so what comes before shows; again next
+        // frame while its fold is still opening, so the list is long
+        // enough to scroll there.
+        let offset = places[row].0 - ui.available_height() / 3.0;
         scroll = scroll.vertical_scroll_offset(offset.max(0.0));
+        app.levels.scroll_to_current = lines[row].openness < 1.0;
     }
-    scroll.show_rows(ui, ROW, rows.len(), |ui, range| {
-        for row in &rows[range] {
-            match row {
-                Row::Heading(text) => {
-                    heading(ui, text, None);
-                }
-                Row::Toggle(text, toggle, open) => {
-                    if heading(ui, text, Some(*open)).clicked() {
-                        toggled = Some(*toggle);
-                    }
-                }
-                Row::Level {
-                    number,
-                    sublevel,
-                    expanded,
-                } => {
-                    let out = level_row(app, ui, &known, *number, *sublevel, *expanded);
-                    if out.clicked {
-                        clicked = Some(*number);
-                    }
-                    if out.expander {
-                        expand = Some(*number);
-                    }
-                    if out.menu.is_some() {
-                        menu = out.menu.map(|a| (*number, a));
-                    }
-                }
-                Row::Found(i) => {
-                    if found_row(ui, &found[*i]) {
-                        chosen = Some((found[*i].level, found[*i].entry));
-                    }
-                }
+    scroll.show_viewport(ui, |ui, viewport| {
+        ui.set_height(height);
+        let origin = ui.min_rect().min;
+        let width = ui.available_width();
+        for (line, &(top, shown)) in lines.iter().zip(&places) {
+            if top + ROW < viewport.min.y || top > viewport.max.y || top >= shown {
+                continue;
             }
+            let rect = Rect::from_min_size(origin + egui::vec2(0.0, top), egui::vec2(width, ROW));
+            let clip = Rect::from_x_y_ranges(rect.x_range(), origin.y + top..=origin.y + shown);
+            ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                ui.set_clip_rect(ui.clip_rect().intersect(clip));
+                ui.multiply_opacity(line.openness);
+                match &line.row {
+                    Row::Heading(text) => {
+                        heading(ui, text, None);
+                    }
+                    Row::Toggle(text, toggle, open) => {
+                        let openness = openness(ui.ctx(), toggle.fold(), *open);
+                        if heading(ui, text, Some(openness)).clicked() {
+                            toggled = Some(*toggle);
+                        }
+                    }
+                    Row::Level {
+                        number,
+                        sublevel,
+                        expanded,
+                    } => {
+                        let expanded =
+                            expanded.map(|open| openness(ui.ctx(), Fold::Group(*number), open));
+                        let out = level_row(app, ui, &known, *number, *sublevel, expanded);
+                        if out.clicked {
+                            clicked = Some(*number);
+                        }
+                        if out.expander {
+                            expand = Some(*number);
+                        }
+                        if out.menu.is_some() {
+                            menu = out.menu.map(|a| (*number, a));
+                        }
+                    }
+                    Row::Found(i) => {
+                        if found_row(ui, &found[*i]) {
+                            chosen = Some((found[*i].level, found[*i].entry));
+                        }
+                    }
+                }
+            });
         }
     });
     if found.len() > MOST_FOUND {
@@ -321,10 +401,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 }
 
 /// The rows: with no search, the levels as they are reached, or by
-/// number; with one, the levels it names and what it finds in them.
-fn rows(app: &App, known: &Known, filter: &str, found: &[Found]) -> Vec<Row> {
+/// number; with one, the levels it names and what it finds in them. A
+/// fold's rows are there while it is open or still closing.
+fn rows(app: &App, known: &Known, filter: &str, found: &[Found]) -> Vec<Line> {
     let state = &app.levels;
-    let mut rows = Vec::new();
+    let mut rows: Vec<Line> = Vec::new();
     let level = |number, sublevel| Row::Level {
         number,
         sublevel,
@@ -347,8 +428,8 @@ fn rows(app: &App, known: &Known, filter: &str, found: &[Found]) -> Vec<Row> {
             .filter(matches)
             .collect();
         if !levels.is_empty() {
-            rows.push(Row::Heading(format!("Levels · {}", levels.len())));
-            rows.extend(levels.into_iter().map(|n| level(n, false)));
+            rows.push(Row::Heading(format!("Levels · {}", levels.len())).into());
+            rows.extend(levels.into_iter().map(|n| level(n, false).into()));
         }
         let mut last = None;
         for (i, f) in found.iter().take(MOST_FOUND).enumerate() {
@@ -356,67 +437,105 @@ fn rows(app: &App, known: &Known, filter: &str, found: &[Found]) -> Vec<Row> {
                 last = Some(f.level);
                 let count = found.iter().filter(|g| g.level == f.level).count();
                 let name = app.level_name(f.level).unwrap_or_default();
-                rows.push(Row::Heading(
-                    format!("In {:03X} {name} · {count}", f.level)
-                        .trim()
-                        .to_string(),
-                ));
+                rows.push(
+                    Row::Heading(
+                        format!("In {:03X} {name} · {count}", f.level)
+                            .trim()
+                            .to_string(),
+                    )
+                    .into(),
+                );
             }
-            rows.push(Row::Found(i));
+            rows.push(Row::Found(i).into());
         }
         if rows.is_empty() {
-            rows.push(Row::Heading("Nothing found".into()));
+            rows.push(Row::Heading("Nothing found".into()).into());
         }
         return rows;
     }
+    let ctx = app.ctx();
+    let fold = |rows: &mut Vec<Line>, fold, open, levels: &mut dyn Iterator<Item = Row>| {
+        let openness = openness(ctx, fold, open);
+        if openness > 0.0 {
+            rows.extend(levels.map(|row| Line {
+                row,
+                fold: Some(fold),
+                openness,
+            }));
+        }
+    };
     if state.by_number {
         let levels = known.info.iter().filter(|(_, i)| i.listed && !i.unused);
-        rows.extend(levels.map(|(&n, _)| level(n, false)));
+        rows.extend(levels.map(|(&n, _)| level(n, false).into()));
     } else {
         for group in &known.reach.groups {
             let open = state.expanded.contains(&group.level);
-            rows.push(Row::Level {
-                number: group.level,
-                sublevel: false,
-                expanded: (!group.sublevels.is_empty()).then_some(open),
-            });
-            if open {
-                rows.extend(group.sublevels.iter().map(|&n| level(n, true)));
-            }
+            rows.push(
+                Row::Level {
+                    number: group.level,
+                    sublevel: false,
+                    expanded: (!group.sublevels.is_empty()).then_some(open),
+                }
+                .into(),
+            );
+            fold(
+                &mut rows,
+                Fold::Group(group.level),
+                open,
+                &mut group.sublevels.iter().map(|&n| level(n, true)),
+            );
         }
         if !known.reach.unreached.is_empty() {
-            rows.push(Row::Heading("Not reached by an exit".into()));
-            rows.extend(known.reach.unreached.iter().map(|&n| level(n, false)));
+            rows.push(Row::Heading("Not reached by an exit".into()).into());
+            rows.extend(
+                known
+                    .reach
+                    .unreached
+                    .iter()
+                    .map(|&n| level(n, false).into()),
+            );
         }
     }
     if !known.others.is_empty() {
-        rows.push(Row::Toggle(
-            format!(
-                "The game's own, not in the project · {}",
-                known.others.len()
-            ),
-            Toggle::Others,
+        rows.push(
+            Row::Toggle(
+                format!(
+                    "The game's own, not in the project · {}",
+                    known.others.len()
+                ),
+                Toggle::Others,
+                state.others,
+            )
+            .into(),
+        );
+        fold(
+            &mut rows,
+            Fold::Others,
             state.others,
-        ));
-        if state.others {
-            rows.extend(known.others.iter().map(|&n| level(n, false)));
-        }
+            &mut known.others.iter().map(|&n| level(n, false)),
+        );
     }
     if !known.unused.is_empty() {
-        rows.push(Row::Toggle(
-            format!("Unused: the game's TEST level · {}", known.unused.len()),
-            Toggle::Unused,
+        rows.push(
+            Row::Toggle(
+                format!("Unused: the game's TEST level · {}", known.unused.len()),
+                Toggle::Unused,
+                state.unused,
+            )
+            .into(),
+        );
+        fold(
+            &mut rows,
+            Fold::Unused,
             state.unused,
-        ));
-        if state.unused {
-            rows.extend(known.unused.iter().map(|&n| level(n, false)));
-        }
+            &mut known.unused.iter().map(|&n| level(n, false)),
+        );
     }
     rows
 }
 
-/// A heading row; with `open`, one that shows or hides what follows.
-fn heading(ui: &mut egui::Ui, text: &str, open: Option<bool>) -> egui::Response {
+/// A heading row; with `open`, how open what it shows or hides is.
+fn heading(ui: &mut egui::Ui, text: &str, open: Option<f32>) -> egui::Response {
     let sense = if open.is_some() {
         Sense::click()
     } else {
@@ -430,11 +549,10 @@ fn heading(ui: &mut egui::Ui, text: &str, open: Option<bool>) -> egui::Response 
     };
     let mut x = rect.left() + 4.0;
     if let Some(open) = open {
-        ui.painter().text(
-            egui::pos2(x, rect.bottom() - 7.0),
-            Align2::LEFT_BOTTOM,
-            if open { "⏷" } else { "⏵" },
-            FontId::proportional(10.5),
+        chevron(
+            ui.painter(),
+            egui::pos2(x + 4.0, rect.bottom() - 11.0),
+            open,
             color,
         );
         x += 14.0;
@@ -451,6 +569,20 @@ fn heading(ui: &mut egui::Ui, text: &str, open: Option<bool>) -> egui::Response 
     response
 }
 
+/// A fold's arrow, at `center`: pointing right when closed, turning to
+/// point down as it opens.
+fn chevron(painter: &egui::Painter, center: egui::Pos2, openness: f32, color: egui::Color32) {
+    let turn = egui::emath::Rot2::from_angle((openness - 1.0) * std::f32::consts::FRAC_PI_2);
+    let points = [(-4.0, -2.5), (4.0, -2.5), (0.0, 3.0)]
+        .map(|(x, y)| center + turn * egui::vec2(x, y))
+        .to_vec();
+    painter.add(egui::Shape::convex_polygon(
+        points,
+        color,
+        egui::Stroke::NONE,
+    ));
+}
+
 struct RowOut {
     clicked: bool,
     expander: bool,
@@ -463,7 +595,7 @@ fn level_row(
     known: &Known,
     number: u16,
     sublevel: bool,
-    expanded: Option<bool>,
+    expanded: Option<f32>,
 ) -> RowOut {
     let info = &known.info[&number];
     let (rect, response) =
@@ -498,13 +630,8 @@ fn level_row(
             .interact_pointer_pos()
             .is_some_and(|p| expander.contains(p));
         let hovered = response.hover_pos().is_some_and(|p| expander.contains(p));
-        painter.text(
-            expander.center(),
-            Align2::CENTER_CENTER,
-            if open { "⏷" } else { "⏵" },
-            FontId::proportional(11.0),
-            if hovered { theme::TEXT } else { theme::MUTED },
-        );
+        let color = if hovered { theme::TEXT } else { theme::MUTED };
+        chevron(&painter, expander.center(), open, color);
     }
     x += EXPANDER + if sublevel { INDENT } else { 0.0 };
     // The level's picture, once drawn.

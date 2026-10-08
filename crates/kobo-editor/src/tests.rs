@@ -262,6 +262,27 @@ fn delete_and_save_write_the_file() {
 }
 
 #[test]
+fn quitting_with_unsaved_edits_asks_first() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "quit");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    look_at(&mut harness, 60, 20);
+    click_tile(&mut harness, 65, 22);
+    harness.key_press(Key::Delete);
+    harness.step();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Q);
+    harness.run_steps(2);
+    harness.get_by_label("Save your changes?");
+    harness.get_by_label("Save and close").click();
+    harness.run_steps(2);
+    assert!(!harness.state().current().unwrap().document.is_modified());
+    assert!(harness.query_by_label("Save your changes?").is_none());
+}
+
+#[test]
 fn an_edit_on_disk_is_followed() {
     let Some(clean) = vanilla() else { return };
     let project = Project::new(&clean, "outside");

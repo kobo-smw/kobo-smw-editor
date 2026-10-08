@@ -423,6 +423,15 @@ impl App {
         }
     }
 
+    /// Quits, once any unsaved edits are dealt with.
+    pub(crate) fn quit(&mut self) {
+        if self.modified().count() > 0 {
+            self.confirm_close = true;
+        } else {
+            self.ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+
     /// Back to the start screen, dropping the open levels.
     pub(crate) fn close_project(&mut self) {
         self.thumbnails.forget();
@@ -1085,6 +1094,11 @@ impl App {
                 }
             }
             if self.workspace.is_none() {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.button("Quit").on_hover_text("Ctrl+Q").clicked() {
+                        self.quit();
+                    }
+                });
                 return;
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
