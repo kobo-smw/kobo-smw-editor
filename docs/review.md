@@ -14,11 +14,6 @@ settle it.
 
 ## Open
 
-- **The editor's toolkit, egui on OpenGL (2026-10-05).** Taken with the maintainer's
-  agreement (docs/step-3.md). eframe 0.36 defaults to wgpu; Kobo turns that off for its
-  OpenGL renderer (`glow`), which needs no Vulkan or EGL and runs under Mesa's GLX on the
-  development server. Either works on the three platforms; wgpu is a feature flag away
-  if a driver gives trouble.
 - **Lunar Magic's "Auto-Set Number of Screens" (2026-10-06).** The editor does not set a
   level's screen count by itself, as Lunar Magic does when it saves; the flag is shown as
   what it is ("Lunar Magic sets screens"), and *Fit* beside the screen count sets it from

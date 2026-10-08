@@ -17,7 +17,10 @@ file by hand; when they do, the editor follows.
 
 ### Toolkit: egui
 
-- `eframe` with its default OpenGL renderer (`glow`), one window, panels inside it. egui
+- `eframe` with its OpenGL renderer (`glow`), one window, panels inside it. eframe 0.36
+  defaults to wgpu; Kobo turns that off, since OpenGL needs no Vulkan or EGL and runs
+  under Mesa's GLX on the development server (reviewed 2026-10-08). Either works on the
+  three platforms; wgpu is a feature flag away if a driver gives trouble. egui
   is immediate mode: the whole interface is redrawn from the editor's state every frame,
   so there is no second copy of that state to keep in step. Its licence is MIT or
   Apache-2.0; it builds from Rust alone on all three platforms, and a level picture is a
