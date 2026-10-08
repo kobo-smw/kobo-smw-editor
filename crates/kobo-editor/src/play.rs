@@ -1,7 +1,7 @@
 //! Play from here: a build that starts in the open level at a tile
-//! (`kobo_core::playtest`), unsaved edits included, written beside the
-//! project's build as `play.sfc` and opened with what the system opens a
-//! ROM with.
+//! (`kobo_core::playtest`), unsaved edits included, written into the
+//! user's cache (`playtest::rom_path`) and opened with what the system
+//! opens a ROM with.
 
 use std::path::PathBuf;
 use std::thread::JoinHandle;
@@ -55,7 +55,10 @@ fn spawn(app: &mut App, level: u16, at: Option<(u16, u16)>, powerup: u8) {
         return;
     };
     app.play.powerup = powerup;
-    let out = workspace.project().root.join("play.sfc");
+    let Some(out) = playtest::rom_path(&workspace.project().root) else {
+        app.say("Could not build to play: there is no cache folder to put it in");
+        return;
+    };
     let ctx = app.ctx().clone();
     let handle = std::thread::spawn(move || {
         let result = (|| {
@@ -71,6 +74,9 @@ fn spawn(app: &mut App, level: u16, at: Option<(u16, u16)>, powerup: u8) {
             };
             let asar = Asar::configured().map_err(|e| e.to_string())?;
             let rom = playtest::build(&workspace, &start, &asar).map_err(|e| e.to_string())?;
+            if let Some(dir) = out.parent() {
+                std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            }
             std::fs::write(&out, rom.data()).map_err(|e| format!("{}: {e}", out.display()))?;
             Ok((out, start))
         })();

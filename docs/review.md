@@ -46,18 +46,6 @@ settle it.
   OpenGL renderer (`glow`), which needs no Vulkan or EGL and runs under Mesa's GLX on the
   development server. Either works on the three platforms; wgpu is a feature flag away
   if a driver gives trouble.
-- **Play from here, ahead of step 4 (2026-10-06).** The roadmap puts play-from-level in
-  step 4; the editor has it now, as a build (`kobo_core::playtest`, `kobo play`) and an
-  emulator of the user's choosing, which the system opens `play.sfc` with. No emulator is
-  driven: Mesen-S and bsnes-plus integration stays step 4's. The build hooks two game
-  modes of the game's own (`asm/playtest.asm`): the title screen's load, which starts a
-  game, uploads the level music bank in place of the overworld's (a screen exit's entry
-  does not), and takes a screen exit, and the overworld's load, which goes back into the
-  level, so a play ROM shows neither the title screen nor the overworld; "Nintendo
-  Presents" runs for a frame, dark, to set the screen up. It writes `play.sfc` into the project's folder, beside
-  `build.sfc`; a project's `.gitignore` should name both. To settle: the file's place (the
-  user's cache instead), whether the overworld should show after the level's end, and the
-  power-up and lives a play starts with (four lives, the power-up chosen in the menu).
 - **Lunar Magic's "Auto-Set Number of Screens" (2026-10-06).** The editor does not set a
   level's screen count by itself, as Lunar Magic does when it saves; the flag is shown as
   what it is ("Lunar Magic sets screens"), and *Fit* beside the screen count sets it from
@@ -67,15 +55,6 @@ settle it.
   while Kobo carries none of a project's. For a project imported from a hack they are the
   game's names, not the hack's, though true of what the build makes. To settle once the
   overworld is a project's (step 4): the project's names then.
-- **Play from here without the title screen (2026-10-07).** The play build now hooks the
-  title screen's load (game mode `$03`) instead of the title screen, so play starts about
-  four seconds sooner; "Nintendo Presents" runs a frame, dark, since its game modes set
-  the screen up and decompress the player's graphics. The same hook uploads the level
-  music bank, which an entry by screen exit never does (without it the level's songs were
-  the overworld's). A click on the ground or a wall starts the player on its top: the
-  first tile of page 1 (`100`-`1FF`, by what it acts like) above the click with two free
-  tiles over it, within 16 rows; a click on the empty tile `025` starts there. Checked in
-  Mesen 2 on vanilla, an AddmusicK hack, and the SA-1 reference.
 - **The Objects tab along the level (2026-10-07).** The outline lists objects and sprites
   together by place by default (by column, a vertical level by row from where the player
   starts), under a heading per screen; drawing order, which Ctrl+[ and Ctrl+] change, is

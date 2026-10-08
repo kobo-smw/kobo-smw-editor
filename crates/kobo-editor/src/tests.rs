@@ -1351,7 +1351,11 @@ fn play_from_here_builds_a_rom_that_starts_there() {
     wait_for(&mut harness, "the build to play", |app| !app.play.busy());
     let message = harness.state().status().unwrap_or_default().to_string();
     assert!(message.starts_with("Playing level 105"), "{message}");
-    let rom = Rom::load(project.0.join("play.sfc")).unwrap();
+    // Into the user's cache, not the project's folder.
+    assert!(!project.0.join("play.sfc").exists());
+    let path = kobo_core::playtest::rom_path(&project.0).unwrap();
+    let rom = Rom::load(&path).unwrap();
+    std::fs::remove_file(&path).unwrap();
     assert_eq!(
         rom.read_u8(kobo_core::addr::SnesAddr::new(0x0096BE))
             .unwrap(),

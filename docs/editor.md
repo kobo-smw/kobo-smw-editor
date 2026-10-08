@@ -141,7 +141,8 @@ about. *Build and play* opens the ROM with what the system opens it with.
 
 **Play from here** (the canvas's menu, with the power-up to start with, or F5 where the
 mouse is; the command palette plays from the level's start) builds the project as the
-editor has it into `play.sfc` beside the project's build and opens it. While the canvas's
+editor has it into a ROM of its own in the user's cache (`kobo/play`, one per project,
+so the project's folder stays clean and an emulator's saves stay with it) and opens it. While the canvas's
 menu is open, a PLAY marker shows where the player will start: standing where it was
 opened, or, opened on the ground or a wall, on top of it. The game goes from power-on
 straight to that tile, with no title screen (a moment of dark "Nintendo Presents", whose

@@ -6,6 +6,9 @@
 //! and takes a screen exit to the entrance. The project itself is not
 //! changed.
 
+use std::path::{Path, PathBuf};
+
+use sha1::{Digest, Sha1};
 use thiserror::Error;
 
 use crate::asar::{Asar, AsarError};
@@ -30,6 +33,26 @@ pub struct Start {
     pub y: u16,
     /// 0 small, 1 big, 2 cape, 3 fire.
     pub powerup: u8,
+}
+
+/// Where the editor writes a project's play build: in `kobo/play` in the
+/// user's cache directory, not the project's folder, named after the
+/// folder and a hash of its path, so that each project has its own and an
+/// emulator's saves beside it stay that project's.
+pub fn rom_path(project: &Path) -> Option<PathBuf> {
+    let project = project
+        .canonicalize()
+        .unwrap_or_else(|_| project.to_path_buf());
+    let hash = Sha1::digest(project.to_string_lossy().as_bytes());
+    let name = project
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "project".into());
+    let file = format!(
+        "{name}-{:02x}{:02x}{:02x}{:02x}.sfc",
+        hash[0], hash[1], hash[2], hash[3]
+    );
+    Some(dirs::cache_dir()?.join("kobo").join("play").join(file))
 }
 
 #[derive(Debug, Error)]

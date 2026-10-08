@@ -108,6 +108,25 @@ file by hand; when they do, the editor follows.
   with the overworld, what is hidden becomes what nothing reaches, from the overworld or
   from any level, rather than what holds the placeholder.
 
+### Play from here
+
+- Reviewed 2026-10-08. Play from here comes ahead of step 4, as a build
+  (`kobo_core::playtest`, `kobo play`) opened with the emulator the system opens a ROM
+  with; no emulator is driven, which stays step 4's (Mesen-S, bsnes-plus).
+- The play ROM goes in the user's cache (`playtest::rom_path`: `kobo/play`, named after
+  the project's folder and a hash of its path), not the project's folder; `kobo play`
+  writes where `-o` says.
+- It is for testing a level: power-on goes straight in (the title screen's load is
+  hooked, game mode `$03`; "Nintendo Presents" runs a frame, dark, to set the screen up
+  and decompress the player's graphics), and a death, a game over, or the level's end
+  goes back into it rather than to the overworld. The same hook uploads the level music
+  bank, which an entry by screen exit never does.
+- A play starts with four lives and the power-up chosen in the menu (F5 the last one).
+- A click on the ground or a wall starts the player on its top: the first tile of page 1
+  (`100`-`1FF`, by what it acts like) above the click with two free tiles over it, within
+  16 rows; a click on an empty tile starts there. Checked in Mesen 2 on vanilla, an
+  AddmusicK hack, and the SA-1 reference.
+
 ### Clean room in the editor
 
 - The editor shows no CPU trace, read trace, RAM view, or routine address. A debugging
