@@ -1899,6 +1899,52 @@ Initialised for all 512 levels; a save rewrites the saved level's entry (observe
 - `$0FFFE6`: set to `$01`. `$0FFFE7`-`$0FFFFF` are Lunar Magic's settings, written by every
   save (`$0FFFEB`, compression, is documented in lunar-magic.md). Unknown.
 
+### The overworld
+
+Being found (roadmap step 4, from 2026-10-08); nothing of it is built yet. The method:
+
+- `-TransferOverworld` is the only command that makes Lunar Magic write its overworld
+  layout: transferring the vanilla ROM's own overworld into a copy of the vanilla ROM
+  after one level save (`e0`, as above) changes only the layout, not the content, so the
+  diff (`romdiff.py`, `sites.py` against the vanilla ROM) is the layout's sites. Changing
+  one thing of the game's own format in the source first, and diffing two such
+  transfers, shows where the layout keeps that thing.
+- `tools/oracle/dump_overworld.sh` dumps what a ROM's overworld load leaves (RAM, VRAM,
+  CGRAM on the first frame of game mode `$0E`, a new game started with `$0109` held at 0
+  so it goes straight there), watching only RAM; `examples/ow_probe.rs` lists the RATS
+  blocks a transfer added and matches them, raw or decompressed, against such a dump.
+- For the vanilla overworld, the game's code and Lunar Magic's layout leave the same
+  VRAM, CGRAM, layer 1 tiles (`$7EC800`), translevels (`$7ED000`), and layer 2 tilemap
+  (`$7F4000`) (2026-10-08). RAM differs only in scratch: `$7EC100`-`$7EC7FF`,
+  `$7F0534`-`$7F3FFF`, `$7F81A0`-`$7FC7FF` in part, `$010D`-`$010F`, and a cloud
+  sprite's random place (`$0E4E`, `$0E7E`).
+
+The layout's sites, from the vanilla overworld's transfer (2026-10-08). Besides the
+graphics pieces above (`$009471`, `$00A140`, `$049DFD`, `$0583B8`, the lists at
+`$0FF15C` on), it is:
+
+- Hooks (a `JSL` over the game's instructions): `$048509` (`LDY PlayerTurnLvl : LDA
+  OWPlayerSubmap,Y`), `$048566` (`XBA : AND #$000F`), `$048E81` and `$049549` (`ASL : TAX
+  : LDA LevelNames,X : STA $00 : JSR CODE_049D07`, the level name), `$048F8A` (`LDX #$07 :
+  LDA OverworldLayer1Tile`), `$049199` (`CMP #$81 : BEQ`), `$04DCA5` (`INC $0F : LDA $0F :
+  CMP #$6F`, the load's event loop), `$04E6C5` (`CLC : ADC #$0010`), `$04E9F7` (`BEQ : DEX
+  : BPL`), `$04EDDD` (`ASL : ASL : ASL : TAY` in `CODE_04ED83`, layer 1's event change),
+  `$04EEC3` (`AND #$00FF : ASL : TAX : LDA.l DATA_04E587,X`), `$04EEF1` (`CLC : ADC
+  #$0020`), `$05B1A3` (`LDX #$16 : LDY #$01 : LDA DATA_05A590,X`), `$05D8B1` (`BEQ : LDA
+  #$01`, in the level load). Targets at `$03BA10`-`$03BFFF`, `$05DCD0`-`$05DDFF`, and in
+  RATS blocks.
+- Rewritten in place: `$04D7F9`-`$04D838` (the translevel scan, `CODE_04D7F2`) and
+  `$04EF27`-`$04EF3A` (the crushed tiles, `StructureCrushTile`).
+- The game's instructions with new operands, tables moved or grown: layer 2's streams
+  (`$04DC72`, `$04DC8D`: `OWTileNumbers` to a block of `$2F28` bytes at `$10C4B4`, still
+  the game's run-length format, `CODE_04DABA`), `OWEventTileProp` (`$04DD45`),
+  `OWEventTileNum` (`$04EAF5`, `$04E4AF`, `$04E4BA`), `DATA_04D85D` (`$04DA74`, `$04EC8C`,
+  `$04ECBA`, `$04ECC5`, `$04ED97`, `$04EDBD`), `DATA_04D93D` (`$04EDB7`), `DATA_04DD8D`
+  and `DATA_04DD8F` (`$04E49F`, `$04E709`, `$04EE3F`, `$04EE5A`), `DATA_04E5D6`
+  (`$04E67C`), `DATA_04E5B6` (`$04E69C`), and the event count `$6F` (`$04D859`,
+  `$04DA98`); data edits at `$048E49`, `$04A04C`, and `$04F644`.
+- 23 RATS blocks (the ExGFX block among them).
+
 ## On an SA-1 ROM
 
 Found 2026-10-01 on the SA-1 reference ROM ([sa1.md](sa1.md): vanilla with SA-1 Pack
