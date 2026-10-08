@@ -19,8 +19,10 @@ use crate::theme;
 /// A row's height, and its picture's size.
 const ROW: f32 = 30.0;
 const THUMB: Vec2 = egui::vec2(46.0, 26.0);
-/// How far a sublevel is set in.
-const INDENT: f32 = 16.0;
+/// The expander's room at a row's left, which every row keeps.
+const EXPANDER: f32 = 14.0;
+/// How far a sublevel is set in past it.
+const INDENT: f32 = 18.0;
 /// The most entries found that are listed.
 const MOST_FOUND: usize = 2000;
 
@@ -475,10 +477,21 @@ fn level_row(
     } else if response.hovered() {
         painter.rect_filled(rect, 4, theme::PANEL_RAISED);
     }
-    let mut x = rect.left() + 2.0 + if sublevel { INDENT } else { 0.0 };
+    let mut x = rect.left() + 2.0;
     let middle = rect.center().y;
-    // The expander, for an overworld level with sublevels.
-    let expander = Rect::from_center_size(egui::pos2(x + 6.0, middle), egui::vec2(14.0, ROW));
+    // The expander, for an overworld level with sublevels; under it, a
+    // sublevel's line down from its overworld level's.
+    let expander = Rect::from_center_size(egui::pos2(x + 6.0, middle), egui::vec2(EXPANDER, ROW));
+    if sublevel {
+        let gap = ui.spacing().item_spacing.y / 2.0;
+        ui.painter().line_segment(
+            [
+                egui::pos2(expander.center().x, rect.top() - gap),
+                egui::pos2(expander.center().x, rect.bottom() + gap),
+            ],
+            egui::Stroke::new(1.0, theme::LINE),
+        );
+    }
     let mut on_expander = false;
     if let Some(open) = expanded {
         on_expander = response
@@ -493,9 +506,7 @@ fn level_row(
             if hovered { theme::TEXT } else { theme::MUTED },
         );
     }
-    if !sublevel {
-        x += 14.0;
-    }
+    x += EXPANDER + if sublevel { INDENT } else { 0.0 };
     // The level's picture, once drawn.
     let thumb = Rect::from_min_size(egui::pos2(x, middle - THUMB.y / 2.0), THUMB);
     if ui.is_rect_visible(rect) {
@@ -609,9 +620,12 @@ fn level_row(
             }
         }
     });
+    // Choosing an overworld level opens its group (`show`), and choosing
+    // it again, once shown, folds it.
+    let refold = expanded.is_some() && selected;
     RowOut {
         clicked: (response.clicked() && !on_expander) || open,
-        expander: response.clicked() && on_expander,
+        expander: response.clicked() && (on_expander || refold),
         menu,
     }
 }

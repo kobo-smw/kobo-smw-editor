@@ -1656,6 +1656,19 @@ fn the_level_list_groups_sublevels_or_lists_by_number_and_leaves_unused_levels_o
     );
     harness.run_steps(2);
     assert!(harness.query_by_label_contains("1CB ").is_none());
+    // So does choosing it, shown already, anywhere on its row; and choosing
+    // it again unfolds it.
+    let row = harness.get_by_label_contains("105 Yoshi's Island 1").rect();
+    for shown in [true, false] {
+        harness.hover_at(row.center());
+        harness.step();
+        press(&mut harness, row.center(), true);
+        harness.step();
+        press(&mut harness, row.center(), false);
+        harness.run_steps(2);
+        assert_eq!(harness.query_by_label_contains("1CB ").is_some(), shown);
+    }
+    assert_eq!(harness.state().current_number(), Some(0x105));
     // By number, every level shows, with nothing folded.
     harness.get_by_label("By number").click();
     harness.run_steps(2);
