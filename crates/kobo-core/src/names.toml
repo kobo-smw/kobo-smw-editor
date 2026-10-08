@@ -886,6 +886,18 @@ FF = "Unused"
 # "Layer 3 settings"). A fraction is of layer 1's position; an autoscroll
 # moves by that much a frame, plus layer 1's movement. 12-17 and 1B-1F are
 # not offered by Lunar Magic and move as 01 does.
+
+# On the overworld, triggers 01-08 are events: each holds once the event its manual
+# frame (8-F) names is passed (Lunar Magic's "Event Manual 8-F").
+[overworld_exanimation_triggers]
+01 = "Event in manual frame 8"
+02 = "Event in manual frame 9"
+03 = "Event in manual frame A"
+04 = "Event in manual frame B"
+05 = "Event in manual frame C"
+06 = "Event in manual frame D"
+07 = "Event in manual frame E"
+08 = "Event in manual frame F"
 [layer3_scroll]
 00 = "None"
 01 = "Constant"

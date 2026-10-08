@@ -163,6 +163,11 @@ impl Slot {
     /// frames, a new frame repeats its set's last, and a new second set
     /// starts as a copy of the first.
     pub fn refit_frames(&mut self, before: &Slot) {
+        self.refit_frames_on(before, false)
+    }
+
+    /// [`Slot::refit_frames`] in a level's list, or an overworld's.
+    pub fn refit_frames_on(&mut self, before: &Slot, overworld: bool) {
         let rotation = |s: &Slot| Kind::of(s.kind) == Some(Kind::Rotation);
         let old: Vec<&[u16]> = if rotation(before) {
             Vec::new()
@@ -174,7 +179,7 @@ impl Slot {
         };
         let sets = if rotation(self) {
             0
-        } else if second_set(self.trigger) {
+        } else if second_set_on(self.trigger, overworld) {
             2
         } else {
             1

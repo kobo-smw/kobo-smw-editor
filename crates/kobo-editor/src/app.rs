@@ -1104,6 +1104,25 @@ impl App {
         }
     }
 
+    /// Changes what only the overworld's changes hold (the path reveal
+    /// speed, the submaps' graphics lists), as one undo step.
+    pub fn change_overworld_settings(
+        &mut self,
+        label: &str,
+        change: impl FnOnce(&mut kobo_core::overworld::Changes),
+    ) {
+        let Some(Ok(overworld)) = &mut self.overworld else {
+            return;
+        };
+        match overworld.change_settings(label, change) {
+            Ok(()) => {
+                self.last_edit = LastEdit::Overworld;
+                self.overworld_changed();
+            }
+            Err(e) => self.say(e.to_string()),
+        }
+    }
+
     /// After the overworld changed: the project is built with it, and its
     /// levels named by it.
     fn overworld_changed(&mut self) {

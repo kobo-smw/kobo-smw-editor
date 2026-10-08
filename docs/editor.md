@@ -223,7 +223,12 @@ reveal list turns into another) outlined more boldly. Drawing on layer 2 then dr
 the event's blocks, and nowhere else; *Add a 2x2 block* or *Add a 6x6 block* puts a
 block of the event at the chosen 8x8 tile, of the tiles there, *Remove the block*
 takes the one there away, and *Its layer 1 tile here* and *No layer 1 tile* set the
-event's layer 1 tile (its VRAM address worked out from its place). Each change is one undo step, a
+event's layer 1 tile (its VRAM address worked out from its place). *Options* sets Lunar
+Magic's path reveal speed (the event path fade off) and its merge of FG1-2 into SP3-4.
+*ExAnimation* installs Lunar Magic's overworld ExAnimation, sets the shown submap's
+settings (the game's tiles, the level dots' colours, its list, the global list), and
+edits its list and the overworld's global list as a level's are edited (triggers 01-08
+there are events, named by manual frames 8-F). Each change is one undo step, a
 stroke one in all. Saving writes `overworld.toml` (docs/build.md, "Source formats"),
 named in `kobo.toml`'s `[overworld]` the first time; a project with an overworld file
 builds it in Lunar Magic's layout (lunar-magic-install.md, "The overworld").

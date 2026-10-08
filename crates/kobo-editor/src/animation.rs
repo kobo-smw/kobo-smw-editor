@@ -6,7 +6,7 @@
 
 use eframe::egui::{self, DragValue, Grid, Response, RichText};
 use kobo_core::edit::Edit;
-use kobo_core::exanimation::{FIRST_ALT_FILE, Kind, List, SLOTS, Settings, Slot, second_set};
+use kobo_core::exanimation::{FIRST_ALT_FILE, Kind, List, SLOTS, Settings, Slot, second_set_on};
 use kobo_core::names;
 use kobo_core::source::level::Level;
 
@@ -87,18 +87,20 @@ pub fn section(ui: &mut egui::Ui, number: u16, level: &Level) -> Option<Asked> {
         return asked;
     };
 
-    if let Some((r, label, new)) = list_fields(ui, "level", list) {
+    if let Some((r, label, new)) = list_fields(ui, "level", list, false) {
         asked = Some((r, label, set(level, new)));
     }
     asked
 }
 
 /// A list's fields and slots; the list as changed, or none for "No list".
-/// `salt` keeps the widgets of two lists on screen apart.
+/// `salt` keeps the widgets of two lists on screen apart; with `overworld`
+/// the list is an overworld's, whose triggers 01-08 are events.
 pub fn list_fields(
     ui: &mut egui::Ui,
     salt: &str,
     list: &List,
+    overworld: bool,
 ) -> Option<(Response, String, Option<List>)> {
     let mut asked = None;
     Grid::new(("animation-list", salt))
@@ -143,12 +145,12 @@ pub fn list_fields(
 
     for (&n, slot) in &list.slots {
         let kind = names::exanimation_type(slot.kind).unwrap_or("?");
-        let trigger = names::exanimation_trigger(slot.trigger).unwrap_or("?");
+        let trigger = trigger_name(overworld)(slot.trigger).unwrap_or("?");
         egui::CollapsingHeader::new(format!("Slot {n:02X} · {kind}"))
             .id_salt(("animation-slot", salt, n))
             .show(ui, |ui| {
                 ui.label(RichText::new(trigger).small().color(theme::MUTED));
-                if let Some(a) = slot_fields(ui, (salt, n), slot) {
+                if let Some(a) = slot_fields(ui, (salt, n), slot, overworld) {
                     let (r, label, new_slot) = a;
                     let mut new = list.clone();
                     new.slots.insert(n, new_slot);
@@ -197,12 +199,26 @@ pub fn list_fields(
 }
 
 /// A slot's fields; the slot as changed, with its frames refitted.
-fn slot_fields(ui: &mut egui::Ui, id: (&str, u8), slot: &Slot) -> Option<(Response, String, Slot)> {
+/// The names of a list's triggers: a level's, or an overworld's.
+fn trigger_name(overworld: bool) -> fn(u8) -> Option<&'static str> {
+    if overworld {
+        names::overworld_exanimation_trigger
+    } else {
+        names::exanimation_trigger
+    }
+}
+
+fn slot_fields(
+    ui: &mut egui::Ui,
+    id: (&str, u8),
+    slot: &Slot,
+    overworld: bool,
+) -> Option<(Response, String, Slot)> {
     let (salt, n) = id;
     let mut asked = None;
     let refit = |changed: Slot| {
         let mut changed = changed;
-        changed.refit_frames(slot);
+        changed.refit_frames_on(slot, overworld);
         changed
     };
     Grid::new(("animation-slot-fields", salt, n))
@@ -216,7 +232,7 @@ fn slot_fields(ui: &mut egui::Ui, id: (&str, u8), slot: &Slot) -> Option<(Respon
             }
             ui.end_row();
             ui.label("Trigger");
-            let (r, picked) = named_picker(ui, &format!("animation-trigger-{salt}-{n}"), slot.trigger, 0x00..=0x4F, names::exanimation_trigger);
+            let (r, picked) = named_picker(ui, &format!("animation-trigger-{salt}-{n}"), slot.trigger, 0x00..=0x4F, trigger_name(overworld));
             if let Some(trigger) = picked {
                 asked = Some((r, "Change an ExAnimation trigger".into(), refit(Slot { trigger, ..slot.clone() })));
             }
@@ -278,7 +294,7 @@ fn slot_fields(ui: &mut egui::Ui, id: (&str, u8), slot: &Slot) -> Option<(Respon
                 }
                 ui.end_row();
                 let per_set = usize::from(slot.frames_less_one) + 1;
-                let sets = if second_set(slot.trigger) { 2 } else { 1 };
+                let sets = if second_set_on(slot.trigger, overworld) { 2 } else { 1 };
                 for set in 0..sets.min(slot.frames.len() / per_set.max(1)) {
                     let (name, tip) = if set == 0 {
                         ("Frame words", "A word per frame: a RAM address in bank 7E, an offset into the alternative file, or a colour")
@@ -374,7 +390,8 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 .max_height(560.0)
                 .show(ui, |ui| match &global {
                     Some(list) => {
-                        asked = list_fields(ui, "global", list).map(|(_, label, new)| (label, new))
+                        asked = list_fields(ui, "global", list, false)
+                            .map(|(_, label, new)| (label, new))
                     }
                     None => {
                         if ui.button("Give the project a global list").clicked() {

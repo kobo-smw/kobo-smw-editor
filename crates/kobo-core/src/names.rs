@@ -145,6 +145,7 @@ struct Source {
     submaps: BTreeMap<String, String>,
     exanimation_types: BTreeMap<String, String>,
     exanimation_triggers: BTreeMap<String, String>,
+    overworld_exanimation_triggers: BTreeMap<String, String>,
     layer3_scroll: BTreeMap<String, String>,
     entrance_actions: BTreeMap<String, String>,
     backgrounds: BTreeMap<String, String>,
@@ -162,6 +163,7 @@ struct Names {
     submaps: Table,
     exanimation_types: Table,
     exanimation_triggers: Table,
+    overworld_exanimation_triggers: Table,
     layer3_scroll: Table,
     entrance_actions: Table,
     /// The game's backgrounds, by address.
@@ -195,6 +197,10 @@ static NAMES: LazyLock<Names> = LazyLock::new(|| {
         submaps: Table::parse("submaps", source.submaps),
         exanimation_types: Table::parse("exanimation_types", source.exanimation_types),
         exanimation_triggers: Table::parse("exanimation_triggers", source.exanimation_triggers),
+        overworld_exanimation_triggers: Table::parse(
+            "overworld_exanimation_triggers",
+            source.overworld_exanimation_triggers,
+        ),
         layer3_scroll: Table::parse("layer3_scroll", source.layer3_scroll),
         entrance_actions: Table::parse("entrance_actions", source.entrance_actions),
         backgrounds: source
@@ -310,6 +316,15 @@ pub fn exanimation_trigger(trigger: u8) -> Option<&'static str> {
     NAMES.exanimation_triggers.get(trigger)
 }
 
+/// An ExAnimation trigger in an overworld list (`00`-`4F`): `01`-`08`
+/// are events, the rest a level's.
+pub fn overworld_exanimation_trigger(trigger: u8) -> Option<&'static str> {
+    NAMES
+        .overworld_exanimation_triggers
+        .get(trigger)
+        .or_else(|| exanimation_trigger(trigger))
+}
+
 /// A layer 3 scroll setting of Lunar Magic's (`00`-`1F`,
 /// [`crate::exgfx::Layer3Settings`]).
 pub fn layer3_scroll(setting: u8) -> Option<&'static str> {
@@ -377,6 +392,11 @@ mod tests {
                 "exanimation_triggers",
                 &NAMES.exanimation_triggers,
                 ids(0x00..=0x4F),
+            ),
+            (
+                "overworld_exanimation_triggers",
+                &NAMES.overworld_exanimation_triggers,
+                ids(0x01..=0x08),
             ),
             ("layer3_scroll", &NAMES.layer3_scroll, ids(0x00..=0x1F)),
             (

@@ -194,6 +194,16 @@ enum Change {
         to: Box<Event>,
         amend: bool,
     },
+    /// The path reveal speed: the event path fade off and paths revealed
+    /// at it, or the game's fade.
+    RevealSpeed(Option<u8>),
+    /// Lunar Magic's FG1-2 merge on or off.
+    Merge(bool),
+    /// The overworld's ExAnimation as `to`.
+    Animation {
+        label: String,
+        to: Option<Box<kobo_core::exanimation::OverworldAnimation>>,
+    },
 }
 
 impl Change {
@@ -253,6 +263,23 @@ impl Change {
                 // as it was.
                 let _ = ow.set_event(usize::from(event), *to);
             }),
+            Change::RevealSpeed(speed) => {
+                app.change_overworld_settings("Change the path reveal speed", |c| {
+                    c.reveal_speed = speed;
+                })
+            }
+            Change::Merge(on) => app.change_overworld(
+                if on {
+                    "Merge FG1-2 into SP3-4"
+                } else {
+                    "Unmerge FG1-2 from SP3-4"
+                },
+                false,
+                |ow| ow.merge_fg = on,
+            ),
+            Change::Animation { label, to } => {
+                app.change_overworld(&label, false, |ow| ow.animation = to.map(|a| *a))
+            }
         }
     }
 }
@@ -771,5 +798,139 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
             });
         }
     }
+    if let Some(c) = settings(ui, state.submap, overworld, document.changes()) {
+        change = Some(c);
+    }
+    change
+}
+
+/// The overworld's options and the shown submap's ExAnimation.
+fn settings(
+    ui: &mut egui::Ui,
+    submap: u8,
+    overworld: &Overworld,
+    changes: &kobo_core::overworld::Changes,
+) -> Option<Change> {
+    use kobo_core::exanimation::{List, OverworldAnimation};
+    let mut change = None;
+    egui::CollapsingHeader::new("Options")
+        .id_salt("overworld-options")
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let mut fade_off = changes.reveal_speed.is_some();
+                let r = ui.checkbox(&mut fade_off, "Reveal paths at a speed").on_hover_text(
+                    "Lunar Magic's option: the event path fade off, and each step of a path revealed at the speed given (a step every 0x40)",
+                );
+                if r.changed() {
+                    change = Some(Change::RevealSpeed(fade_off.then_some(0x10)));
+                }
+                if let Some(speed) = changes.reveal_speed {
+                    let mut value = speed;
+                    let r = ui.add(egui::DragValue::new(&mut value).range(1..=0x40).hexadecimal(2, false, true));
+                    if r.changed() && value != speed {
+                        change = Some(Change::RevealSpeed(Some(value)));
+                    }
+                }
+            });
+            let mut merged = overworld.merge_fg;
+            let r = ui.checkbox(&mut merged, "Merge FG1-2 into SP3-4").on_hover_text(
+                "Lunar Magic's option: layers 1 and 2 take their first 256 tiles from SP3-4, which then hold FG1-2's files (the graphics lists say which), leaving two more FG slots",
+            );
+            if r.changed() {
+                change = Some(Change::Merge(merged));
+            }
+        });
+    let name = kobo_core::names::submap(submap).unwrap_or("?");
+    egui::CollapsingHeader::new(format!("ExAnimation: {name}"))
+        .id_salt("overworld-animation")
+        .show(ui, |ui| {
+            let Some(animation) = &overworld.animation else {
+                let r = ui.button("Install Lunar Magic's overworld ExAnimation").on_hover_text(
+                    "Each submap's animations of tiles and colours, and the overworld's global ones",
+                );
+                if r.clicked() {
+                    change = Some(Change::Animation {
+                        label: "Install the overworld's ExAnimation".into(),
+                        to: Some(Box::default()),
+                    });
+                }
+                return;
+            };
+            let n = usize::from(submap);
+            let byte = animation.settings[n];
+            ui.horizontal_wrapped(|ui| {
+                for (flag, text, tip) in [
+                    (0x40u8, "Game's tiles", "The game's own animated tiles (water, waterfalls)"),
+                    (0x80, "Level dots' colours", "The level dots' flashing colours 6D and 7D"),
+                    (0x20, "Submap's list", "This submap's ExAnimation, below"),
+                    (0x10, "Global list", "The overworld's global ExAnimation"),
+                ] {
+                    let mut on = byte & flag == 0;
+                    let r = ui.checkbox(&mut on, text).on_hover_text(tip);
+                    if r.changed() {
+                        let mut to = animation.clone();
+                        to.settings[n] = if on { byte & !flag } else { byte | flag };
+                        change = Some(Change::Animation {
+                            label: format!("Turn {} {}", if on { "on" } else { "off" }, text.to_lowercase()),
+                            to: Some(Box::new(to)),
+                        });
+                    }
+                }
+            });
+            match &animation.submaps[n] {
+                None => {
+                    if ui.button(format!("Give {name} an ExAnimation list")).clicked() {
+                        let mut to = animation.clone();
+                        to.submaps[n] = Some(List::default());
+                        change = Some(Change::Animation {
+                            label: "Add an ExAnimation list".into(),
+                            to: Some(Box::new(to)),
+                        });
+                    }
+                }
+                Some(list) => {
+                    if let Some((_, label, new)) =
+                        crate::animation::list_fields(ui, &format!("submap-{n}"), list, true)
+                    {
+                        let mut to = animation.clone();
+                        to.submaps[n] = new;
+                        change = Some(Change::Animation {
+                            label,
+                            to: Some(Box::new(to)),
+                        });
+                    }
+                }
+            }
+            ui.separator();
+            ui.label(RichText::new("The overworld's global list").strong());
+            match &animation.global {
+                None => {
+                    if ui.button("Give the overworld a global list").clicked() {
+                        let to = OverworldAnimation {
+                            global: Some(List::default()),
+                            ..animation.clone()
+                        };
+                        change = Some(Change::Animation {
+                            label: "Add the overworld's global ExAnimation".into(),
+                            to: Some(Box::new(to)),
+                        });
+                    }
+                }
+                Some(list) => {
+                    if let Some((_, label, new)) =
+                        crate::animation::list_fields(ui, "overworld-global", list, true)
+                    {
+                        let to = OverworldAnimation {
+                            global: new,
+                            ..animation.clone()
+                        };
+                        change = Some(Change::Animation {
+                            label,
+                            to: Some(Box::new(to)),
+                        });
+                    }
+                }
+            }
+        });
     change
 }

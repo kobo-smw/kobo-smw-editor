@@ -2324,3 +2324,52 @@ fn a_tilemap_given_and_taken_back_is_not_saved() {
     let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
     assert!(!manifest.contains("ExGFX80"), "{manifest}");
 }
+
+#[test]
+fn the_overworld_window_sets_its_options_and_animation() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "overworld-options");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().overworld_editor.open = true;
+    harness.run_steps(2);
+    wait_for(&mut harness, "the overworld's picture", |app| {
+        app.overworld_editor.drawn()
+    });
+    let overworld = |app: &App| app.open_overworld().unwrap().overworld().clone();
+    harness.get_by_label("Options").click();
+    harness.run_steps(2);
+    harness.get_by_label("Merge FG1-2 into SP3-4").click();
+    harness.run_steps(2);
+    assert!(overworld(harness.state()).merge_fg);
+    harness.get_by_label("Reveal paths at a speed").click();
+    harness.run_steps(2);
+    assert_eq!(
+        harness.state().open_overworld().unwrap().changes().reveal_speed,
+        Some(0x10)
+    );
+    harness
+        .get_by_label_contains("ExAnimation: ")
+        .click();
+    harness.run_steps(2);
+    harness
+        .get_by_label("Install Lunar Magic's overworld ExAnimation")
+        .click();
+    harness.run_steps(2);
+    assert!(overworld(harness.state()).animation.is_some());
+    harness.get_by_label("Game's tiles").click();
+    harness.run_steps(2);
+    assert_eq!(
+        overworld(harness.state()).animation.unwrap().settings[0],
+        0x40
+    );
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    harness.step();
+    let file = std::fs::read_to_string(project.0.join("overworld.toml")).unwrap();
+    assert!(file.contains("merge_fg = true"), "{file}");
+    assert!(file.contains("reveal_speed = 0x10"), "{file}");
+    assert!(file.contains("[animation.0x00]\ngame_tiles = false"), "{file}");
+}
