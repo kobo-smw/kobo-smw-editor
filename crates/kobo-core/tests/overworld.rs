@@ -41,6 +41,31 @@ fn lunar_magic_overworlds_read_as_their_loads_leave_them() {
                 continue;
             }
         };
+        // As changes against the clean ROM's, and back.
+        if let Some(clean) = common::vanilla() {
+            let clean = Overworld::read(&clean).unwrap().in_lunar_magic_shape();
+            let ours = read.clone().in_lunar_magic_shape();
+            match clean.clone().with(&ours.changes_from(&clean)) {
+                Ok(back) => {
+                    let same = back.layer1 == ours.layer1
+                        && back.translevels == ours.translevels
+                        && back.directions == ours.directions
+                        && back.layer2 == ours.layer2
+                        && back.names == ours.names
+                        && back.event_list() == ours.event_list()
+                        && back.events.crush == ours.events.crush
+                        && back.events.reveal == ours.events.reveal;
+                    if !same {
+                        failures.fail(
+                            &rom,
+                            None,
+                            "changes against the clean ROM's do not give it back",
+                        );
+                    }
+                }
+                Err(e) => failures.fail(&rom, None, format!("changes: {e}")),
+            }
+        }
         match expand::load_overworld(&rom) {
             Ok(loaded) => {
                 for d in overworld::differences(&read, &loaded) {

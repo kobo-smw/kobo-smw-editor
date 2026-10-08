@@ -87,6 +87,8 @@ pub enum OverworldError {
     Rom(#[from] RomError),
     #[error("the overworld's {0} does not decode")]
     Decode(&'static str),
+    #[error("the overworld has more {0} than the game's code can reach")]
+    Full(&'static str),
 }
 
 /// Which layout a ROM keeps its overworld in.
@@ -152,9 +154,117 @@ pub struct Events {
     pub reveal: Vec<(u8, u8)>,
 }
 
+/// A block of an event's layer 2 change, as a project holds it: where it
+/// goes and its tiles (36 for a 6x6 block, 4 for a 2x2), each the number in
+/// the low byte and the properties in the high.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct EventBlock {
+    pub place: u16,
+    pub tiles: Vec<u16>,
+}
+
+/// Where the event tile data of 2x2 blocks starts; 6x6 blocks are below.
+pub const SMALL_BLOCKS: u16 = 0x900;
+/// The end of the event tile data: the game's own size, what its
+/// properties decode into at `$7F0000` without reaching what follows.
+pub const EVENT_DATA_END: u16 = 0xD00;
+
 impl Events {
     pub fn count(&self) -> usize {
         self.layer1.len()
+    }
+
+    /// Event `n`'s layer 2 change, block by block.
+    pub fn blocks(&self, n: usize) -> Vec<EventBlock> {
+        self.of(n)
+            .iter()
+            .map(|t| EventBlock {
+                place: t.place,
+                tiles: (0..t.tiles())
+                    .map(|i| {
+                        let at = usize::from(t.data) + i;
+                        let number = self.numbers.get(at).copied().unwrap_or(0);
+                        let props = self.properties.get(at).copied().unwrap_or(0);
+                        u16::from(props) << 8 | u16::from(number)
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
+
+    /// The tables from each event's blocks, the event tile data laid out
+    /// afresh: 6x6 blocks from 0, 2x2 blocks from [`SMALL_BLOCKS`].
+    pub fn from_blocks(
+        layer1: Vec<(u16, u16)>,
+        blocks: &[Vec<EventBlock>],
+        crush: Vec<Crush>,
+        reveal: Vec<(u8, u8)>,
+    ) -> Result<Self, OverworldError> {
+        let mut ranges = vec![0u16];
+        let mut tiles = Vec::new();
+        let (mut large, mut small) = (0u16, SMALL_BLOCKS);
+        let mut numbers = vec![0u8; usize::from(EVENT_DATA_END)];
+        let mut properties = vec![0u8; usize::from(EVENT_DATA_END)];
+        let mut used = 0usize;
+        // A block whose tiles another has already takes its data, as the
+        // game's own data shares blocks between entries.
+        let mut laid: std::collections::HashMap<&[u16], u16> = std::collections::HashMap::new();
+        for event in blocks {
+            for block in event {
+                if let Some(&data) = laid.get(block.tiles.as_slice()) {
+                    tiles.push(EventTile {
+                        data,
+                        place: block.place,
+                    });
+                    continue;
+                }
+                let data = match block.tiles.len() {
+                    36 => {
+                        let at = large;
+                        large += 36;
+                        if large > SMALL_BLOCKS {
+                            return Err(OverworldError::Full("6x6 event blocks"));
+                        }
+                        at
+                    }
+                    4 => {
+                        let at = small;
+                        small += 4;
+                        if small > EVENT_DATA_END {
+                            return Err(OverworldError::Full("2x2 event blocks"));
+                        }
+                        at
+                    }
+                    _ => {
+                        return Err(OverworldError::Decode(
+                            "an event block of neither 36 nor 4 tiles",
+                        ));
+                    }
+                };
+                for (i, w) in block.tiles.iter().enumerate() {
+                    numbers[usize::from(data) + i] = *w as u8;
+                    properties[usize::from(data) + i] = (w >> 8) as u8;
+                }
+                used = used.max(usize::from(data) + block.tiles.len());
+                laid.insert(block.tiles.as_slice(), data);
+                tiles.push(EventTile {
+                    data,
+                    place: block.place,
+                });
+            }
+            ranges.push(tiles.len() as u16);
+        }
+        numbers.truncate(used);
+        properties.truncate(used);
+        Ok(Self {
+            layer1,
+            ranges,
+            tiles,
+            numbers,
+            properties,
+            crush,
+            reveal,
+        })
     }
 
     /// The entries of event `n`.
@@ -376,7 +486,7 @@ fn game_name(rom: &Rom, translevel: u8) -> Result<[u8; NAME_TILES], OverworldErr
     Ok(name)
 }
 
-fn read_events(rom: &Rom, layout: Layout) -> Result<Events, OverworldError> {
+fn read_events(rom: &Rom, _layout: Layout) -> Result<Events, OverworldError> {
     let operand =
         |at: SnesAddr| -> Result<SnesAddr, RomError> { Ok(SnesAddr::new(rom.read_u24(at)?)) };
     let count = usize::from(rom.read_u8(operands::EVENT_COUNT)?);
@@ -416,10 +526,10 @@ fn read_events(rom: &Rom, layout: Layout) -> Result<Events, OverworldError> {
     let mut properties = vec![0; 0x1_0000];
     run_length(rom, properties_at, &mut properties, 0, 1, true)?;
     properties.truncate(used);
-    let crushes = match layout {
-        Layout::LunarMagic => 0x18,
-        Layout::Game => 0x10,
-    };
+    // The game goes through 16; Lunar Magic's layout through 24, taking
+    // the eight bytes and words past the game's tables as the rest, which
+    // reading 24 here keeps for both.
+    let crushes = LUNAR_MAGIC_CRUSHES;
     let (events, places, vrams) = (
         operand(operands::CRUSH_EVENTS)?,
         operand(operands::CRUSH_PLACES)?,
@@ -493,6 +603,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn layer_1_places_and_indices_agree() {
+        for i in 0..LAYER1_TILES {
+            let (map, x, y) = layer1_place(i);
+            assert_eq!(layer1_index(map, x, y), i);
+        }
+        // The second 16x16 block across, and the submaps' map.
+        assert_eq!(layer1_index(0, 16, 0), 0x100);
+        assert_eq!(layer1_index(0, 0, 16), 0x200);
+        assert_eq!(layer1_index(1, 0, 0), 0x400);
+        assert_eq!(layer2_index(0, 32, 0), 0x400);
+        assert_eq!(layer2_index(1, 0, 0), 0x1000);
+    }
+
+    #[test]
+    fn run_length_encoding_runs_and_copies() {
+        let data = [1, 1, 1, 1, 2, 3, 3, 4];
+        assert_eq!(encode_run_length(&data), [0x83, 1, 0x03, 2, 3, 3, 4]);
+        let long = vec![7u8; 300];
+        assert_eq!(encode_run_length(&long), [0xFF, 7, 0xFF, 7, 0xAB, 7]);
+    }
+
+    #[test]
     fn an_event_tile_is_a_6x6_block_below_900_and_2x2_from_it() {
         assert_eq!(
             EventTile {
@@ -510,5 +642,455 @@ mod tests {
             .tiles(),
             4
         );
+    }
+}
+
+/// Encodes `data` in the game's run-length format ([`run_length`]): a run
+/// of three or more equal bytes as a fill, the rest as copies, 128 bytes
+/// at most a command.
+pub fn encode_run_length(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut literal: Vec<u8> = Vec::new();
+    let flush = |out: &mut Vec<u8>, literal: &mut Vec<u8>| {
+        for chunk in literal.chunks(128) {
+            out.push(chunk.len() as u8 - 1);
+            out.extend_from_slice(chunk);
+        }
+        literal.clear();
+    };
+    let mut i = 0;
+    while i < data.len() {
+        let run = data[i..]
+            .iter()
+            .take(128)
+            .take_while(|&&b| b == data[i])
+            .count();
+        if run >= 3 {
+            flush(&mut out, &mut literal);
+            out.push(0x80 | (run as u8 - 1));
+            out.push(data[i]);
+            i += run;
+        } else {
+            literal.push(data[i]);
+            i += 1;
+        }
+    }
+    flush(&mut out, &mut literal);
+    out
+}
+
+/// How a pointer to a placed block is written: the block's address, plus
+/// `offset`, as three bytes (low first), its low word, or its bank byte.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Pointer {
+    pub at: SnesAddr,
+    pub form: Form,
+    pub offset: u32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Form {
+    Long,
+    Word,
+    Bank,
+}
+
+impl Pointer {
+    fn new(at: SnesAddr, form: Form) -> Self {
+        Self {
+            at,
+            form,
+            offset: 0,
+        }
+    }
+
+    /// The bytes it writes for a block at `block`.
+    pub fn bytes(&self, block: SnesAddr) -> Vec<u8> {
+        let to = block.raw() + self.offset;
+        match self.form {
+            Form::Long => to.to_le_bytes()[..3].to_vec(),
+            Form::Word => (to as u16).to_le_bytes().to_vec(),
+            Form::Bank => vec![(to >> 16) as u8],
+        }
+    }
+}
+
+/// What writing an overworld in Lunar Magic's layout comes to: bytes at
+/// fixed places, and blocks to place in free space (each within a bank)
+/// with the pointers that lead to them.
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
+pub struct Plan {
+    pub fixed: Vec<(SnesAddr, Vec<u8>)>,
+    pub blocks: Vec<(&'static str, Vec<u8>, Vec<Pointer>)>,
+}
+
+/// The events Lunar Magic's layout has.
+pub const LUNAR_MAGIC_EVENTS: usize = 0x78;
+/// The crushed tiles it has.
+pub const LUNAR_MAGIC_CRUSHES: usize = 0x18;
+
+/// The game's instructions that read the event tables, by table, beyond
+/// those [`operands`] names (each a `LDA.l`'s or `CMP.l`'s operand).
+mod event_reads {
+    use crate::addr::SnesAddr;
+    /// `DATA_04D85D`: an event's layer 1 place.
+    pub const LAYER1: [SnesAddr; 6] = [
+        SnesAddr::new(0x04_DA74),
+        SnesAddr::new(0x04_EC8C),
+        SnesAddr::new(0x04_ECBA),
+        SnesAddr::new(0x04_ECC5),
+        SnesAddr::new(0x04_ED97),
+        SnesAddr::new(0x04_EDBE),
+    ];
+    /// `DATA_04D93D`: its VRAM address.
+    pub const VRAM: [SnesAddr; 1] = [SnesAddr::new(0x04_EDB8)];
+    /// `DATA_04DD8D`, the entries' first word, and `DATA_04DD8F`, their
+    /// second.
+    pub const ENTRY_DATA: [SnesAddr; 3] = [
+        SnesAddr::new(0x04_E49F),
+        SnesAddr::new(0x04_E709),
+        SnesAddr::new(0x04_EE5A),
+    ];
+    pub const ENTRY_PLACE: [SnesAddr; 3] = [
+        SnesAddr::new(0x04_E4A4),
+        SnesAddr::new(0x04_E710),
+        SnesAddr::new(0x04_EE3F),
+    ];
+}
+
+impl Overworld {
+    /// The overworld in Lunar Magic's layout (lunar-magic-install.md, "The
+    /// overworld"). Kobo's code for the layout (`asm/lunar-magic/overworld.asm`)
+    /// reads the tables only it reads through the same pointer places.
+    pub fn plan(&self) -> Result<Plan, OverworldError> {
+        let events = &self.events;
+        if events.count() != LUNAR_MAGIC_EVENTS || events.crush.len() != LUNAR_MAGIC_CRUSHES {
+            return Err(OverworldError::Decode(
+                "events, which in Lunar Magic's layout are $78 with 24 crushed tiles",
+            ));
+        }
+        let mut plan = Plan::default();
+        let low: Vec<u8> = self.layer1.iter().map(|&t| t as u8).collect();
+        let high: Vec<u8> = self.layer1.iter().map(|&t| (t >> 8) as u8).collect();
+        plan.fixed.push((LAYER1_DATA, low));
+        let lz2 = |data: &[u8], what| {
+            crate::compress::lz2::compress(data).map_err(|_| OverworldError::Decode(what))
+        };
+        let word_and_bank = |word, bank| {
+            vec![
+                Pointer::new(word, Form::Word),
+                Pointer::new(bank, Form::Bank),
+            ]
+        };
+        plan.blocks.push((
+            "layer 1 pages",
+            lz2(&high, "layer 1 pages")?,
+            word_and_bank(lunar_magic::LAYER1_HIGH, lunar_magic::LAYER1_HIGH_BANK),
+        ));
+        let both: Vec<u8> = self
+            .translevels
+            .iter()
+            .chain(&self.directions)
+            .copied()
+            .collect();
+        plan.blocks.push((
+            "translevels",
+            lz2(&both, "translevels")?,
+            word_and_bank(lunar_magic::TRANSLEVELS, lunar_magic::TRANSLEVELS_BANK),
+        ));
+        // Layer 2's two streams in one block, as the game reads them from
+        // one bank: the properties' place is the numbers' end.
+        let numbers: Vec<u8> = self.layer2.iter().map(|&w| w as u8).collect();
+        let properties: Vec<u8> = self.layer2.iter().map(|&w| (w >> 8) as u8).collect();
+        let mut stream = encode_run_length(&numbers);
+        let split = stream.len() as u32;
+        stream.extend(encode_run_length(&properties));
+        let mut layer2 = word_and_bank(operands::LAYER2_NUMBERS, operands::LAYER2_BANK);
+        layer2.push(Pointer {
+            at: operands::LAYER2_PROPERTIES,
+            form: Form::Word,
+            offset: split,
+        });
+        plan.blocks.push(("layer 2", stream, layer2));
+        let names: Vec<u8> = self.names.iter().flatten().copied().collect();
+        plan.blocks.push((
+            "level names",
+            names,
+            vec![Pointer::new(lunar_magic::NAMES, Form::Long)],
+        ));
+        // The events.
+        plan.fixed
+            .push((operands::EVENT_COUNT, vec![LUNAR_MAGIC_EVENTS as u8]));
+        // The load's layer 2 loop goes through as many (`CMP #$6F`).
+        plan.fixed
+            .push((LAYER2_EVENT_COUNT, vec![LUNAR_MAGIC_EVENTS as u8]));
+        plan.fixed.push((SINGLE_REVEAL, vec![0x80]));
+        let words = |values: &mut dyn Iterator<Item = u16>| -> Vec<u8> {
+            values.flat_map(u16::to_le_bytes).collect()
+        };
+        let long =
+            |reads: &[SnesAddr]| reads.iter().map(|&r| Pointer::new(r, Form::Long)).collect();
+        plan.blocks.push((
+            "event layer 1 places",
+            words(&mut events.layer1.iter().map(|e| e.0)),
+            long(&event_reads::LAYER1),
+        ));
+        plan.blocks.push((
+            "event layer 1 VRAM",
+            words(&mut events.layer1.iter().map(|e| e.1)),
+            long(&event_reads::VRAM),
+        ));
+        let mut ranges = Vec::new();
+        for r in &events.ranges {
+            ranges.extend(r.to_le_bytes());
+        }
+        plan.fixed.push((EVENT_RANGES, ranges));
+        let mut entries = Vec::new();
+        for t in &events.tiles {
+            entries.extend(t.data.to_le_bytes());
+            entries.extend(t.place.to_le_bytes());
+        }
+        let mut entry_reads: Vec<Pointer> = long(&event_reads::ENTRY_DATA);
+        entry_reads.extend(event_reads::ENTRY_PLACE.iter().map(|&r| Pointer {
+            at: r,
+            form: Form::Long,
+            offset: 2,
+        }));
+        plan.blocks
+            .push(("event tile entries", entries, entry_reads));
+        plan.blocks.push((
+            "event tile numbers",
+            events.numbers.clone(),
+            vec![
+                Pointer::new(operands::EVENT_NUMBERS, Form::Long),
+                Pointer::new(EVENT_NUMBERS_BANK, Form::Bank),
+                Pointer::new(EVENT_NUMBERS_WORD, Form::Word),
+            ],
+        ));
+        let mut props = encode_run_length(&events.properties);
+        props.extend([0xFF, 0xFF]);
+        plan.blocks.push((
+            "event tile properties",
+            props,
+            word_and_bank(operands::EVENT_PROPERTIES, operands::EVENT_PROPERTIES_BANK),
+        ));
+        plan.blocks.push((
+            "crushed tiles' events",
+            events.crush.iter().map(|c| c.event).collect(),
+            vec![Pointer::new(operands::CRUSH_EVENTS, Form::Long)],
+        ));
+        plan.blocks.push((
+            "crushed tiles' places",
+            words(&mut events.crush.iter().map(|c| c.place)),
+            vec![Pointer::new(operands::CRUSH_PLACES, Form::Long)],
+        ));
+        plan.blocks.push((
+            "crushed tiles' VRAM",
+            words(&mut events.crush.iter().map(|c| c.vram)),
+            vec![Pointer::new(operands::CRUSH_VRAM, Form::Long)],
+        ));
+        let (from, to): (Vec<u8>, Vec<u8>) = events.reveal.iter().copied().unzip();
+        plan.fixed.push((REVEAL_FROM, from));
+        plan.fixed.push((REVEAL_TO, to));
+        Ok(plan)
+    }
+}
+
+/// The load's layer 2 event loop's count, `CMP #$6F` in `CODE_04DC6A`.
+pub const LAYER2_EVENT_COUNT: SnesAddr = SnesAddr::new(0x04_DCAA);
+/// The `BNE` of `CODE_04DA49` that writes a second tile for the last reveal
+/// entry; Lunar Magic's layout has a `BRA` (`$80`), every entry one tile.
+pub const SINGLE_REVEAL: SnesAddr = SnesAddr::new(0x04_DA98);
+/// The event tile numbers' other use (`CODE_04E4A9`): `LDA #$0C`, their
+/// bank, and `LDA #$8000`, their address.
+pub const EVENT_NUMBERS_BANK: SnesAddr = SnesAddr::new(0x04_E4B0);
+pub const EVENT_NUMBERS_WORD: SnesAddr = SnesAddr::new(0x04_E4BB);
+
+/// The two maps: the main map, and the submaps' map, which all six share.
+pub const MAPS: u8 = 2;
+/// A map's size in layer 1's 16x16 tiles, and in layer 2's 8x8 ones.
+pub const LAYER1_SIZE: u8 = 32;
+pub const LAYER2_SIZE: u8 = 64;
+
+/// The index into layer 1's tables of tile (`x`, `y`) of `map`: 16x16-tile
+/// blocks of 256, two across and two down, the submaps' map `$400` after
+/// the main map's (`OW_TilePos_Calc`).
+pub fn layer1_index(map: u8, x: u8, y: u8) -> usize {
+    usize::from(map) * 0x400
+        + usize::from(y >> 4) * 0x200
+        + usize::from(x >> 4) * 0x100
+        + usize::from(y & 15) * 16
+        + usize::from(x & 15)
+}
+
+/// The map and tile of layer 1's index `i`.
+pub fn layer1_place(i: usize) -> (u8, u8, u8) {
+    let map = (i / 0x400) as u8;
+    let i = i % 0x400;
+    let x = ((i / 0x100) & 1) * 16 + i % 16;
+    let y = (i / 0x200) * 16 + (i % 0x100) / 16;
+    (map, x as u8, y as u8)
+}
+
+/// The index into layer 2's tiles of tile (`x`, `y`) of `map`: 32x32-tile
+/// screens of `$800` bytes, two across and two down, the submaps' `$2000`
+/// bytes after the main map's (`CODE_04E4D0`'s stepping).
+pub fn layer2_index(map: u8, x: u8, y: u8) -> usize {
+    (usize::from(map) * 0x2000
+        + usize::from(y >> 5) * 0x1000
+        + usize::from(x >> 5) * 0x800
+        + usize::from(y & 31) * 0x40
+        + usize::from(x & 31) * 2)
+        / 2
+}
+
+/// One event, as a project holds it: its layer 1 tile's place and VRAM
+/// address, and its layer 2 blocks.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct Event {
+    pub layer1: (u16, u16),
+    pub blocks: Vec<EventBlock>,
+}
+
+/// What a project changes of the clean ROM's overworld: rows of each map's
+/// layers, level tiles, names, and events; anything else is the clean
+/// ROM's, put in Lunar Magic's layout.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct Changes {
+    /// By map and row: the row's 32 layer 1 tiles.
+    pub layer1: std::collections::BTreeMap<(u8, u8), Vec<u16>>,
+    /// By map and row: the row's 64 layer 2 tiles.
+    pub layer2: std::collections::BTreeMap<(u8, u8), Vec<u16>>,
+    /// By map, x, and y: the translevel and direction byte of a place.
+    pub levels: std::collections::BTreeMap<(u8, u8, u8), (u8, u8)>,
+    pub names: std::collections::BTreeMap<u8, [u8; NAME_TILES]>,
+    pub events: std::collections::BTreeMap<u8, Event>,
+    pub crush: Option<Vec<Crush>>,
+    pub reveal: Option<Vec<(u8, u8)>>,
+}
+
+impl Changes {
+    pub fn is_empty(&self) -> bool {
+        *self == Changes::default()
+    }
+}
+
+impl Overworld {
+    /// The overworld in Lunar Magic's layout's shape: `$78` events, those
+    /// past the game's with nothing (as Lunar Magic's own conversion leaves
+    /// them).
+    pub fn in_lunar_magic_shape(mut self) -> Self {
+        let events = &mut self.events;
+        let last = events.ranges.last().copied().unwrap_or(0);
+        while events.layer1.len() < LUNAR_MAGIC_EVENTS {
+            events.layer1.push((0, 0));
+            events.ranges.push(last);
+        }
+        self.layout = Layout::LunarMagic;
+        self
+    }
+
+    /// Every event, as a project holds them.
+    pub fn event_list(&self) -> Vec<Event> {
+        (0..self.events.count())
+            .map(|n| Event {
+                layer1: self.events.layer1[n],
+                blocks: self.events.blocks(n),
+            })
+            .collect()
+    }
+
+    /// What `self` changes of `clean` (both in Lunar Magic's shape).
+    pub fn changes_from(&self, clean: &Overworld) -> Changes {
+        let mut changes = Changes::default();
+        for map in 0..MAPS {
+            for row in 0..LAYER1_SIZE {
+                let tiles: Vec<u16> = (0..LAYER1_SIZE)
+                    .map(|x| self.layer1[layer1_index(map, x, row)])
+                    .collect();
+                let theirs: Vec<u16> = (0..LAYER1_SIZE)
+                    .map(|x| clean.layer1[layer1_index(map, x, row)])
+                    .collect();
+                if tiles != theirs {
+                    changes.layer1.insert((map, row), tiles);
+                }
+                for x in 0..LAYER1_SIZE {
+                    let i = layer1_index(map, x, row);
+                    let ours = (self.translevels[i], self.directions[i]);
+                    if ours != (clean.translevels[i], clean.directions[i]) {
+                        changes.levels.insert((map, x, row), ours);
+                    }
+                }
+            }
+            for row in 0..LAYER2_SIZE {
+                let tiles: Vec<u16> = (0..LAYER2_SIZE)
+                    .map(|x| self.layer2[layer2_index(map, x, row)])
+                    .collect();
+                let theirs: Vec<u16> = (0..LAYER2_SIZE)
+                    .map(|x| clean.layer2[layer2_index(map, x, row)])
+                    .collect();
+                if tiles != theirs {
+                    changes.layer2.insert((map, row), tiles);
+                }
+            }
+        }
+        for (t, name) in self.names.iter().enumerate() {
+            if clean.names.get(t) != Some(name) {
+                changes.names.insert(t as u8, *name);
+            }
+        }
+        let (ours, theirs) = (self.event_list(), clean.event_list());
+        for (n, event) in ours.iter().enumerate() {
+            if theirs.get(n) != Some(event) {
+                changes.events.insert(n as u8, event.clone());
+            }
+        }
+        if self.events.crush != clean.events.crush {
+            changes.crush = Some(self.events.crush.clone());
+        }
+        if self.events.reveal != clean.events.reveal {
+            changes.reveal = Some(self.events.reveal.clone());
+        }
+        changes
+    }
+
+    /// `self` (the clean ROM's, in Lunar Magic's shape) with `changes`.
+    pub fn with(mut self, changes: &Changes) -> Result<Self, OverworldError> {
+        for (&(map, row), tiles) in &changes.layer1 {
+            for (x, &t) in tiles.iter().enumerate().take(usize::from(LAYER1_SIZE)) {
+                self.layer1[layer1_index(map, x as u8, row)] = t;
+            }
+        }
+        for (&(map, row), tiles) in &changes.layer2 {
+            for (x, &t) in tiles.iter().enumerate().take(usize::from(LAYER2_SIZE)) {
+                self.layer2[layer2_index(map, x as u8, row)] = t;
+            }
+        }
+        for (&(map, x, y), &(translevel, directions)) in &changes.levels {
+            let i = layer1_index(map, x, y);
+            self.translevels[i] = translevel;
+            self.directions[i] = directions;
+        }
+        for (&t, name) in &changes.names {
+            if let Some(slot) = self.names.get_mut(usize::from(t)) {
+                *slot = *name;
+            }
+        }
+        let mut events = self.event_list();
+        for (&n, event) in &changes.events {
+            if let Some(slot) = events.get_mut(usize::from(n)) {
+                *slot = event.clone();
+            }
+        }
+        let crush = changes.crush.clone().unwrap_or(self.events.crush.clone());
+        let reveal = changes.reveal.clone().unwrap_or(self.events.reveal.clone());
+        let blocks: Vec<Vec<EventBlock>> = events.iter().map(|e| e.blocks.clone()).collect();
+        self.events = Events::from_blocks(
+            events.iter().map(|e| e.layer1).collect(),
+            &blocks,
+            crush,
+            reveal,
+        )?;
+        Ok(self)
     }
 }
