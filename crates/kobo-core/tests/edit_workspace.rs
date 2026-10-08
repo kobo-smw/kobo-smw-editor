@@ -581,3 +581,68 @@ fn map16_edits_build_unsaved_and_save_into_the_page_files() {
     let from_disk = Workspace::open(&dir, clean).unwrap().without_cache();
     assert_eq!(shown(&from_disk, 0x210), Some(gfx));
 }
+
+#[test]
+fn a_graphics_file_drawn_in_builds_unsaved_and_saves_into_the_project() {
+    use kobo_core::edit::{GraphicsDocument, GraphicsFile};
+    use kobo_core::render::LayerTiles;
+
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-graphics");
+    let (level, _) = import::read_level(&clean, 0x105).unwrap();
+    fs::create_dir_all(dir.join("levels")).unwrap();
+    fs::write(
+        dir.join("levels/105.toml"),
+        level.to_toml(&Default::default()),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("kobo.toml"),
+        "format = 1\n\n[levels]\n0x105 = \"levels/105.toml\"\n",
+    )
+    .unwrap();
+    let fg1 = kobo_core::gfx::object_tileset_files(&clean, level.header.object_tileset).unwrap()[0];
+    let clean = Arc::new(clean);
+    let mut workspace = Workspace::open(&dir, clean.clone())
+        .unwrap()
+        .without_cache();
+    let mut graphics =
+        GraphicsDocument::open(workspace.project(), &clean, GraphicsFile::Gfx(fg1)).unwrap();
+    assert!(!graphics.in_project());
+    // Tile 10 of the file, which FG1 loads at VRAM tile 10, in colour 1.
+    let tile: Vec<(u32, u32)> = (0..8)
+        .flat_map(|y| (0..8).map(move |x| (x, 8 + y)))
+        .collect();
+    graphics.paint("Draw", &tile, 1).unwrap();
+    workspace.set_graphics(&graphics).unwrap();
+    let options = RenderOptions {
+        sprites: Sprites::Hidden,
+        player: false,
+        hidden_layers: 0,
+    };
+    let vram_tile = |workspace: &Workspace| {
+        let render = workspace
+            .preview(0x105, options, &Operation::default())
+            .unwrap()
+            .render;
+        *LayerTiles::from_vram(&render.level.video.vram).get(0x10)
+    };
+    let drawn = vram_tile(&workspace);
+    assert!(
+        drawn.pixels.iter().flatten().all(|&p| p & 7 == 1),
+        "{drawn:?}"
+    );
+
+    let written = graphics.save(&dir).unwrap();
+    assert_eq!(written.len(), 2, "the image and the manifest");
+    assert!(!graphics.is_modified());
+    let manifest = fs::read_to_string(dir.join("kobo.toml")).unwrap();
+    assert!(
+        manifest.contains(&format!("graphics/GFX{fg1:02X}.png")),
+        "{manifest}"
+    );
+    let from_disk = Workspace::open(&dir, clean).unwrap().without_cache();
+    assert_eq!(vram_tile(&from_disk), drawn);
+}

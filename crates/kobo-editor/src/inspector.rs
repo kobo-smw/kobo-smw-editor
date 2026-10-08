@@ -75,6 +75,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .workspace()
         .and_then(|w| kobo_core::palette::game_palette(w.clean(), &level.header).ok());
     let mut show_table: Option<&'static str> = None;
+    let mut draw_graphics = false;
     let strips = app.workspace().map(|w| palette_strips(w.clean()));
     // How each layer 2 scroll setting moves layer 2.
     let scroll_names = app.workspace().map(|w| {
@@ -119,6 +120,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             game_palette.as_ref(),
                             change,
                             &mut show_table,
+                            &mut draw_graphics,
                         );
                     });
                     level_action = copy_level(ui, &mut copy_to, &taken);
@@ -233,6 +235,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         && let Some(open) = app.current_mut()
     {
         open.selection = select_past;
+    }
+    if draw_graphics {
+        app.graphics_editor.open = true;
     }
     if let Some(table) = show_table {
         app.view.source = true;
@@ -1612,6 +1617,7 @@ fn graphics_and_palette(
     game: Option<&kobo_core::palette::CustomPalette>,
     change: &mut Option<Change>,
     show_table: &mut Option<&'static str>,
+    draw: &mut bool,
 ) {
     use kobo_core::exgfx::{self, GraphicsList};
     use kobo_core::palette::Color15;
@@ -1620,6 +1626,10 @@ fn graphics_and_palette(
         .default_open(false)
         .show(ui, |ui| {
             ui.label(RichText::new("GRAPHICS").small().color(theme::MUTED));
+            *draw = ui
+                .button("✏ Draw in the level's files")
+                .on_hover_text("The graphics window (View menu)")
+                .clicked();
             match level.graphics {
                 None => {
                     ui.label(RichText::new("The tilesets' own files.").color(theme::MUTED));

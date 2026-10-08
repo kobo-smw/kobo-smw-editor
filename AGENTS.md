@@ -77,7 +77,7 @@ Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-
     `kobo_core::edit`. Its tests drive the window headlessly (`egui_kittest`).
     `docs/editor.md` is how to use it; each module of it says what it holds (`canvas`,
     `inspector`, `levels`, `palette`, `outline`, `changes`, `find`, `build`, `play`,
-    `project`, `start`, `commands`, `backgrounds`, `map16`, `dialogs`, `preview` for the worker that
+    `project`, `start`, `commands`, `backgrounds`, `map16`, `graphics`, `dialogs`, `preview` for the worker that
     draws, `thumbnails` for the levels' small pictures, `selection` for what is under the
     mouse).
 - `kobo_core::addr` is the only place that knows how SNES addresses map to file offsets.
@@ -186,7 +186,8 @@ Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-
   script's alike), applied whole or not at all, and one undo step with the comments
   before an entry moving with it; `Map16Document` the project's foreground Map16 files,
   edited a tile at a time for a tileset and written where the page files' rules put
-  it; `Workspace` is the project in memory, built and a level rendered from it
+  it; `GraphicsDocument` a GFX or ExGFX file as its indexed image;
+  `Workspace` is the project in memory, built and a level rendered from it
   (`preview`). The editor makes no change any other way.
 - `kobo_core::names` holds the names Kobo writes after ids (objects by object set, extended
   objects, sprites, tilesets, music, the game's backgrounds) as data in `names.toml`; `LevelMode::name` names level

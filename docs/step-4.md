@@ -58,3 +58,8 @@ from the editor where the user is working.
   new files into the manifest, and `Workspace::set_map16` for builds of unsaved edits;
   the editor's window, with the level's own tiles to pick 8x8 tiles from (editor.md,
   "Map16"). Background Map16 and the pipes file are not edited yet.
+- The graphics window (2026-10-08): `edit::GraphicsDocument` over a GFX file (the
+  clean ROM's until saved into the project) or a PNG ExGFX file, with pencil strokes,
+  fills within a tile, undo, and `Workspace::set_graphics`; `edit::graphics::level_files`
+  for the files a level loads (editor.md, "Graphics"). Importing a PNG or `.bin` into a
+  slot, and drawing in `.bin` ExGFX, are not done yet.

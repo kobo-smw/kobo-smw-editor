@@ -209,6 +209,14 @@ pub struct Startup {
     pub pace: bool,
 }
 
+/// What an edit was to, for undo and redo.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LastEdit {
+    Level,
+    Map16,
+    Graphics(edit::GraphicsFile),
+}
+
 pub struct App {
     pub(crate) clean: Clean,
     workspace: Option<Workspace>,
@@ -281,9 +289,14 @@ pub struct App {
     map16: Option<Result<edit::Map16Document, String>>,
     /// Counts the Map16's changes, for pictures drawn from it.
     map16_generation: u64,
-    /// The last edit was to the Map16 rather than a level, so undo and
-    /// redo take that first.
-    map16_last: bool,
+    /// What the last edit was to, which undo and redo take first.
+    last_edit: LastEdit,
+    /// The graphics files open for drawing in, by file.
+    graphics: BTreeMap<edit::GraphicsFile, edit::GraphicsDocument>,
+    /// Counts the graphics files' changes, for pictures drawn from them.
+    graphics_generation: u64,
+    /// The graphics window.
+    pub graphics_editor: crate::graphics::GraphicsEditor,
     /// The Map16 window.
     pub map16_editor: crate::map16::Map16Editor,
     startup: Startup,
@@ -370,7 +383,10 @@ impl App {
             project_open: false,
             map16: None,
             map16_generation: 0,
-            map16_last: false,
+            last_edit: LastEdit::Level,
+            graphics: BTreeMap::new(),
+            graphics_generation: 0,
+            graphics_editor: Default::default(),
             map16_editor: Default::default(),
             startup: startup.clone(),
             screenshot_frames: None,
@@ -405,6 +421,7 @@ impl App {
         app.overview.open = startup.tab.as_deref() == Some("overview");
         app.project_open = startup.tab.as_deref() == Some("project");
         app.backgrounds.open = startup.tab.as_deref() == Some("backgrounds");
+        app.graphics_editor.open = startup.tab.as_deref() == Some("graphics");
         if startup.tab.as_deref() == Some("map16-editor") {
             // At the cement block, which every tileset has.
             app.map16_editor.show_tile(0x130);
@@ -462,8 +479,10 @@ impl App {
         self.placing = None;
         self.palette.forget_pictures();
         self.map16 = None;
-        self.map16_last = false;
+        self.last_edit = LastEdit::Level;
         self.map16_editor.forget();
+        self.graphics.clear();
+        self.graphics_editor.forget();
     }
 
     pub(crate) fn open_project(&mut self, ctx: &egui::Context, dir: &Path) {
@@ -751,7 +770,7 @@ impl App {
         };
         match open.document.apply(label, &edits) {
             Ok(()) => {
-                self.map16_last = false;
+                self.last_edit = LastEdit::Level;
                 open.keep_valid_selection();
                 self.request_preview(number);
                 true
@@ -802,7 +821,7 @@ impl App {
         };
         match result {
             Ok(()) => {
-                self.map16_last = true;
+                self.last_edit = LastEdit::Map16;
                 self.map16_changed();
             }
             Err(e) => self.say(format!("{label}: {e}")),
@@ -815,6 +834,95 @@ impl App {
         self.map16_generation += 1;
         if let (Some(workspace), Some(Ok(map16))) = (&mut self.workspace, &self.map16) {
             workspace.set_map16(map16);
+        }
+        self.thumbnails.forget();
+        self.palette.forget_pictures();
+        for open in self.open.values_mut() {
+            open.requested = u64::MAX;
+        }
+        if let Some(number) = self.current {
+            self.request_preview(number);
+        }
+    }
+
+    pub fn graphics_generation(&self) -> u64 {
+        self.graphics_generation
+    }
+
+    /// A graphics file, opened for drawing in if it is not yet.
+    pub fn graphics_document(
+        &mut self,
+        file: edit::GraphicsFile,
+    ) -> Result<&edit::GraphicsDocument, String> {
+        if !self.graphics.contains_key(&file) {
+            let (Some(workspace), Clean::Loaded(clean)) = (&self.workspace, &self.clean) else {
+                return Err("No project is open.".into());
+            };
+            let document = edit::GraphicsDocument::open(workspace.project(), clean, file)
+                .map_err(|e| e.to_string())?;
+            self.graphics.insert(file, document);
+        }
+        Ok(&self.graphics[&file])
+    }
+
+    /// A graphics file already open.
+    #[cfg(test)]
+    pub fn open_graphics(&self, file: edit::GraphicsFile) -> Option<&edit::GraphicsDocument> {
+        self.graphics.get(&file)
+    }
+
+    /// Draws in a graphics file: `pixels` in colour `value`, as a step of
+    /// its own or, through a stroke, part of the last. The level is drawn
+    /// again once the stroke ends ([`App::graphics_changed`]).
+    pub fn paint(
+        &mut self,
+        file: edit::GraphicsFile,
+        pixels: &[(u32, u32)],
+        value: u8,
+        stroke: bool,
+    ) {
+        let Some(graphics) = self.graphics.get_mut(&file) else {
+            return;
+        };
+        let result = if stroke {
+            graphics.amend_paint(pixels, value)
+        } else {
+            graphics.paint(format!("Draw in {file}"), pixels, value)
+        };
+        match result {
+            Ok(()) => {
+                self.last_edit = LastEdit::Graphics(file);
+                self.graphics_generation += 1;
+            }
+            Err(e) => self.say(e.to_string()),
+        }
+    }
+
+    /// Fills an area of one colour in a graphics file, within its tile.
+    pub fn fill(&mut self, file: edit::GraphicsFile, x: u32, y: u32, value: u8) {
+        let Some(graphics) = self.graphics.get_mut(&file) else {
+            return;
+        };
+        match graphics.fill(format!("Fill in {file}"), x, y, value) {
+            Ok(()) => {
+                self.last_edit = LastEdit::Graphics(file);
+                self.graphics_changed(file);
+            }
+            Err(e) => self.say(e.to_string()),
+        }
+    }
+
+    /// After a graphics file changed: the levels are built with it and
+    /// drawn again, the open one now and the rest when next shown.
+    pub fn graphics_changed(&mut self, file: edit::GraphicsFile) {
+        self.graphics_generation += 1;
+        let (Some(workspace), Some(graphics)) = (&mut self.workspace, self.graphics.get(&file))
+        else {
+            return;
+        };
+        if let Err(e) = workspace.set_graphics(graphics) {
+            self.say(e.to_string());
+            return;
         }
         self.thumbnails.forget();
         self.palette.forget_pictures();
@@ -852,7 +960,12 @@ impl App {
     }
 
     fn undo(&mut self, redo: bool) {
-        if self.map16_last && self.undo_map16(redo) {
+        let done = match self.last_edit {
+            LastEdit::Level => false,
+            LastEdit::Map16 => self.undo_map16(redo),
+            LastEdit::Graphics(file) => self.undo_graphics(file, redo),
+        };
+        if done {
             return;
         }
         let Some(number) = self.current else { return };
@@ -899,7 +1012,32 @@ impl App {
         done
     }
 
-    /// The labels of the step undo and redo would take, Map16 or level.
+    /// Undoes or redoes a graphics file's last step, if it has one.
+    fn undo_graphics(&mut self, file: edit::GraphicsFile, redo: bool) -> bool {
+        let Some(graphics) = self.graphics.get_mut(&file) else {
+            return false;
+        };
+        let label = if redo {
+            graphics.redo_label()
+        } else {
+            graphics.undo_label()
+        }
+        .map(str::to_owned);
+        let done = if redo {
+            graphics.redo()
+        } else {
+            graphics.undo()
+        };
+        if done {
+            self.graphics_changed(file);
+            let verb = if redo { "Redid" } else { "Undid" };
+            self.say(format!("{verb}: {}", label.unwrap_or_default()));
+        }
+        done
+    }
+
+    /// The labels of the step undo and redo would take: of what was
+    /// edited last, else the level.
     fn undo_labels(&self) -> (Option<String>, Option<String>) {
         let level = self.current().map_or((None, None), |o| {
             (
@@ -907,13 +1045,20 @@ impl App {
                 o.document.redo_label().map(str::to_owned),
             )
         });
-        match self.map16().filter(|_| self.map16_last) {
-            Some(map16) => (
-                map16.undo_label().map(str::to_owned).or(level.0),
-                map16.redo_label().map(str::to_owned).or(level.1),
-            ),
-            None => level,
-        }
+        let (undo, redo) = match self.last_edit {
+            LastEdit::Level => (None, None),
+            LastEdit::Map16 => self
+                .map16()
+                .map_or((None, None), |m| (m.undo_label(), m.redo_label())),
+            LastEdit::Graphics(file) => self
+                .graphics
+                .get(&file)
+                .map_or((None, None), |g| (g.undo_label(), g.redo_label())),
+        };
+        (
+            undo.map(str::to_owned).or(level.0),
+            redo.map(str::to_owned).or(level.1),
+        )
     }
 
     pub fn save_all_levels(&mut self) {
@@ -955,6 +1100,14 @@ impl App {
                 Err(e) => failed.push(e.to_string()),
             }
         }
+        if let Some(root) = self.workspace.as_ref().map(|w| w.project().root.clone()) {
+            for graphics in self.graphics.values_mut().filter(|g| g.is_modified()) {
+                match graphics.save(&root) {
+                    Ok(_) => saved.push(graphics.file().to_string()),
+                    Err(e) => failed.push(e.to_string()),
+                }
+            }
+        }
         if !failed.is_empty() {
             self.say(failed.join("; "));
         } else if !saved.is_empty() {
@@ -973,6 +1126,12 @@ impl App {
         if self.map16().is_some_and(edit::Map16Document::is_modified) {
             names.push("the Map16".into());
         }
+        names.extend(
+            self.graphics
+                .values()
+                .filter(|g| g.is_modified())
+                .map(|g| g.file().to_string()),
+        );
         names
     }
 
@@ -1029,12 +1188,19 @@ impl App {
                 self.map16 = Some(reopened);
                 self.map16_generation += 1;
             }
+            // So are the graphics files: those without unsaved edits are
+            // opened again from the files when next drawn in.
+            self.graphics.retain(|_, g| g.is_modified());
+            self.graphics_generation += 1;
             if let Some(workspace) = &mut self.workspace {
                 let result = workspace.reload(&keep);
                 if let Some(Ok(map16)) = &self.map16
                     && map16.is_modified()
                 {
                     workspace.set_map16(map16);
+                }
+                for graphics in self.graphics.values() {
+                    let _ = workspace.set_graphics(graphics);
                 }
                 match result {
                     Ok(()) => {
@@ -1674,6 +1840,14 @@ impl App {
                 self.map16_editor.open = true;
                 ui.close();
             }
+            if ui
+                .button("Graphics")
+                .on_hover_text("The level's graphics files, to draw in")
+                .clicked()
+            {
+                self.graphics_editor.open = true;
+                ui.close();
+            }
             if ui.button("All levels as pictures").clicked() {
                 self.overview.open = true;
                 ui.close();
@@ -2074,6 +2248,7 @@ impl eframe::App for App {
         crate::build::window(self, &ctx);
         crate::backgrounds::window(self, &ctx);
         crate::map16::window(self, &ctx);
+        crate::graphics::window(self, &ctx);
         crate::project::window(self, &ctx);
         crate::commands::window(self, &ctx);
         crate::changes::window(self, &ctx);

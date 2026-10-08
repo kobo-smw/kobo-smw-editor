@@ -240,6 +240,23 @@ impl Workspace {
         }
     }
 
+    /// Puts a graphics file as the editor has it in the project, for the
+    /// next build.
+    pub fn set_graphics(
+        &mut self,
+        graphics: &super::GraphicsDocument,
+    ) -> Result<(), super::GraphicsError> {
+        let mut project = (*self.project).clone();
+        graphics.apply_to(&mut project)?;
+        if project.gfx != self.project.gfx
+            || project.exgfx != self.project.exgfx
+            || project.manifest != self.project.manifest
+        {
+            self.project = Arc::new(project);
+        }
+        Ok(())
+    }
+
     /// Builds the project as it is in memory.
     pub fn build(&self) -> Result<Rom, WorkspaceError> {
         Ok(build::build_cached(

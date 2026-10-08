@@ -1813,3 +1813,48 @@ fn a_map16_tile_is_edited_undone_and_saved_with_the_project() {
     let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
     assert!(manifest.contains("map16/01.toml"), "{manifest}");
 }
+
+#[test]
+fn a_graphics_file_is_drawn_in_undone_and_saved_into_the_project() {
+    use kobo_core::edit::GraphicsFile;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "graphics-window");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().graphics_editor.open = true;
+    harness.run_steps(3);
+    // The window opens at the level's first file, FG1.
+    let file = harness.state().graphics_editor.file.expect("a file chosen");
+    let GraphicsFile::Gfx(index) = file else {
+        panic!("{file} is not one of the game's");
+    };
+    assert!(harness.state().open_graphics(file).is_some());
+    let pixel = |app: &App| app.open_graphics(file).unwrap().pixel(0, 0);
+    let before = pixel(harness.state());
+    let colour = if before == Some(1) { 2 } else { 1 };
+    harness.state_mut().paint(file, &[(0, 0)], colour, false);
+    harness.state_mut().graphics_changed(file);
+    harness.step();
+    assert_eq!(pixel(harness.state()), Some(colour));
+    wait_for(&mut harness, "the picture", drawn);
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    assert_eq!(pixel(harness.state()), before);
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    harness.step();
+    assert_eq!(pixel(harness.state()), Some(colour));
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    harness.step();
+    let saved = harness.state().open_graphics(file).unwrap();
+    assert!(!saved.is_modified(), "{:?}", harness.state().status());
+    let png = project.0.join(format!("graphics/GFX{index:02X}.png"));
+    assert!(png.exists());
+    let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
+    assert!(
+        manifest.contains(&format!("graphics/GFX{index:02X}.png")),
+        "{manifest}"
+    );
+}

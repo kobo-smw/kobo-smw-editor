@@ -149,6 +149,23 @@ not; Ctrl+S saves the Map16 with the levels, and undo takes back Map16 changes w
 are the last made. The Map16 files follow changes on disk while the window has no
 unsaved edits.
 
+## Graphics
+
+The graphics window (View menu, or *Draw in the level's files* in the inspector's
+graphics section) lists the files the open level loads, by slot (FG1 to FG3, BG1 to
+BG3, SP1 to SP4, layer 3's LG1 to LG4, and AN2): its graphics list's when the list
+replaces the tilesets' files, else its tilesets'. Any of the game's files opens by
+number too. A file is drawn 16 tiles to a row in a row of the level's palette (sprites'
+files start in row 9, the rest in row 2; a 2bpp file in a group of four of the first 32
+colours), colour 0 left clear. The pencil draws with the left button and picks a colour
+with the right; *Fill* fills an area of one colour within its 8x8 tile. A stroke is one
+undo step, and the level is built and drawn again when it ends.
+
+A file the project does not have is the clean ROM's as a build stores it (16 colours
+where the project uses Lunar Magic's graphics formats), and saving adds it as
+`graphics/GFXnn.png`. An ExGFX file the project holds as a PNG is drawn in the same way;
+one held as `.bin` bytes is not, having no colours to draw in.
+
 ## The project
 
 *This project…* (Project menu) shows what the project holds (its levels, Map16, graphics,
