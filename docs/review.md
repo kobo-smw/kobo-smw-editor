@@ -14,13 +14,6 @@ settle it.
 
 ## Open
 
-- **Test tiers in the config file (2026-10-05).** The tiers' data is set in the config
-  file's `[tests]` table as well as by environment variable (`kobo_core::tiers`), so that
-  shells that skip `~/.bashrc` (agents' among them) run them; `~/.config/kobo/env.sh`
-  can go once this is merged and its settings are in `[tests]` (docs/testing.md has this
-  machine's). The config keeps `deny_unknown_fields`, so an older Kobo refuses a config
-  with `[tests]`: move the settings after merging. `KOBO_SA1_BASE` (the with-kobo scripts')
-  is now `KOBO_SA1_REFERENCE`.
 - **The probes' RAM through `clean_room::bytes` (2026-10-05).** `entry_probe` and
   `exlevel_probe` zeroed `$0100`-`$01FF` themselves; `clean_room::bytes` withholds the
   stack (both processors' on SA-1) but keeps `$0100`-`$010F`, where the game keeps
