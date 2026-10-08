@@ -712,6 +712,28 @@ or `entrances`, several joined by `+`. The probes below then compare the two ROM
   Lunar Magic saved. It found tiles changed in play going to layer 2's tilemap in the
   Romhack Races template's build (testing-log.md).
 
+### The overworld
+
+`tests/overworld.rs` holds the overworld to what ROMs' own code leaves in RAM, the
+yardstick being `expand::load_overworld`: a new game Kobo's machine plays from power-on
+(Start on the title screen, A on the file and player selects, `$0109` held at 0 so it
+goes to the overworld, not the intro level) to the first frame of game mode `$0E`.
+`load_overworld_passed` does the same with events held passed (`SmwBus::pinned` keeps
+`$1F02` on, since a new game clears it and hacks' file selects copy it from other
+places), and `end_event` then runs an event's last step in play (`CODE_04E9EC`).
+
+- The vanilla overworld reads (`overworld::Overworld::read`) as its load leaves it, and
+  Kobo's build of it (no changes, in Lunar Magic's layout) loads the same with every
+  event passed and ends each event with further tiles the same.
+- Every corpus hack's overworld reads as its load leaves it, and as changes against the
+  clean ROM's gives itself back; built by Kobo, it reads back the same, loads as read,
+  and with every event passed loads as the hack itself does. Locked hacks, older Lunar
+  Magic's one-page overworlds, and hacks whose own code changes the overworld are known
+  failures.
+- `examples/ow_probe.rs` compares loads by hand: two ROMs with every event passed or
+  each alone (`pair`, `each`), each event's end (`end`, `ends`), or a hack against
+  Kobo's build of its overworld (`build`, `passed`, `write`).
+
 ### Picture hashes
 
 - **Picture hashes**: `cargo run --release --example render_hashes -- rom.smc [level...]`

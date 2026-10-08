@@ -28,6 +28,10 @@
 //! blocks = [
 //!     { place = 0x1A22, tiles = "1C58 ..." },   # 36 tiles (6x6) or 4 (2x2)
 //! ]
+//! extras = [                     # further tiles, in the order they are made
+//!     { layer1 = 0x0215, tile = 0x068 },         # a layer 1 tile set outright
+//!     { place = 0x1114, tiles = "1C58 ..." },    # a layer 2 block
+//! ]
 //! ```
 //!
 //! The maps are `main` and `submaps` (the six submaps share one).
@@ -35,7 +39,7 @@
 use toml_edit::{DocumentMut, Item, Table, Value};
 
 use super::{SourceError, hex, invalid};
-use crate::overworld::{Changes, Crush, Event, EventBlock, NAME_TILES};
+use crate::overworld::{Changes, Crush, Event, EventBlock, ExtraTile, NAME_TILES};
 
 const MAP_NAMES: [&str; 2] = ["main", "submaps"];
 
@@ -227,9 +231,48 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
             }
             text += "]\n";
         }
+        if !event.extras.is_empty() {
+            text += "extras = [\n";
+            for extra in &event.extras {
+                text += &match extra {
+                    ExtraTile::Layer1 { place, tile } => format!(
+                        "    {{ layer1 = {}, tile = {} }},\n",
+                        hex(u32::from(*place), 4),
+                        hex(u32::from(*tile), 3)
+                    ),
+                    ExtraTile::Layer2(block) => format!(
+                        "    {{ place = {}, tiles = \"{}\" }},\n",
+                        hex(u32::from(block.place), 4),
+                        words(&block.tiles, 4)
+                    ),
+                };
+            }
+            text += "]\n";
+        }
         sections.push(text);
     }
     out + &sections.join("\n")
+}
+
+/// A layer 2 block: `{ place, tiles }`.
+fn parse_block(at: &str, inline: &toml_edit::InlineTable) -> Result<EventBlock, SourceError> {
+    let place = inline
+        .get("place")
+        .map(|v| value_int(at, v, 0xFFFF))
+        .transpose()?
+        .ok_or_else(|| invalid(at, "a block has a place"))?;
+    let text = inline
+        .get("tiles")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(at, "a block has tiles"))?;
+    let count = text.split_whitespace().count();
+    if count != 36 && count != 4 {
+        return Err(invalid(at, "a block has 36 tiles (6x6) or 4 (2x2)"));
+    }
+    Ok(EventBlock {
+        place: place as u16,
+        tiles: parse_words(at, text, count, 0xFFFF)?,
+    })
 }
 
 fn int(at: &str, item: Option<&Item>, most: u32) -> Result<u32, SourceError> {
@@ -392,29 +435,37 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                         let inline = block
                             .as_inline_table()
                             .ok_or_else(|| invalid(&at, "a block is { place, tiles }"))?;
-                        let place = inline
-                            .get("place")
-                            .map(|v| value_int(&at, v, 0xFFFF))
-                            .transpose()?
-                            .ok_or_else(|| invalid(&at, "a block has a place"))?;
-                        let text = inline
-                            .get("tiles")
-                            .and_then(Value::as_str)
-                            .ok_or_else(|| invalid(&at, "a block has tiles"))?;
-                        let count = text.split_whitespace().count();
-                        if count != 36 && count != 4 {
-                            return Err(invalid(&at, "a block has 36 tiles (6x6) or 4 (2x2)"));
+                        blocks.push(parse_block(&at, inline)?);
+                    }
+                    let mut extras = Vec::new();
+                    if let Some(list) = table.get("extras") {
+                        let list = list
+                            .as_array()
+                            .ok_or_else(|| invalid(&at, "extras must be a list"))?;
+                        for extra in list.iter() {
+                            let inline = extra.as_inline_table().ok_or_else(|| {
+                                invalid(&at, "an extra is { layer1, tile } or { place, tiles }")
+                            })?;
+                            extras.push(match inline.get("layer1") {
+                                Some(place) => ExtraTile::Layer1 {
+                                    place: value_int(&at, place, 0xFFFF)? as u16,
+                                    tile: inline
+                                        .get("tile")
+                                        .map(|v| value_int(&at, v, 0xFFFF))
+                                        .transpose()?
+                                        .ok_or_else(|| invalid(&at, "a layer 1 extra has a tile"))?
+                                        as u16,
+                                },
+                                None => ExtraTile::Layer2(parse_block(&at, inline)?),
+                            });
                         }
-                        blocks.push(EventBlock {
-                            place: place as u16,
-                            tiles: parse_words(&at, text, count, 0xFFFF)?,
-                        });
                     }
                     changes.events.insert(
                         n,
                         Event {
                             layer1: (layer1[0] as u16, layer1[1] as u16),
                             blocks,
+                            extras,
                         },
                     );
                 }
@@ -464,6 +515,16 @@ mod tests {
                     place: 0x1A22,
                     tiles: vec![0x1C58; 4],
                 }],
+                extras: vec![
+                    ExtraTile::Layer1 {
+                        place: 0x215,
+                        tile: 0x68,
+                    },
+                    ExtraTile::Layer2(EventBlock {
+                        place: 0x1114,
+                        tiles: vec![0x105D; 4],
+                    }),
+                ],
             },
         );
         changes.events.insert(6, Event::default());

@@ -144,6 +144,11 @@ pub struct SmwBus<'a> {
     /// the pad): none, unless a pass presses something, as the overworld's
     /// new game does.
     pub pad: u16,
+    /// Game variables held at a value: the S-CPU's write to one leaves it
+    /// as it was. A pass's way to give the game a state its own code
+    /// would set otherwise (the overworld's events passed, which a new
+    /// game clears as it starts).
+    pub pinned: Vec<(crate::ram::RamAddr, u8)>,
     /// Every unmodelled access, including those beyond the report's cap.
     pub unmapped_reads: u64,
     pub unmapped_writes: u64,
@@ -177,6 +182,22 @@ fn sram_len(rom: &Rom) -> usize {
 }
 
 impl<'a> SmwBus<'a> {
+    /// Puts the pinned variables back after a write that may have landed
+    /// on one: any whose address agrees in its low 13 bits, the part every
+    /// mapping of low RAM keeps.
+    fn repin(&mut self, addr: u32) {
+        let low = addr & 0x1FFF;
+        if self
+            .pinned
+            .iter()
+            .any(|(at, _)| at.vanilla() & 0x1FFF == low)
+        {
+            for &(at, value) in &self.pinned {
+                self.ram.set_u8(at, value);
+            }
+        }
+    }
+
     pub fn new(rom: &'a Rom) -> Self {
         crate::clean_room::check(rom);
         Self {
@@ -227,6 +248,7 @@ impl<'a> SmwBus<'a> {
             stubbed_writes: 0,
             stubbed_reads: 0,
             pad: 0,
+            pinned: Vec::new(),
             unmapped_reads: 0,
             unmapped_writes: 0,
             fetching: false,
@@ -794,6 +816,9 @@ impl Bus for SmwBus<'_> {
             return;
         }
         if self.ram.write(addr, value) {
+            if !self.pinned.is_empty() {
+                self.repin(addr);
+            }
             return;
         }
         match ((addr >> 16) as u8, addr as u16) {

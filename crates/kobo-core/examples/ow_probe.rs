@@ -9,6 +9,14 @@
 //! so on.
 //!
 //! `cargo run --release --example ow_probe -- blocks base.smc self.smc d-self/overworld.wram.bin`
+//!
+//! The rest compare loads (`expand::load_overworld`): `check` the reader
+//! against a ROM's own load, `build` and `passed` Kobo's build of a hack's
+//! overworld against the hack (`passed` with every event passed), `write`
+//! that build to a file, `pair` and `each` two ROMs with every event
+//! passed or each alone (`SHOW=1` lists the bytes, `EVENT=n` takes one),
+//! and `end` and `ends` each event's end in play (`expand::end_event`):
+//! two ROMs', or what it changes in one.
 
 use kobo_core::compress::lz2;
 use kobo_core::{Rom, rats};
@@ -174,6 +182,82 @@ fn build_check(clean: &Rom, hack: &Rom) -> String {
     out
 }
 
+/// Kobo's build of a hack's overworld onto the clean ROM.
+fn build_overworld(clean: &Rom, hack: &Rom) -> Result<Rom, String> {
+    use kobo_core::build::{self, Project};
+    use kobo_core::overworld::Overworld;
+    let theirs = Overworld::read(hack)
+        .map_err(|e| format!("read: {e}"))?
+        .in_lunar_magic_shape();
+    let base = Overworld::read(clean).unwrap().in_lunar_magic_shape();
+    let project = Project {
+        root: std::path::PathBuf::from("."),
+        overworld: Some(theirs.changes_from(&base)),
+        ..Default::default()
+    };
+    build::build(clean, &project).map_err(|e| format!("build: {e}"))
+}
+
+/// A hack's own load and Kobo's build of its overworld, every event passed.
+fn passed_check(clean: &Rom, hack: &Rom) -> String {
+    match build_overworld(clean, hack) {
+        Ok(built) => compare_passed(hack, &built),
+        Err(e) => e,
+    }
+}
+
+/// Two ROMs' loads with every event passed: the tables that differ.
+fn compare_passed(hack: &Rom, built: &Rom) -> String {
+    compare_with(hack, built, &[0xFF; 0x0F])
+}
+
+/// Two ROMs' loads with the events `passed`: the tables that differ.
+fn compare_with(hack: &Rom, built: &Rom, all: &[u8; 0x0F]) -> String {
+    use kobo_core::ram::RamAddr;
+    let (a, b) = match (
+        kobo_core::expand::load_overworld_passed(hack, all),
+        kobo_core::expand::load_overworld_passed(built, all),
+    ) {
+        (Ok(a), Ok(b)) => (a, b),
+        (Err(e), _) => return format!("the hack's load: {e}"),
+        (_, Err(e)) => return format!("the build's load: {e}"),
+    };
+    let mut out = String::new();
+    for (what, at, len) in [
+        ("layer 1", 0x7E_C800, 0x800),
+        ("pages", 0x7F_C800, 0x800),
+        ("translevels", 0x7E_D000, 0x800),
+        ("directions", 0x7E_D800, 0x800),
+        ("layer 2", 0x7F_4000, 0x4000),
+    ] {
+        let (x, y) = (
+            a.ram.bytes(RamAddr::new(at), len),
+            b.ram.bytes(RamAddr::new(at), len),
+        );
+        let differ: Vec<usize> = (0..len).filter(|&i| x[i] != y[i]).collect();
+        if !differ.is_empty() {
+            out += &format!(
+                " {what}: {} differ (first at +{:#x});",
+                differ.len(),
+                differ[0]
+            );
+            if std::env::var_os("SHOW").is_some() {
+                for &i in &differ {
+                    out += &format!("\n  +{i:#06x}: {:02x} {:02x}", x[i], y[i]);
+                }
+            }
+        }
+    }
+    let vram = (0..a.vram.len())
+        .filter(|&i| a.vram[i] != b.vram[i])
+        .count();
+    if out.is_empty() {
+        format!("the same with every event passed (VRAM {vram} bytes differ)")
+    } else {
+        out
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
@@ -224,8 +308,88 @@ fn main() {
                 println!("{name}: {}", build_check(&clean, &rom));
             }
         }
+        Some("passed") if args.len() >= 3 => {
+            // `passed clean.smc hack.smc...`: each hack's own load and
+            // Kobo's build of its overworld, with every event passed.
+            let clean = Rom::load(&args[1]).unwrap();
+            for path in &args[2..] {
+                let rom = Rom::load(path).unwrap();
+                let name = std::path::Path::new(path)
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy();
+                println!("{name}: {}", passed_check(&clean, &rom));
+            }
+        }
+        Some("each") if args.len() == 3 => {
+            // `each a.smc b.smc`: the events that, passed alone, load
+            // differently.
+            let a = Rom::load(&args[1]).unwrap();
+            let b = Rom::load(&args[2]).unwrap();
+            for e in 0..0x78 {
+                let mut passed = [0; 0x0F];
+                passed[e / 8] = 0x80 >> (e % 8);
+                let out = compare_with(&a, &b, &passed);
+                if std::env::var("EVENT").is_ok_and(|v| usize::from_str_radix(&v, 16).unwrap() != e)
+                {
+                    continue;
+                }
+                if !out.starts_with("the same") {
+                    println!("event {e:#04x}:{out}");
+                }
+            }
+        }
+        Some("write") if args.len() == 4 => {
+            // `write clean.smc hack.smc out.sfc`: Kobo's build of the
+            // hack's overworld.
+            let clean = Rom::load(&args[1]).unwrap();
+            let hack = Rom::load(&args[2]).unwrap();
+            let built = build_overworld(&clean, &hack).unwrap();
+            std::fs::write(&args[3], built.data()).unwrap();
+        }
+        Some("end") if args.len() == 3 => {
+            // `end a.smc b.smc`: each event's last step in play, on the
+            // overworld with no event passed, in both ROMs.
+            let a = Rom::load(&args[1]).unwrap();
+            let b = Rom::load(&args[2]).unwrap();
+            for e in 0..0x78u8 {
+                let none = [0; 0x0F];
+                match (
+                    kobo_core::expand::end_event(&a, &none, e),
+                    kobo_core::expand::end_event(&b, &none, e),
+                ) {
+                    (Ok(x), Ok(y)) => {
+                        let d = kobo_core::overworld::load_differences(&x, &y);
+                        if !d.is_empty() {
+                            println!("event {e:#04x}: {}", d.join(", "));
+                        }
+                    }
+                    (x, y) => println!("event {e:#04x}: {:?} {:?}", x.err(), y.err()),
+                }
+            }
+        }
+        Some("ends") if args.len() == 2 => {
+            // `ends rom.smc`: what each event's last step changes.
+            let a = Rom::load(&args[1]).unwrap();
+            let none = [0; 0x0F];
+            let base = kobo_core::expand::load_overworld(&a).unwrap();
+            for e in 0..0x78u8 {
+                let x = kobo_core::expand::end_event(&a, &none, e).unwrap();
+                let d = kobo_core::overworld::load_differences(&base, &x);
+                if !d.is_empty() {
+                    println!("event {e:#04x}: {}", d.join(", "));
+                }
+            }
+        }
+        Some("pair") if args.len() == 3 => {
+            let a = Rom::load(&args[1]).unwrap();
+            let b = Rom::load(&args[2]).unwrap();
+            println!("{}", compare_passed(&a, &b));
+        }
         _ => eprintln!(
-            "usage: ow_probe blocks a.smc b.smc [wram.bin] | load rom.smc dir | check rom..."
+            "usage: ow_probe blocks a.smc b.smc [wram.bin] | load rom.smc dir | check rom... \
+             | build clean.smc hack... | passed clean.smc hack... | write clean.smc hack.smc out.sfc \
+             | pair a.smc b.smc | each a.smc b.smc | end a.smc b.smc | ends rom.smc"
         ),
     }
 }

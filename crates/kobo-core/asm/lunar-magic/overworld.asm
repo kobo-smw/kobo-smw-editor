@@ -18,6 +18,13 @@
 ; them, which the build writes: the translevels and directions, LC_LZ2,
 ; $1000 bytes, low word at $04D803 and bank at $04D808; layer 1's page
 ; bytes, LC_LZ2, $800 bytes, low word at $04D822 and bank at $04D827.
+;
+; The events' further tiles (CODE_04E9F1) are the other piece: the game
+; goes through a list of 44 entries for an event's; this layout keeps each
+; event's entries together, in tables of any length, which Kobo's code
+; below goes through, at the list's place and in the layer 2 load's loop
+; through the events. Its pointers are at fixed offsets from the code's
+; start, where the layout keeps them.
 
 incsrc "memory.asm"
 
@@ -26,6 +33,15 @@ incsrc "memory.asm"
 ; game's in bank $00 (at $0084CF) as its return.
 !decompress = $00B8DE
 !rtl_00 = $0084CF
+; CODE_04E4A9, which puts an event's layer 2 block (Y its data, $04 its
+; place, X and Y 16-bit) and ends with RTS, entered through an RTL of the
+; game's in bank $04 (DecompressOverworldL2's, at $04DAB2).
+!make_block = $04E4A9
+!rtl_04 = $04DAB2
+; The events passed (a bit each, OWEventsActivated) and the overworld's
+; event process's state (OverworldEventProcess).
+!events_passed = $1F02|!addr
+!event_process = $1B86|!addr
 
 org $04D7F9
     JML load_tables
@@ -36,6 +52,24 @@ org $04D803 : dw $FFFF          ; the translevels' low word
 org $04D808 : db $FF            ; their bank
 org $04D822 : dw $FFFF          ; layer 1's pages' low word
 org $04D827 : db $FF            ; their bank
+
+; The game's loop through its list, from its first branch on: Kobo's code
+; makes the event's tiles, and the game goes on at $04E9FC.
+org $04E9F7
+    JSL extras
+    NOP
+
+; The layer 2 load's loop through the events, from its INC on: Kobo's code
+; makes the event's further tiles and steps to the next, and the game's
+; branch goes back to its JSR for that one's entries.
+org $04DCA2
+layer2_entries:
+org $04DCA5
+    JSL load_step
+    BNE layer2_entries
+    RTS
+    NOP
+    NOP
 
 freecode
 ; Entered as CODE_04D7F2 left the scan: A 8-bit, X and Y 16-bit. Leaves
@@ -89,3 +123,154 @@ unpack:
     PLP
     PLB
     RTL
+
+; The events' further tiles, entered from the game's list's place at
+; $04E9F7 with the event in A, A and the index registers 8-bit; leaves them
+; 8-bit. At the end of an event in play (the event process's last state)
+; it makes all of them; at the overworld's load (the process at 0) only
+; those in layer 1, which the load has by then: those in layer 2 the
+; layer 2 load made, each passed event's after its own entries
+; (load_step), as a saved game's must be for an event's tiles to cover
+; another's in the order they were made.
+;
+; Each table has a pointer below, at an offset from the start the build
+; and Lunar Magic's layout know: the ranges (each event's first entry, and
+; the end of the last, $79 words, in bytes of the word tables), each
+; entry's data (a layer 1 tile with its page, or a layer 2 block's event
+; tile data), its place, and its kind (bit 0 set for layer 2), a byte
+; each.
+extras:
+    BRA .run
+    fillbyte $FF
+    fill $0D-2
+.ranges_at:
+    dl $FFFFFF
+    fill $22-$10
+.data_at:
+    dl $FFFFFF
+    fill $28-$25
+.places_at:
+    dl $FFFFFF
+    fill $34-$2B
+.kinds_at:
+    dl $FFFFFF
+.run:
+    LDY #$03
+    PHA
+    LDA !event_process
+    BNE +
+    LDY #$01
++   PLA
+    JSR make_extras
+    SEP #$30
+    RTL
+
+assert .ranges_at-extras == $0D
+assert .data_at-extras == $22
+assert .places_at-extras == $28
+assert .kinds_at-extras == $34
+
+; The layer 2 load's loop through the events (CODE_04DC6A), from $04DCA5,
+; after the game's own entries of event $0F: that event's layer 2 further
+; tiles if it is passed, then the next event, all $78 of them. Returns
+; with the comparison for the loop's branch.
+load_step:
+    SEP #$30
+    LDA $0F
+    AND #$07
+    TAX
+    LDA $0F
+    LSR A
+    LSR A
+    LSR A
+    TAY
+    LDA !events_passed,Y
+    AND.l .bits,X
+    BEQ +
+    LDA $0F
+    LDY #$02
+    JSR make_extras
+    SEP #$30
++   INC $0F
+    LDA $0F
+    CMP #$78
+    RTL
+
+.bits:
+    db $80,$40,$20,$10,$08,$04,$02,$01
+
+; Makes the further tiles of event A (8-bit) whose kinds Y (8-bit) has:
+; bit 0 those in layer 1, bit 1 those in layer 2.
+make_extras:
+    REP #$30
+    AND #$00FF
+    ASL A
+    PHY
+    TAY
+    LDA.l extras_ranges_at
+    STA $00
+    LDA.l extras_ranges_at+1
+    STA $01
+    INY
+    INY
+    LDA [$00],Y
+    PHA
+    DEY
+    DEY
+    LDA [$00],Y
+.next:
+    ; A this entry, in bytes; the end on the stack, the kinds under it.
+    CMP 1,S
+    BCS .done
+    PHA
+    LSR A
+    TAY
+    LDA.l extras_kinds_at
+    STA $00
+    LDA.l extras_kinds_at+1
+    STA $01
+    LDA [$00],Y
+    LSR A
+    ; Carry set for layer 2. The entry and its place and data.
+    LDA 1,S
+    TAY
+    LDA.l extras_places_at
+    STA $00
+    LDA.l extras_places_at+1
+    STA $01
+    LDA [$00],Y
+    TAX
+    LDA.l extras_data_at
+    STA $00
+    LDA.l extras_data_at+1
+    STA $01
+    LDA 5,S
+    BCS .layer2
+    AND #$0001
+    BEQ .made
+    LDA [$00],Y
+    SEP #$20
+    STA.l !map16_low,X
+    XBA
+    STA.l !map16_high,X
+    BRA .made
+.layer2:
+    AND #$0002
+    BEQ .made
+    LDA [$00],Y
+    TAY
+    STX $04
+    PHK
+    PER .made-1
+    PEA.w (!rtl_04-1)&$FFFF
+    JML !make_block
+.made:
+    REP #$30
+    PLA
+    INC A
+    INC A
+    BRA .next
+.done:
+    PLA
+    PLY
+    RTS

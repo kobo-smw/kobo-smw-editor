@@ -2775,7 +2775,7 @@ fn write_overworld(
         .in_lunar_magic_shape()
         .with(changes)
         .map_err(failed)?
-        .plan()
+        .plan(rom)
         .map_err(failed)?;
     for (at, bytes) in &plan.fixed {
         rom.write(*at, bytes)?;

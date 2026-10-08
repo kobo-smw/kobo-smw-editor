@@ -1901,7 +1901,9 @@ Initialised for all 512 levels; a save rewrites the saved level's entry (observe
 
 ### The overworld
 
-Being found (roadmap step 4, from 2026-10-08); nothing of it is built yet. The method:
+Being found (roadmap step 4, from 2026-10-08), and built as it is: Kobo's code for the
+pieces below is `asm/lunar-magic/overworld.asm`, and `overworld::Overworld::plan` writes
+the tables. The method:
 
 - `-TransferOverworld` is the only command that makes Lunar Magic write its overworld
   layout: transferring the vanilla ROM's own overworld into a copy of the vanilla ROM
@@ -1971,6 +1973,32 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   change matched the move; the translevel pointer holds in every Lunar Magic 3 hack of the
   corpus, the page table's not in hacks of older versions (Kaizo Mario 1 and 2, Smb2dx),
   which have one page.
+- The events' further tiles (smw.md, "The overworld": the game's list of 44, which
+  Lunar Magic leaves in place unread) are four tables, each a RATS block, whose 24-bit
+  pointers are at fixed offsets from the target of the `JSL` at `$04E9F7` (5 bytes, to
+  `$04E9FB`; the game goes on at `$04E9FC`): `+$0D` the ranges (`$79` words, each
+  event's first entry and the end of the last, in bytes of the word tables), `+$22` each
+  entry's data, `+$28` its place, `+$34` its kind (a byte, bit 0 set for layer 2). An
+  event's entries are in the order they are made, the game's list's last entry first. A
+  layer 1 entry's data is the whole tile, its page in the high byte, which the load
+  writes to `$7FC800` too. Found 2026-10-08: a transfer from a source whose list had one
+  entry changed moved only two blocks, whose new addresses were the bytes at `$10FF52`
+  and `$10FF64` of that ROM, `+$22`, `+$28`, and `+$34` from the `JSL`'s target there;
+  the four offsets hold, with the opcode before each `$BF` (`LDA.l ,X`), in every Lunar
+  Magic hack of the corpus, whatever bank (`$10`, `$90`, the SA-1's `$C0` on) their
+  blocks are in.
+- When they are made, from the memory effects of Lunar Magic-saved ROMs with events
+  passed (`expand::load_overworld_passed`; editing `self.smc`'s tables to make two
+  overlap): the layer 2 load makes each passed event's layer 2 entries and then its layer
+  2 further tiles, event by event (`80_Fellipe R`'s event 0 blocks are under event 6's
+  own entry), from `$04DCA5`, a `JSL` with the loop's branch after it; the overworld's
+  load makes the layer 1 ones only, and an event's end in play (`expand::end_event`) all
+  of them. The vanilla overworld's transfer loads as the game does in all three, every
+  event alone and all together (2026-10-08). Kobo's code does the same, at the same two
+  places, with its pointers at the four offsets.
+- A transfer also changes the byte at `$0FF092` (0 in the vanilla ROM, `$AC` after the
+  vanilla overworld's transfer, `$A7` after one with that list entry changed), outside
+  any RATS block; not looked into yet.
 
 
 ## On an SA-1 ROM

@@ -77,6 +77,12 @@ from the editor where the user is working.
   hack's does (tests/overworld.rs). Import does not carry a hack's overworld yet: the
   hooks of play (level names, warps, events past `$6F`, entering levels, the save
   prompt) are the game's until Kobo's code has them.
+- The events' further tiles (2026-10-08): the game's list of 44 and Lunar Magic's
+  tables of them, read (`Events::extras`), carried in the overworld file (an event's
+  `extras`), and Kobo's code for the layout's two hooks of them (`$04E9F7`, `$04DCA5`),
+  which made the layer 2 load's loop Kobo's too. Loads with events passed
+  (`expand::load_overworld_passed`) and events' ends (`expand::end_event`) of Kobo's
+  builds are the hacks' own in every corpus hack whose own code leaves them alone.
 
 - The emulator to play in (2026-10-08, item 7): `play.emulator` in the config file, or
   `KOBO_EMULATOR`, opens Play's and Build and play's ROM in place of what the system

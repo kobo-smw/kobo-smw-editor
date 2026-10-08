@@ -27,6 +27,58 @@ fn the_vanilla_overworld_reads_as_its_load_leaves_it() {
     );
 }
 
+/// The clean ROM's overworld, built by Kobo in Lunar Magic's layout, plays
+/// as the game's own does: a saved game with every event passed loads the
+/// same, and so does each event's end in play, where its further tiles are
+/// made.
+#[test]
+fn the_vanilla_overworld_built_plays_as_the_games_own() {
+    use kobo_core::build::{self, Project};
+
+    if common::asar().is_none() {
+        return;
+    }
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let project = Project {
+        root: std::path::PathBuf::from("."),
+        overworld: Some(overworld::Changes::default()),
+        ..Default::default()
+    };
+    let built = build::build(&clean, &project).unwrap();
+    let all = [0xFF; 0x0F];
+    let (theirs, ours) = (
+        expand::load_overworld_passed(&clean, &all).unwrap(),
+        expand::load_overworld_passed(&built, &all).unwrap(),
+    );
+    assert_eq!(
+        overworld::load_differences(&theirs, &ours),
+        Vec::<String>::new()
+    );
+    let read = Overworld::read(&clean).unwrap();
+    let none = [0; 0x0F];
+    let mut ended = 0;
+    for (event, extras) in read.events.extras.iter().enumerate() {
+        if extras.is_empty() {
+            continue;
+        }
+        ended += 1;
+        let (theirs, ours) = (
+            expand::end_event(&clean, &none, event as u8).unwrap(),
+            expand::end_event(&built, &none, event as u8).unwrap(),
+        );
+        assert_eq!(
+            overworld::load_differences(&theirs, &ours),
+            Vec::<String>::new(),
+            "event {event:#04x}"
+        );
+    }
+    // The game's list: 44 entries, of 18 events.
+    assert_eq!(read.events.extras.iter().flatten().count(), 44);
+    assert_eq!(ended, 18);
+}
+
 #[test]
 fn lunar_magic_overworlds_read_as_their_loads_leave_them() {
     let failures = common::failures::Failures::new(
@@ -82,8 +134,9 @@ fn lunar_magic_overworlds_read_as_their_loads_leave_them() {
 }
 
 /// Each hack's overworld, as changes against the clean ROM's, built by Kobo
-/// in Lunar Magic's layout: the build reads back as the hack's, and Kobo's
-/// code for the load leaves what it reads.
+/// in Lunar Magic's layout: the build reads back as the hack's, Kobo's
+/// code for the load leaves what it reads, and a saved game with every
+/// event passed loads as the hack's own does.
 #[test]
 fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
     use kobo_core::build::{self, Project};
@@ -138,6 +191,19 @@ fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
                 }
             }
             Err(e) => failures.fail(&rom, None, format!("the build's load: {e}")),
+        }
+        // A hack whose own new game does not reach the overworld is the
+        // other test's to report.
+        let all = [0xFF; 0x0F];
+        if let Ok(theirs) = expand::load_overworld_passed(&rom, &all) {
+            match expand::load_overworld_passed(&built, &all) {
+                Ok(ours) => {
+                    for d in overworld::load_differences(&theirs, &ours) {
+                        failures.fail(&rom, None, format!("every event passed: {d}"));
+                    }
+                }
+                Err(e) => failures.fail(&rom, None, format!("every event passed: {e}")),
+            }
         }
     }
     failures.finish();

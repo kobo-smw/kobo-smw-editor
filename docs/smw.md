@@ -533,7 +533,8 @@ are SMWDisX's.
 ## The overworld
 
 Read from SMWDisX (`bank_04.asm`, `bank_05.asm`), for the overworld work of roadmap
-step 4; nothing of it is built yet.
+step 4 (`kobo_core::overworld` reads it; a project's overworld is built in Lunar
+Magic's layout, lunar-magic-install.md, "The overworld").
 
 - Layer 1 (the level tiles, paths, and what the player walks on): `MVN $7E,$0C` copies
   `$800` bytes of tile numbers from `OWL1TileData` in bank `$0C` to `Map16TilesLow`
@@ -555,6 +556,26 @@ step 4; nothing of it is built yet.
   `n + 1` bytes; with bit 7 set, the next byte `(n & $7F) + 1` times) into every other
   byte of `OWLayer2Tilemap` (`$7F4000`, `$4000` bytes): the tile numbers, then their
   properties.
+- An event's layer 2 entries are blocks of event tile data (`DATA_04DD8D`: the data
+  offset, below `$900` a 6x6 block, from it a 2x2; `DATA_04DD8F`: the place in
+  `$7F4000`), each event's from `DATA_04E359`. Besides them, the game keeps a list of 44
+  further tiles (`CODE_04E9F1`, `LDX #$2B` from its last entry down): each entry's event
+  (`DATA_04E8E4`), its kind (`DATA_04E910`, bit 0 set for a layer 2 block), its data
+  (`DATA_04E994`: the layer 1 tile, or the block's event tile data) and its place
+  (`DATA_04E93C`, in layer 1's tables or in `$7F4000`). A layer 1 entry sets
+  `Map16TilesLow` outright; a layer 2 one is a block as an entry is (`CODE_04E4A9`). 18
+  events of the game have some (event 6 the most, eight).
+- Where a saved game's events are made: the player select copies the save buffer
+  (`CopyFromSaveBuffer`, `$1F49` on, the events at `$1FA9`) into `OWEventsActivated`
+  (`$1F02`, a bit per event, the highest first in a byte) and in the same frame decodes
+  layer 2 (`DecompressOverworldL2`): `CODE_04DC6A` then makes each passed event's layer 2
+  entries, events `0` to `$6E` in order (`CMP #$6F` at `$04DCA9`). The overworld's load
+  (`CODE_04D84F`) then goes through the events again for layer 1: each passed event's
+  tile turned by the reveal list (`CODE_04DA49`), its crushed tiles (`CODE_04E677`), and
+  its further tiles (`CODE_04E9F1`, with `OverworldEventProcess`, `$1B86`, at 0). In play,
+  an event's last step (`CODE_04E9EC`, the event process's state 7) makes its further
+  tiles and marks it passed. `expand::load_overworld_passed` and `expand::end_event` run
+  these on a ROM.
 
 Lunar Magic rewrites all of this into a layout of its own on its first overworld save,
 with each level tile's translevel and the events' changes as data (its hook at `$04DCFA`

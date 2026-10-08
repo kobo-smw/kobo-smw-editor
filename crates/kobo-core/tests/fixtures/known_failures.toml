@@ -157,9 +157,9 @@ reason = "Lunar Magic 1.63's overworld, with one page of layer 1 tiles and no ta
 [[failure]]
 hack = "Grand Poo World 2.smc"
 sha1 = "390583d5faa0cc02e0c4f414f7638228661b2dc9"
-tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them, overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
 levels = "all"
-reason = "19 layer 1 tiles differ after the load: the hack's own code changes them."
+reason = "19 layer 1 tiles differ after the load: the hack's own code changes them, with every event passed too."
 
 [[failure]]
 hack = "QLDC 2022/34_HD_DankBaron.bps"
@@ -171,9 +171,9 @@ reason = "Its new game stops at a BRK before the overworld loads, in Kobo's mach
 [[failure]]
 hack = "QLDC 2021/24_HD_DankBaron.bps"
 sha1 = "24c2acce1e0e099e85b9cbfb9849ef394a76580d"
-tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them, overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
 levels = "all"
-reason = "Its own code uses $7ED000-$7EDFFF for something else by the time the overworld runs."
+reason = "Its own code uses $7ED000-$7EDFFF for something else by the time the overworld runs. With every event passed, its layer 1 differs from its build's as well."
 
 [[failure]]
 hack = "QLDC 2022/05_Bumpty.bps"
@@ -192,9 +192,9 @@ reason = "Its layer 1 page table's pointer leads to no table: not looked into ye
 [[failure]]
 hack = "QLDC 2022/24_underway.bps"
 sha1 = "9476ed1815c94d78895fc1e66b7aa3b446299ee6"
-tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them"
+tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them, overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
 levels = "all"
-reason = "Its own code uses $7ED000-$7EDFFF for something else by the time the overworld runs."
+reason = "Its own code uses $7ED000-$7EDFFF for something else by the time the overworld runs. With every event passed, its layer 1 differs from its build's as well."
 
 [[failure]]
 hack = "QLDC 2021/28_Kitikuchan+MecchaSugoiTntn.bps"

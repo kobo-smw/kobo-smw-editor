@@ -66,6 +66,15 @@ mod operands {
     pub const CRUSH_EVENTS: SnesAddr = SnesAddr::new(0x04_E67C);
     pub const CRUSH_PLACES: SnesAddr = SnesAddr::new(0x04_E69C);
     pub const CRUSH_VRAM: SnesAddr = SnesAddr::new(0x04_EEC9);
+    /// The events' further tiles in the game's layout (`CODE_04E9F1`):
+    /// `LDX #$2B` (the last entry), and the `CMP.l`/`LDA.l` operands of
+    /// each entry's event (`DATA_04E8E4`), kind (`DATA_04E910`), data
+    /// (`DATA_04E994`), and place (`DATA_04E93C`).
+    pub const EXTRA_LAST: SnesAddr = SnesAddr::new(0x04_E9F2);
+    pub const EXTRA_EVENTS: SnesAddr = SnesAddr::new(0x04_E9F4);
+    pub const EXTRA_KINDS: SnesAddr = SnesAddr::new(0x04_EA27);
+    pub const EXTRA_DATA: SnesAddr = SnesAddr::new(0x04_EA32);
+    pub const EXTRA_PLACES: SnesAddr = SnesAddr::new(0x04_EA38);
 }
 
 /// Where Lunar Magic's layout keeps the pointers only its code reads.
@@ -76,6 +85,15 @@ mod lunar_magic {
     pub const LAYER1_HIGH: SnesAddr = SnesAddr::new(0x04_D822);
     pub const LAYER1_HIGH_BANK: SnesAddr = SnesAddr::new(0x04_D827);
     pub const NAMES: SnesAddr = SnesAddr::new(0x03_BB57);
+    /// The events' further tiles: a `JSL` here (`$22`, where the game's
+    /// loop through its table branches) leads to code with the tables'
+    /// pointers at fixed offsets from its start: the ranges, then each
+    /// entry's data, place, and kind.
+    pub const EXTRA_HOOK: SnesAddr = SnesAddr::new(0x04_E9F7);
+    pub const EXTRA_RANGES: u32 = 0x0D;
+    pub const EXTRA_DATA: u32 = 0x22;
+    pub const EXTRA_PLACES: u32 = 0x28;
+    pub const EXTRA_KINDS: u32 = 0x34;
     /// The first byte of the game's translevel scan, `LDA #` (`$A9`) in the
     /// game; Lunar Magic's layout and Kobo's code for it replace the scan,
     /// which tells the layouts apart.
@@ -137,6 +155,24 @@ pub struct Crush {
     pub vram: u16,
 }
 
+/// A further tile an event changes (`CODE_04E9F1`), beyond its layer 1
+/// tile and layer 2 entries: a layer 1 tile set outright at a place in
+/// layer 1's tables (its page in the high byte, which Lunar Magic's layout
+/// sets too; the game's sets the low byte alone, and has no pages), or a
+/// layer 2 block from the event tile data, as an entry of the event's own.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Extra {
+    Layer1 { place: u16, tile: u16 },
+    Layer2(EventTile),
+}
+
+/// [`Extra`], as a project holds it: a layer 2 block by its tiles.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum ExtraTile {
+    Layer1 { place: u16, tile: u16 },
+    Layer2(EventBlock),
+}
+
 /// What the overworld's events change.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Events {
@@ -153,6 +189,8 @@ pub struct Events {
     pub crush: Vec<Crush>,
     /// The reveal list.
     pub reveal: Vec<(u8, u8)>,
+    /// Each event's further tiles, in the order they are made.
+    pub extras: Vec<Vec<Extra>>,
 }
 
 /// A block of an event's layer 2 change, as a project holds it: where it
@@ -177,77 +215,56 @@ impl Events {
 
     /// Event `n`'s layer 2 change, block by block.
     pub fn blocks(&self, n: usize) -> Vec<EventBlock> {
-        self.of(n)
-            .iter()
-            .map(|t| EventBlock {
-                place: t.place,
-                tiles: (0..t.tiles())
-                    .map(|i| {
-                        let at = usize::from(t.data) + i;
-                        let number = self.numbers.get(at).copied().unwrap_or(0);
-                        let props = self.properties.get(at).copied().unwrap_or(0);
-                        u16::from(props) << 8 | u16::from(number)
-                    })
-                    .collect(),
-            })
-            .collect()
+        self.of(n).iter().map(|t| self.block(t)).collect()
     }
 
-    /// The tables from each event's blocks, the event tile data laid out
-    /// afresh: 6x6 blocks from 0, 2x2 blocks from [`SMALL_BLOCKS`].
+    /// An entry's block, its tiles from the event tile data.
+    fn block(&self, t: &EventTile) -> EventBlock {
+        EventBlock {
+            place: t.place,
+            tiles: (0..t.tiles())
+                .map(|i| {
+                    let at = usize::from(t.data) + i;
+                    let number = self.numbers.get(at).copied().unwrap_or(0);
+                    let props = self.properties.get(at).copied().unwrap_or(0);
+                    u16::from(props) << 8 | u16::from(number)
+                })
+                .collect(),
+        }
+    }
+
+    /// Event `n`'s further tiles, as a project holds them.
+    pub fn extra_tiles(&self, n: usize) -> Vec<ExtraTile> {
+        self.extras
+            .get(n)
+            .map(|extras| {
+                extras
+                    .iter()
+                    .map(|e| match *e {
+                        Extra::Layer1 { place, tile } => ExtraTile::Layer1 { place, tile },
+                        Extra::Layer2(t) => ExtraTile::Layer2(self.block(&t)),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The tables from each event's blocks and further tiles, the event
+    /// tile data laid out afresh: 6x6 blocks from 0, 2x2 blocks from
+    /// [`SMALL_BLOCKS`].
     pub fn from_blocks(
         layer1: Vec<(u16, u16)>,
         blocks: &[Vec<EventBlock>],
+        extra_tiles: &[Vec<ExtraTile>],
         crush: Vec<Crush>,
         reveal: Vec<(u8, u8)>,
     ) -> Result<Self, OverworldError> {
         let mut ranges = vec![0u16];
         let mut tiles = Vec::new();
-        let (mut large, mut small) = (0u16, SMALL_BLOCKS);
-        let mut numbers = vec![0u8; usize::from(EVENT_DATA_END)];
-        let mut properties = vec![0u8; usize::from(EVENT_DATA_END)];
-        let mut used = 0usize;
-        // A block whose tiles another has already takes its data, as the
-        // game's own data shares blocks between entries.
-        let mut laid: std::collections::HashMap<&[u16], u16> = std::collections::HashMap::new();
+        let mut layout = DataLayout::new();
         for event in blocks {
             for block in event {
-                if let Some(&data) = laid.get(block.tiles.as_slice()) {
-                    tiles.push(EventTile {
-                        data,
-                        place: block.place,
-                    });
-                    continue;
-                }
-                let data = match block.tiles.len() {
-                    36 => {
-                        let at = large;
-                        large += 36;
-                        if large > SMALL_BLOCKS {
-                            return Err(OverworldError::Full("6x6 event blocks"));
-                        }
-                        at
-                    }
-                    4 => {
-                        let at = small;
-                        small += 4;
-                        if small > EVENT_DATA_END {
-                            return Err(OverworldError::Full("2x2 event blocks"));
-                        }
-                        at
-                    }
-                    _ => {
-                        return Err(OverworldError::Decode(
-                            "an event block of neither 36 nor 4 tiles",
-                        ));
-                    }
-                };
-                for (i, w) in block.tiles.iter().enumerate() {
-                    numbers[usize::from(data) + i] = *w as u8;
-                    properties[usize::from(data) + i] = (w >> 8) as u8;
-                }
-                used = used.max(usize::from(data) + block.tiles.len());
-                laid.insert(block.tiles.as_slice(), data);
+                let data = layout.lay(block)?;
                 tiles.push(EventTile {
                     data,
                     place: block.place,
@@ -255,8 +272,21 @@ impl Events {
             }
             ranges.push(tiles.len() as u16);
         }
-        numbers.truncate(used);
-        properties.truncate(used);
+        let mut extras = Vec::with_capacity(extra_tiles.len());
+        for event in extra_tiles {
+            let mut list = Vec::with_capacity(event.len());
+            for extra in event {
+                list.push(match extra {
+                    &ExtraTile::Layer1 { place, tile } => Extra::Layer1 { place, tile },
+                    ExtraTile::Layer2(block) => Extra::Layer2(EventTile {
+                        data: layout.lay(block)?,
+                        place: block.place,
+                    }),
+                });
+            }
+            extras.push(list);
+        }
+        let (numbers, properties) = layout.finish();
         Ok(Self {
             layer1,
             ranges,
@@ -265,6 +295,7 @@ impl Events {
             properties,
             crush,
             reveal,
+            extras,
         })
     }
 
@@ -272,6 +303,75 @@ impl Events {
     pub fn of(&self, n: usize) -> &[EventTile] {
         let (a, b) = (usize::from(self.ranges[n]), usize::from(self.ranges[n + 1]));
         self.tiles.get(a..b.max(a)).unwrap_or(&[])
+    }
+}
+
+/// The event tile data being laid out: 6x6 blocks from 0, 2x2 blocks from
+/// [`SMALL_BLOCKS`], a block whose tiles another has already taking its
+/// data, as the game's own data shares blocks between entries.
+struct DataLayout {
+    large: u16,
+    small: u16,
+    numbers: Vec<u8>,
+    properties: Vec<u8>,
+    used: usize,
+    laid: std::collections::HashMap<Vec<u16>, u16>,
+}
+
+impl DataLayout {
+    fn new() -> Self {
+        Self {
+            large: 0,
+            small: SMALL_BLOCKS,
+            numbers: vec![0; usize::from(EVENT_DATA_END)],
+            properties: vec![0; usize::from(EVENT_DATA_END)],
+            used: 0,
+            laid: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Where `block`'s tiles go in the data.
+    fn lay(&mut self, block: &EventBlock) -> Result<u16, OverworldError> {
+        if let Some(&data) = self.laid.get(&block.tiles) {
+            return Ok(data);
+        }
+        let data = match block.tiles.len() {
+            36 => {
+                let at = self.large;
+                self.large += 36;
+                if self.large > SMALL_BLOCKS {
+                    return Err(OverworldError::Full("6x6 event blocks"));
+                }
+                at
+            }
+            4 => {
+                let at = self.small;
+                self.small += 4;
+                if self.small > EVENT_DATA_END {
+                    return Err(OverworldError::Full("2x2 event blocks"));
+                }
+                at
+            }
+            _ => {
+                return Err(OverworldError::Decode(
+                    "an event block of neither 36 nor 4 tiles",
+                ));
+            }
+        };
+        for (i, w) in block.tiles.iter().enumerate() {
+            self.numbers[usize::from(data) + i] = *w as u8;
+            self.properties[usize::from(data) + i] = (w >> 8) as u8;
+        }
+        self.used = self.used.max(usize::from(data) + block.tiles.len());
+        self.laid.insert(block.tiles.clone(), data);
+        Ok(data)
+    }
+
+    /// The tile numbers and properties, as far as a block reaches.
+    fn finish(mut self) -> (Vec<u8>, Vec<u8>) {
+        self.numbers.truncate(self.used);
+        self.properties.truncate(self.used);
+        (self.numbers, self.properties)
     }
 }
 
@@ -513,8 +613,13 @@ fn read_events(rom: &Rom, _layout: Layout) -> Result<Events, OverworldError> {
             place: rom.read_u16(entries.add(4 * i + 2))?,
         });
     }
+    let extras = read_extras(rom, count)?;
     let used = tiles
         .iter()
+        .chain(extras.iter().flatten().filter_map(|e| match e {
+            Extra::Layer2(t) => Some(t),
+            Extra::Layer1 { .. } => None,
+        }))
         .map(|t| usize::from(t.data) + t.tiles())
         .max()
         .unwrap_or(0);
@@ -559,7 +664,83 @@ fn read_events(rom: &Rom, _layout: Layout) -> Result<Events, OverworldError> {
         properties,
         crush,
         reveal,
+        extras,
     })
+}
+
+/// The pointer places of the events' further tiles' tables, in Lunar
+/// Magic's layout: the ranges, data, places, and kinds; `None` without its
+/// `JSL`.
+pub fn extra_pointers(rom: &Rom) -> Result<Option<[SnesAddr; 4]>, RomError> {
+    if rom.read_u8(lunar_magic::EXTRA_HOOK)? != 0x22 {
+        return Ok(None);
+    }
+    let code = SnesAddr::new(rom.read_u24(lunar_magic::EXTRA_HOOK.add(1))?);
+    Ok(Some(
+        [
+            lunar_magic::EXTRA_RANGES,
+            lunar_magic::EXTRA_DATA,
+            lunar_magic::EXTRA_PLACES,
+            lunar_magic::EXTRA_KINDS,
+        ]
+        .map(|k| code.add(k)),
+    ))
+}
+
+/// Each event's further tiles. The game's table is a list the game goes
+/// through from its last entry down, making each entry of the event; Lunar
+/// Magic's, each event's entries in that order, its ranges in bytes of the
+/// word tables.
+fn read_extras(rom: &Rom, events: usize) -> Result<Vec<Vec<Extra>>, OverworldError> {
+    let extra = |kind: u8, data: u16, place: u16, pages: bool| {
+        if kind & 1 != 0 {
+            Extra::Layer2(EventTile { data, place })
+        } else {
+            Extra::Layer1 {
+                place,
+                tile: if pages { data } else { data & 0xFF },
+            }
+        }
+    };
+    let mut extras = vec![Vec::new(); events];
+    if let Some(pointers) = extra_pointers(rom)? {
+        let [ranges, data, places, kinds] = pointers.map(|p| rom.read_u24(p).map(SnesAddr::new));
+        let (ranges, data, places, kinds) = (ranges?, data?, places?, kinds?);
+        for (e, list) in extras.iter_mut().enumerate() {
+            let from = u32::from(rom.read_u16(ranges.add(2 * e as u32))?);
+            let to = u32::from(rom.read_u16(ranges.add(2 * e as u32 + 2))?);
+            for at in (from..to).step_by(2) {
+                list.push(extra(
+                    rom.read_u8(kinds.add(at / 2))?,
+                    rom.read_u16(data.add(at))?,
+                    rom.read_u16(places.add(at))?,
+                    true,
+                ));
+            }
+        }
+    } else {
+        let operand =
+            |at: SnesAddr| -> Result<SnesAddr, RomError> { Ok(SnesAddr::new(rom.read_u24(at)?)) };
+        let last = u32::from(rom.read_u8(operands::EXTRA_LAST)?);
+        let (events_at, kinds, data, places) = (
+            operand(operands::EXTRA_EVENTS)?,
+            operand(operands::EXTRA_KINDS)?,
+            operand(operands::EXTRA_DATA)?,
+            operand(operands::EXTRA_PLACES)?,
+        );
+        for i in (0..=last).rev() {
+            let event = usize::from(rom.read_u8(events_at.add(i))?);
+            if let Some(list) = extras.get_mut(event) {
+                list.push(extra(
+                    rom.read_u8(kinds.add(i))?,
+                    rom.read_u16(data.add(2 * i))?,
+                    rom.read_u16(places.add(2 * i))?,
+                    false,
+                ));
+            }
+        }
+    }
+    Ok(extras)
 }
 
 /// What of `read` differs from what the ROM's own load left
@@ -594,6 +775,32 @@ pub fn differences(read: &Overworld, loaded: &crate::expand::LoadedOverworld) ->
     .into_iter()
     .filter_map(|(what, ours, theirs)| {
         let differ = ours.iter().zip(&theirs).filter(|(a, b)| a != b).count();
+        (differ > 0).then(|| format!("{what}: {differ} bytes differ"))
+    })
+    .collect()
+}
+
+/// What two loads of an overworld leave differently in the tables the
+/// overworld is drawn from: a line per table that differs.
+pub fn load_differences(
+    a: &crate::expand::LoadedOverworld,
+    b: &crate::expand::LoadedOverworld,
+) -> Vec<String> {
+    use crate::ram::RamAddr;
+    [
+        ("layer 1", 0x7E_C800, LAYER1_TILES),
+        ("layer 1 pages", 0x7F_C800, LAYER1_TILES),
+        ("translevels", 0x7E_D000, LAYER1_TILES),
+        ("directions", 0x7E_D800, LAYER1_TILES),
+        ("layer 2", 0x7F_4000, 2 * LAYER2_TILES),
+    ]
+    .into_iter()
+    .filter_map(|(what, at, len)| {
+        let (x, y) = (
+            a.ram.bytes(RamAddr::new(at), len),
+            b.ram.bytes(RamAddr::new(at), len),
+        );
+        let differ = x.iter().zip(&y).filter(|(p, q)| p != q).count();
         (differ > 0).then(|| format!("{what}: {differ} bytes differ"))
     })
     .collect()
@@ -763,7 +970,9 @@ impl Overworld {
     /// The overworld in Lunar Magic's layout (lunar-magic-install.md, "The
     /// overworld"). Kobo's code for the layout (`asm/lunar-magic/overworld.asm`)
     /// reads the tables only it reads through the same pointer places.
-    pub fn plan(&self) -> Result<Plan, OverworldError> {
+    /// `rom` is the ROM it is written into, with Kobo's code for the
+    /// layout installed, whose code holds some of the pointers.
+    pub fn plan(&self, rom: &Rom) -> Result<Plan, OverworldError> {
         let events = &self.events;
         if events.count() != LUNAR_MAGIC_EVENTS || events.crush.len() != LUNAR_MAGIC_CRUSHES {
             return Err(OverworldError::Decode(
@@ -822,9 +1031,6 @@ impl Overworld {
         // The events.
         plan.fixed
             .push((operands::EVENT_COUNT, vec![LUNAR_MAGIC_EVENTS as u8]));
-        // The load's layer 2 loop goes through as many (`CMP #$6F`).
-        plan.fixed
-            .push((LAYER2_EVENT_COUNT, vec![LUNAR_MAGIC_EVENTS as u8]));
         plan.fixed.push((SINGLE_REVEAL, vec![0x80]));
         let words = |values: &mut dyn Iterator<Item = u16>| -> Vec<u8> {
             values.flat_map(u16::to_le_bytes).collect()
@@ -890,6 +1096,38 @@ impl Overworld {
             words(&mut events.crush.iter().map(|c| c.vram)),
             vec![Pointer::new(operands::CRUSH_VRAM, Form::Long)],
         ));
+        // The further tiles: the ranges in bytes of the word tables.
+        let Some([ranges_at, data_at, places_at, kinds_at]) = extra_pointers(rom)? else {
+            return Err(OverworldError::Decode(
+                "events' further tiles, whose code is not installed",
+            ));
+        };
+        let (mut ranges, mut data, mut places, mut kinds) =
+            (vec![0u8, 0], Vec::new(), Vec::new(), Vec::new());
+        for list in &events.extras {
+            for extra in list {
+                let (kind, d, place) = match *extra {
+                    Extra::Layer1 { place, tile } => (0u8, tile, place),
+                    Extra::Layer2(t) => (1, t.data, t.place),
+                };
+                kinds.push(kind);
+                data.extend(d.to_le_bytes());
+                places.extend(place.to_le_bytes());
+            }
+            ranges.extend((data.len() as u16).to_le_bytes());
+        }
+        if data.len() > 0xFFFF {
+            return Err(OverworldError::Full("events' further tiles"));
+        }
+        for (what, bytes, at) in [
+            ("further tiles' ranges", ranges, ranges_at),
+            ("further tiles' data", data, data_at),
+            ("further tiles' places", places, places_at),
+            ("further tiles' kinds", kinds, kinds_at),
+        ] {
+            plan.blocks
+                .push((what, bytes, vec![Pointer::new(at, Form::Long)]));
+        }
         let (from, to): (Vec<u8>, Vec<u8>) = events.reveal.iter().copied().unzip();
         plan.fixed.push((REVEAL_FROM, from));
         plan.fixed.push((REVEAL_TO, to));
@@ -905,8 +1143,6 @@ impl Overworld {
     }
 }
 
-/// The load's layer 2 event loop's count, `CMP #$6F` in `CODE_04DC6A`.
-pub const LAYER2_EVENT_COUNT: SnesAddr = SnesAddr::new(0x04_DCAA);
 /// The `BNE` of `CODE_04DA49` that writes a second tile for the last reveal
 /// entry; Lunar Magic's layout has a `BRA` (`$80`), every entry one tile.
 pub const SINGLE_REVEAL: SnesAddr = SnesAddr::new(0x04_DA98);
@@ -959,6 +1195,7 @@ pub fn layer2_index(map: u8, x: u8, y: u8) -> usize {
 pub struct Event {
     pub layer1: (u16, u16),
     pub blocks: Vec<EventBlock>,
+    pub extras: Vec<ExtraTile>,
 }
 
 /// What a project changes of the clean ROM's overworld: rows of each map's
@@ -995,6 +1232,7 @@ impl Overworld {
             events.layer1.push((0, 0));
             events.ranges.push(last);
         }
+        events.extras.resize(LUNAR_MAGIC_EVENTS, Vec::new());
         self.layout = Layout::LunarMagic;
         self
     }
@@ -1005,6 +1243,7 @@ impl Overworld {
             .map(|n| Event {
                 layer1: self.events.layer1[n],
                 blocks: self.events.blocks(n),
+                extras: self.events.extra_tiles(n),
             })
             .collect()
     }
@@ -1094,9 +1333,11 @@ impl Overworld {
         let crush = changes.crush.clone().unwrap_or(self.events.crush.clone());
         let reveal = changes.reveal.clone().unwrap_or(self.events.reveal.clone());
         let blocks: Vec<Vec<EventBlock>> = events.iter().map(|e| e.blocks.clone()).collect();
+        let extras: Vec<Vec<ExtraTile>> = events.iter().map(|e| e.extras.clone()).collect();
         self.events = Events::from_blocks(
             events.iter().map(|e| e.layer1).collect(),
             &blocks,
+            &extras,
             crush,
             reveal,
         )?;

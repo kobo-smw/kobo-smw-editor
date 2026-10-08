@@ -5,6 +5,9 @@
 /// the main game loop the reset code ends in.
 pub const RESET_VECTOR: u32 = 0x00_FFFC;
 pub const GAME_LOOP: u32 = 0x00_806B;
+/// `CODE_04E9EC`: the overworld event process's last state, which makes
+/// the event's further tiles (`CODE_04E9F1`) and marks it passed.
+pub const END_EVENT: u32 = 0x04_E9EC;
 /// `CODE_05D796`: resolves the level number and header pointers.
 pub const LOAD_HEADER_POINTERS: u32 = 0x05_D796;
 /// `CODE_05801E`: clears the buffers and runs `LoadLevel`.
