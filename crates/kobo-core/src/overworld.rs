@@ -48,6 +48,9 @@ pub const OPENED: usize = 8;
 /// submaps, a byte each, then two words each of their walking animation,
 /// their position in pixels, and that position in tiles.
 pub const START_PLAYERS: SnesAddr = SnesAddr::new(0x00_9EF0);
+/// Each translevel's event (`DATA_05D608`), which a level passed makes (the
+/// next one for its secret exit); both layouts keep it here.
+pub const LEVEL_EVENTS: SnesAddr = SnesAddr::new(0x05_D608);
 
 /// The game's instructions whose operands lead to tables, in both layouts.
 mod operands {
@@ -411,6 +414,8 @@ pub struct Overworld {
     pub start: [Start; 2],
     /// The level tiles a new game opens, as translevel and directions.
     pub opened: Vec<(u8, u8)>,
+    /// Each translevel's event.
+    pub level_events: Vec<u8>,
 }
 
 fn read_word_ptr(rom: &Rom, low: SnesAddr, bank: SnesAddr) -> Result<SnesAddr, RomError> {
@@ -544,6 +549,7 @@ impl Overworld {
                 rom.read_u8(START_OPENED.add(2 * i + 1))?,
             ));
         }
+        let level_events = rom.read(LEVEL_EVENTS, NAMES)?.to_vec();
         Ok(Self {
             layout,
             layer1,
@@ -554,6 +560,7 @@ impl Overworld {
             events,
             start,
             opened,
+            level_events,
         })
     }
 }
@@ -1188,6 +1195,12 @@ impl Overworld {
                 "level tiles a new game opens, of which there are 8",
             ));
         }
+        if self.level_events.len() != NAMES {
+            return Err(OverworldError::Decode(
+                "level events, of which there are $60",
+            ));
+        }
+        plan.fixed.push((LEVEL_EVENTS, self.level_events.clone()));
         plan.fixed.push((
             START_OPENED,
             self.opened.iter().flat_map(|&(t, d)| [t, d]).collect(),
@@ -1292,6 +1305,8 @@ pub struct Changes {
     pub reveal: Option<Vec<(u8, u8)>>,
     pub start: Option<[Start; 2]>,
     pub opened: Option<Vec<(u8, u8)>>,
+    /// By translevel: its event.
+    pub level_events: std::collections::BTreeMap<u8, u8>,
 }
 
 impl Changes {
@@ -1384,6 +1399,16 @@ impl Overworld {
         if self.opened != clean.opened {
             changes.opened = Some(self.opened.clone());
         }
+        for (t, (&ours, &theirs)) in self
+            .level_events
+            .iter()
+            .zip(&clean.level_events)
+            .enumerate()
+        {
+            if ours != theirs {
+                changes.level_events.insert(t as u8, ours);
+            }
+        }
         changes
     }
 
@@ -1422,6 +1447,11 @@ impl Overworld {
         }
         if let Some(opened) = &changes.opened {
             self.opened = opened.clone();
+        }
+        for (&t, &event) in &changes.level_events {
+            if let Some(slot) = self.level_events.get_mut(usize::from(t)) {
+                *slot = event;
+            }
         }
         let blocks: Vec<Vec<EventBlock>> = events.iter().map(|e| e.blocks.clone()).collect();
         let extras: Vec<Vec<ExtraTile>> = events.iter().map(|e| e.extras.clone()).collect();

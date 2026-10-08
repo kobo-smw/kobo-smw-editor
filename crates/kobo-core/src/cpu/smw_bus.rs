@@ -41,6 +41,7 @@ struct DmaChannel {
 /// ROM, the game's RAM, VRAM, CGRAM, and enough register state to follow
 /// uploads. The game can write video memory but never reads it back here,
 /// so a routine's outcome depends on `ram` alone.
+#[derive(Clone)]
 pub struct SmwBus<'a> {
     pub(crate) operation: Option<crate::operation::Operation>,
     pub rom: &'a Rom,

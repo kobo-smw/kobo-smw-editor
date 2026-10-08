@@ -110,6 +110,7 @@ pub(super) enum Interrupt {
 }
 
 /// A CPU on a bus, loading or running one level.
+#[derive(Clone)]
 pub(super) struct Machine<'r> {
     pub cpu: Cpu,
     pub bus: SmwBus<'r>,

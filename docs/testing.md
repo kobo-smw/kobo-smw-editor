@@ -721,10 +721,16 @@ goes to the overworld, not the intro level) to the first frame of game mode `$0E
 `load_overworld_passed` does the same with events held passed (`SmwBus::pinned` keeps
 `$1F02` on, since a new game clears it and hacks' file selects copy it from other
 places), and `end_event` then runs an event's last step in play (`CODE_04E9EC`).
+`beat_level` (and `beat_levels`, from one load) plays a level beaten: the player put on
+its tile with its exit, its event (`DATA_05D608`) to make, and the game back to the
+overworld (game mode `$0B`) for a number of frames, giving what is left and the
+overworld's and the event process's steps frame by frame.
 
 - The vanilla overworld reads (`overworld::Overworld::read`) as its load leaves it, and
   Kobo's build of it (no changes, in Lunar Magic's layout) loads the same with every
-  event passed and ends each event with further tiles the same.
+  event passed, ends each event with further tiles the same, plays every level's
+  events, by either exit, step for step to the same RAM and VRAM, and enters each
+  translevel's level by the layout's rule.
 - Every corpus hack's overworld reads as its load leaves it, and as changes against the
   clean ROM's gives itself back; built by Kobo, it reads back the same, loads as read,
   and with every event passed loads as the hack itself does. Locked hacks, older Lunar

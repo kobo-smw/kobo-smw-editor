@@ -73,6 +73,110 @@ pub fn end_event(
     Ok(loaded(&machine, frames))
 }
 
+/// A level beaten in play: on the overworld [`load_overworld_passed`]
+/// loads, the player is put on the level tile at `place` (submap, x and y
+/// in 16x16 tiles) as though they had left its level by `exit` (1 the
+/// normal exit, 2 the secret one: `OWLevelExitMode`), and the game goes
+/// back to the overworld (game mode `$0B`) and runs `frames` frames of
+/// it, in which it plays the exit's event. What it leaves, and the
+/// overworld's process and its event process (`OverworldProcess`,
+/// `OverworldEventProcess`) of each frame.
+pub fn beat_level(
+    rom: &Rom,
+    passed: &[u8; EVENT_BYTES],
+    place: (u8, u8, u8),
+    exit: u8,
+    frames: u32,
+) -> Result<Beaten, ExpandError> {
+    Ok(beat_levels(rom, passed, &[(place, exit)], frames)?.remove(0))
+}
+
+/// What a level beaten leaves, and the overworld's and its event
+/// process's steps, frame by frame.
+pub type Beaten = (LoadedOverworld, Vec<(u8, u8)>);
+
+/// [`beat_level`] for each place and exit, from one load.
+pub fn beat_levels(
+    rom: &Rom,
+    passed: &[u8; EVENT_BYTES],
+    beaten: &[((u8, u8, u8), u8)],
+    frames: u32,
+) -> Result<Vec<Beaten>, ExpandError> {
+    let (mut loaded, loaded_at) = load(rom, passed)?;
+    loaded.bus.pinned.clear();
+    beaten
+        .iter()
+        .map(|&(place, exit)| {
+            let mut machine = loaded.clone();
+            beat(&mut machine, rom, place, exit, frames)
+                .map(|steps| (self::loaded(&machine, loaded_at + frames), steps))
+        })
+        .collect()
+}
+
+fn beat(
+    machine: &mut Machine,
+    rom: &Rom,
+    place: (u8, u8, u8),
+    exit: u8,
+    frames: u32,
+) -> Result<Vec<(u8, u8)>, ExpandError> {
+    let (submap, x, y) = place;
+    let ram = &mut machine.bus.ram;
+    let at = |a: u32| RamAddr::new(0x7E_0000 | a);
+    ram.set_u8(at(0x0DD6), 0);
+    ram.set_u8(at(0x1F11), submap);
+    for (word, value) in [
+        (0x1F17, u16::from(x) * 16),
+        (0x1F19, u16::from(y) * 16),
+        (0x1F1F, u16::from(x)),
+        (0x1F21, u16::from(y)),
+    ] {
+        ram.set_u8(at(word), value as u8);
+        ram.set_u8(at(word + 1), (value >> 8) as u8);
+    }
+    ram.set_u8(at(0x0DD5), exit);
+    // What the level and its goal leave: the level passed (`MidwayFlag`),
+    // the event to make (`CreditsScreenNumber`), and which, the level's
+    // (`OverworldEvent`, from `DATA_05D608` by translevel, as the level
+    // load takes it; the secret exit's is the next).
+    ram.set_u8(at(0x13CE), 1);
+    ram.set_u8(at(0x1DE9), 1);
+    let index = u32::from(submap != 0) * 0x400
+        + u32::from(y >> 4) * 0x200
+        + u32::from(x >> 4) * 0x100
+        + u32::from(y & 15) * 16
+        + u32::from(x & 15);
+    let translevel = ram.u8(RamAddr::new(0x7E_D000 + index));
+    ram.set_u8(at(0x13BF), translevel);
+    let event = rom
+        .read_u8(LEVEL_EVENTS.add(u32::from(translevel)))
+        .map_err(|_| ExpandError::Overworld {
+            mode: 0x0E,
+            frames: 0,
+        })?;
+    let ram = &mut machine.bus.ram;
+    ram.set_u8(at(0x1DEA), event);
+    ram.set_u8(ram::GAME_MODE, 0x0B);
+    let mut steps = Vec::with_capacity(frames as usize);
+    for _ in 0..frames {
+        run_game_mode(machine, 0)?;
+        machine.bus.pad = 0;
+        machine.bus.ram.set_u8(ram::LAG_FLAG, 0);
+        vertical_blank(machine, 0)?;
+        let ram = &machine.bus.ram;
+        steps.push((ram.u8(OVERWORLD_PROCESS), ram.u8(EVENT_PROCESS)));
+    }
+    Ok(steps)
+}
+
+/// Each translevel's event (`DATA_05D608`), which the level load gives the
+/// overworld.
+const LEVEL_EVENTS: crate::addr::SnesAddr = crate::addr::SnesAddr::new(0x05_D608);
+
+/// The overworld's state (`OverworldProcess`).
+const OVERWORLD_PROCESS: RamAddr = RamAddr::new(0x7E_13D9);
+
 /// The event an event process is making (`OverworldEvent`), and the
 /// process's state (`OverworldEventProcess`).
 const OVERWORLD_EVENT: RamAddr = RamAddr::new(0x7E_1DEA);

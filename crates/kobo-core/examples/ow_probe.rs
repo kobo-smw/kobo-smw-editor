@@ -15,8 +15,11 @@
 //! overworld against the hack (`passed` with every event passed), `write`
 //! that build to a file, `pair` and `each` two ROMs with every event
 //! passed or each alone (`SHOW=1` lists the bytes, `EVENT=n` takes one),
-//! and `end` and `ends` each event's end in play (`expand::end_event`):
-//! two ROMs', or what it changes in one.
+//! `end` and `ends` each event's end in play (`expand::end_event`):
+//! two ROMs', or what it changes in one, and `beat` and `beats` levels
+//! beaten (`expand::beat_level`): one's steps, or every level of two ROMs.
+//! `enter` and `enter2` give the level each translevel enters, `name` the
+//! level name's stripe image.
 
 use kobo_core::compress::lz2;
 use kobo_core::{Rom, rats};
@@ -471,6 +474,66 @@ fn main() {
                     }
                 }
                 println!("{path}:{line}");
+            }
+        }
+        Some("beat") if args.len() >= 5 => {
+            // `beat rom.smc submap x y [exit] [frames]`: the overworld
+            // process frame by frame after the level tile there is beaten.
+            let rom = Rom::load(&args[1]).unwrap();
+            let n = |i: usize, d: u32| {
+                args.get(i)
+                    .map(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).unwrap())
+                    .unwrap_or(d)
+            };
+            let place = (n(2, 0) as u8, n(3, 0) as u8, n(4, 0) as u8);
+            let (loaded, processes) =
+                kobo_core::expand::beat_level(&rom, &[0; 0x0F], place, n(5, 1) as u8, n(6, 0x200))
+                    .unwrap();
+            let mut runs: Vec<((u8, u8), usize)> = Vec::new();
+            for p in processes {
+                match runs.last_mut() {
+                    Some((q, c)) if *q == p => *c += 1,
+                    _ => runs.push((p, 1)),
+                }
+            }
+            println!("{runs:x?}");
+            let _ = loaded;
+        }
+        Some("beats") if args.len() >= 3 => {
+            // `beats a.smc b.smc [exit]`: every level tile of a's beaten,
+            // in both ROMs: what differs after its event.
+            let a = Rom::load(&args[1]).unwrap();
+            let b = Rom::load(&args[2]).unwrap();
+            let exit = args.get(3).map(|e| e.parse().unwrap()).unwrap_or(1u8);
+            let read = kobo_core::overworld::Overworld::read(&a).unwrap();
+            let mut seen = std::collections::BTreeSet::new();
+            let mut beaten = Vec::new();
+            let mut levels = Vec::new();
+            for (i, &t) in read.translevels.iter().enumerate() {
+                if t != 0 && seen.insert(t) {
+                    beaten.push((kobo_core::overworld::layer1_place(i), exit));
+                    levels.push(t);
+                }
+            }
+            let none = [0; 0x0F];
+            let x = kobo_core::expand::beat_levels(&a, &none, &beaten, 0x200).unwrap();
+            let y = kobo_core::expand::beat_levels(&b, &none, &beaten, 0x200).unwrap();
+            for (((place, _), t), ((x1, xs), (y1, ys))) in
+                beaten.iter().zip(&levels).zip(x.iter().zip(&y))
+            {
+                let mut d = kobo_core::overworld::load_differences(x1, y1);
+                let vram = (0..x1.vram.len())
+                    .filter(|&i| x1.vram[i] != y1.vram[i])
+                    .count();
+                if vram > 0 {
+                    d.push(format!("VRAM: {vram} bytes differ"));
+                }
+                if xs != ys {
+                    d.push("the steps differ".into());
+                }
+                if !d.is_empty() {
+                    println!("{t:02X} at {place:?}: {}", d.join(", "));
+                }
             }
         }
         Some("pair") if args.len() == 3 => {

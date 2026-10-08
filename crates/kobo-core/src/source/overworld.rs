@@ -16,6 +16,9 @@
 //! [names]                        # 19 tiles at most; \xNN for a tile that is not a letter
 //! 0x13 = "DONUT PLAINS 2"
 //!
+//! [level_events]                 # a translevel's event, which passing it makes
+//! 0x13 = 0x0A
+//!
 //! [crush]                        # events, places, VRAM: all 24 when any changes
 //! list = [[0x06, 0x0419, 0x2052], ...]
 //!
@@ -190,6 +193,13 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
         for (&t, name) in &changes.names {
             let quoted = toml_edit::Value::from(name_text(name)).to_string();
             text += &format!("{} = {}\n", hex(u32::from(t), 2), quoted.trim());
+        }
+        sections.push(text);
+    }
+    if !changes.level_events.is_empty() {
+        let mut text = String::from("[level_events]\n");
+        for (&t, &e) in &changes.level_events {
+            text += &format!("{} = {}\n", hex(u32::from(t), 2), hex(u32::from(e), 2));
         }
         sections.push(text);
     }
@@ -415,6 +425,25 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                     changes.names.insert(t, parse_name(&at, text)?);
                 }
             }
+            "level_events" => {
+                let table = item
+                    .as_table()
+                    .ok_or_else(|| invalid(key, "must be a table of events"))?;
+                for (t, value) in table.iter() {
+                    let at = format!("level_events.{t}");
+                    let t = t
+                        .strip_prefix("0x")
+                        .and_then(|h| u8::from_str_radix(h, 16).ok())
+                        .filter(|&t| t < 0x60)
+                        .ok_or_else(|| invalid(&at, "a translevel is 0x00 to 0x5F"))?;
+                    let event = value
+                        .as_value()
+                        .map(|v| value_int(&at, v, 0xFF))
+                        .transpose()?
+                        .ok_or_else(|| invalid(&at, "must be an event"))?;
+                    changes.level_events.insert(t, event as u8);
+                }
+            }
             "crush" | "reveal" => {
                 let list = item
                     .get("list")
@@ -589,6 +618,7 @@ mod tests {
             },
         ]);
         changes.opened = Some(vec![(0x28, 0x03); 8]);
+        changes.level_events.insert(0x13, 0x0A);
         changes.events.insert(
             5,
             Event {

@@ -79,6 +79,53 @@ fn the_vanilla_overworld_built_plays_as_the_games_own() {
     assert_eq!(ended, 18);
 }
 
+/// Every level of the clean ROM's overworld beaten, by its normal exit and
+/// its secret one, in the game and in Kobo's build of its overworld: the
+/// same event plays out, frame by frame, and leaves the same overworld and
+/// video memory.
+#[test]
+fn the_vanilla_overworld_built_plays_its_levels_events_as_the_games_own() {
+    use kobo_core::build::{self, Project};
+
+    if common::asar().is_none() {
+        return;
+    }
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let project = Project {
+        root: std::path::PathBuf::from("."),
+        overworld: Some(overworld::Changes::default()),
+        ..Default::default()
+    };
+    let built = build::build(&clean, &project).unwrap();
+    let read = Overworld::read(&clean).unwrap();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut beaten = Vec::new();
+    for (i, &t) in read.translevels.iter().enumerate() {
+        if t != 0 && seen.insert(t) {
+            let place = overworld::layer1_place(i);
+            beaten.extend([(place, 1), (place, 2)]);
+        }
+    }
+    let none = [0; 0x0F];
+    let theirs = expand::beat_levels(&clean, &none, &beaten, 0x200).unwrap();
+    let ours = expand::beat_levels(&built, &none, &beaten, 0x200).unwrap();
+    for ((place, exit), ((theirs, their_steps), (ours, our_steps))) in
+        beaten.iter().zip(theirs.iter().zip(&ours))
+    {
+        let at = format!("{place:?}, exit {exit}");
+        assert_eq!(their_steps, our_steps, "{at}");
+        assert_eq!(
+            overworld::load_differences(theirs, ours),
+            Vec::<String>::new(),
+            "{at}"
+        );
+        assert!(theirs.vram == ours.vram, "{at}: VRAM differs");
+    }
+    assert_eq!(seen.len(), 92);
+}
+
 /// The level a translevel enters, in Kobo's build of the clean ROM's
 /// overworld: in Lunar Magic's layout by the translevel (`$1xx` from `$25`
 /// on), whichever map it is on, as Lunar Magic-saved ROMs' loads take it;
@@ -167,7 +214,8 @@ fn lunar_magic_overworlds_read_as_their_loads_leave_them() {
                         && back.events.crush == ours.events.crush
                         && back.events.reveal == ours.events.reveal
                         && back.start == ours.start
-                        && back.opened == ours.opened;
+                        && back.opened == ours.opened
+                        && back.level_events == ours.level_events;
                     if !same {
                         failures.fail(
                             &rom,
@@ -243,7 +291,8 @@ fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
             && ours.events.crush == theirs.events.crush
             && ours.events.reveal == theirs.events.reveal
             && ours.start == theirs.start
-            && ours.opened == theirs.opened;
+            && ours.opened == theirs.opened
+            && ours.level_events == theirs.level_events;
         if !same {
             failures.fail(&rom, None, "the build reads back otherwise");
         }

@@ -2017,7 +2017,15 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
 - Where a new game starts (the players' submaps and positions, `InitPlayerOverworldData`
   at `$009EF0`, and the 8 level tiles it opens, `InitLevelTileMovementData` at
   `$009EE0`) stays in the game's tables, which Lunar Magic's overworld editor changes in
-  place; most corpus hacks start elsewhere than the game.
+  place; most corpus hacks start elsewhere than the game. So does each translevel's
+  event (`DATA_05D608`, read by the level load's `LDA $D608,Y` at `$05D9CC`, which 43
+  corpus hacks keep).
+- Beating each level of the vanilla overworld, by either exit (`expand::beat_level`),
+  plays the same steps to the same RAM and VRAM in the game, its transfer, and Kobo's
+  build (2026-10-09). In hacks, events play faster where Lunar Magic's Extra Options
+  turn off the event path fade effect and set the path reveal speed (QW2, 2 frames a
+  step, not 5); those options are bytes of code at fixed places ("Each of these options
+  make a very minor ASM modification to the ROM", its help says), not found yet.
 - A transfer also changes the byte at `$0FF092` (0 in the vanilla ROM, `$AC` after the
   vanilla overworld's transfer, `$A7` after one with that list entry changed), outside
   any RATS block; not looked into yet.
