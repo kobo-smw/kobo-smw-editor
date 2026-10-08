@@ -403,16 +403,19 @@ impl Project {
             })
     }
 
-    /// Whether a level's graphics list has Lunar Magic's layer 3 settings
-    /// ([`GraphicsList::has_layer3`]). A build then installs Kobo's code
-    /// for them (`layer3.asm`).
+    /// Whether a level's graphics list, or an overworld submap's, has Lunar
+    /// Magic's layer 3 settings ([`GraphicsList::has_layer3`]). A build then
+    /// installs Kobo's code for them (`layer3.asm`).
     pub fn lunar_magic_layer3(&self) -> bool {
         self.levels.iter().any(|(_, level)| {
             level
                 .graphics
                 .as_ref()
                 .is_some_and(GraphicsList::has_layer3)
-        })
+        }) || self
+            .overworld
+            .as_ref()
+            .is_some_and(|o| o.graphics.values().any(GraphicsList::has_layer3))
     }
 
     /// How many secondary entrances the build's tables hold: the game's

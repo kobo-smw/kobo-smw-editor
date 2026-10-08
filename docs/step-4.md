@@ -91,9 +91,9 @@ from the editor where the user is working.
   the level code's engine shared (`exanimation-engine.asm`); a list's AN2 file is the
   overworld's animated tiles' source. Kaizo Kindergarten's import animates as the hack
   on every submap, and events as triggers play as Lunar Magic's; Lunar Magic's FG1-2
-  merge followed (riff2's import builds to its overworld but for layer 3). Still
-  left: the first frames after a submap change, the overworld's layer 3, and the
-  other Extra Options.
+  merge followed, and submaps' layer 3 tilemaps without the game's border: riff2's
+  import builds to its overworld but for its own name code. Still left: the first
+  frames after a submap change, and the other Extra Options.
 - The events' further tiles (2026-10-08): the game's list of 44 and Lunar Magic's
   tables of them, read (`Events::extras`), carried in the overworld file (an event's
   `extras`), and Kobo's code for the layout's two hooks of them (`$04E9F7`, `$04DCA5`),

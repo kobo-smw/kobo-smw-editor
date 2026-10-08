@@ -2139,8 +2139,13 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   (`7F`: the game's), an ExGFX file as it is and a file the game keeps as 3bpp in the
   game's layout, as Kaizo Kindergarten's `$7EAD00` shows (submaps 1 and 2 name ExGFX
   `A1`, and turn the game's animated tiles off, which read it as 3bpp). Kobo's
-  `prepare_file` does the same in game mode `$0C`. What a submap change reloads is not
-  known yet (below).
+  `prepare_file` does the same in game mode `$0C`. A list's layer 3 bits work as a
+  level's (the tilemap from LT3, the files from LG1-LG4), and with a tilemap (T) the
+  load goes without the game's border (its stripe image `$06`, `LDA #$06 : STA $12`
+  at `$00A153`): riff2's layer 3 is the list's tilemap whole, and Kobo's build of it
+  is too once the border is left out (2026-10-09). Kobo's hook at `$00A153` gives
+  stripe image 0 then (`graphics.asm`), and a build installs `layer3.asm` for a
+  submap's list as for a level's.
 - The overworld's palettes: a `JSL` at `$00AD32` (`CODE_00AD25`'s `STY $00`, where the
   game picks the overworld's colours by the submap and Special World) leads to code with
   the pointer to a block of 14 palettes of 256 colours (`$1C00` bytes: each map's, 0 the

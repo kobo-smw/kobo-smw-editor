@@ -79,6 +79,13 @@ org $0583B8
 org $00A140
     JSL submap_list
 
+; The overworld's load, after the submap's graphics and palette: LDA #$06 :
+; STA $12, the border's stripe image, which a submap whose list gives layer
+; 3 a tilemap (T) goes without, as a Lunar Magic-saved ROM's overworld does
+; (riff2's: its layer 3 is the list's tilemap whole).
+org $00A153
+    JSL border_stripe
+
 ; UploadSpriteGFX, entered with JSR; Kobo's returns through its RTS at $00AA6A.
 org $00A9DA
     JML load_graphics
@@ -199,6 +206,35 @@ submap_list:
     PLX
     PLP
     SEP #$20
+    RTL
+
+; The overworld's border stripe image, or none (stripe image 0, the empty
+; buffer) for a submap whose list has T. A 8-bit; $00-$02 kept.
+border_stripe:
+    PHP
+    REP #$30
+    PEI ($00)
+    PEI ($01)
+    LDX #$0006
+    LDA.l !List+1
+    CMP #$FFFF
+    BEQ +
+    LDA.l $7FC006               ; the submap's list
+    STA $00
+    LDA.l $7FC007
+    STA $01
+    LDA [$00]
+    AND #$2000                  ; T
+    BEQ +
+    LDX #$0000
++   PLA
+    STA $01
+    PLA
+    STA $00
+    SEP #$20
+    TXA
+    STA $12
+    PLP
     RTL
 
 ; ---------------------------------------------------------------------------
