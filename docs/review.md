@@ -14,10 +14,4 @@ settle it.
 
 ## Open
 
-- **The editor draws without vsync on Linux** (2026-10-08). The desktop called the
-  editor not responding when Play's emulator covered it: with vsync, a frame drawn
-  while the window is covered waits on Wayland until it is shown again
-  (docs/step-3.md, Toolkit). The editor now paces its own frames at 60 a second on
-  Linux; Windows and macOS keep vsync. The diagnosis is from Mesa's and eframe's
-  code, not a reproduction on a Wayland desktop. Settled by the maintainer no longer
-  seeing the dialog on Play, and by no tearing or busy CPU while the canvas scrolls.
+None at present.

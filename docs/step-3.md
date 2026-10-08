@@ -32,7 +32,8 @@ file by hand; when they do, the editor follows.
   Wayland, so eframe draws anyway. A frame drawn while the emulator Play opens covers
   the editor (the pointer leaving is enough) then held the window's thread until the
   editor was uncovered, and the desktop called it not responding (2026-10-08). A
-  compositor shows each frame whole, so nothing tears without vsync there.
+  compositor shows each frame whole, so nothing tears without vsync there. The
+  maintainer confirmed the fix on their desktop (2026-10-08).
 - `rfd` for file dialogs, through the XDG portal on Linux (no GTK to build against), and
   `notify` for watching the project's files. Both are MPL-compatible (MIT, CC0).
 - `egui_kittest` tests the interface without a display, through AccessKit.
