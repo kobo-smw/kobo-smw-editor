@@ -23,6 +23,11 @@ settle it.
   2 did for levels, from `-TransferOverworld` byte diffs and the memory effects of
   playing Lunar Magic-saved overworlds; importing a hack's overworld needs the same
   reading. That is a research phase the size of step 2's, so it was not started
-  unattended. Recorded in step-4.md (item 6). Settled by choosing to start it, or to
+  unattended. For scale: `-TransferOverworld` of Kaizo Kindergarten's overworld into the
+  vanilla ROM after one Lunar Magic level save changes 151 regions of the vanilla area
+  (63 in bank `$04`, the overworld's code; 39 in bank `$0C`, layer 1's data; the rest
+  in banks `$00`, `$03`, `$05`, `$0D`, and `$0F`, some of them graphics pieces Kobo already
+  has) and adds 31 RATS blocks (`tools/lunar-magic/romdiff.py`, addresses only,
+  2026-10-08). Recorded in step-4.md (item 6). Settled by choosing to start it, or to
   leave the overworld to Lunar Magic for now (build.md, "What is left to Lunar Magic")
   and go on with other work.
