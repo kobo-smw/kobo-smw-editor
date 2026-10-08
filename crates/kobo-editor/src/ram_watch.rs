@@ -13,10 +13,12 @@ use kobo_core::ram::RamAddr;
 use crate::app::App;
 use crate::theme;
 
-#[derive(Default)]
 pub struct WatchState {
     pub open: bool,
     pub watches: Vec<Watch>,
+    /// Whether the player is shown on the canvas: the script reports the
+    /// game mode, the level, and the player's place after the watches.
+    pub show_player: bool,
     /// The watch being added: its name, address, and size.
     name: String,
     addr: u32,
@@ -28,19 +30,69 @@ pub struct WatchState {
     read_at: Option<Instant>,
 }
 
+impl Default for WatchState {
+    fn default() -> Self {
+        Self {
+            open: false,
+            watches: Vec::new(),
+            show_player: true,
+            name: String::new(),
+            addr: 0,
+            size: 0,
+            playing: None,
+            report: None,
+            read_at: None,
+        }
+    }
+}
+
+/// What the script reports after the watches for the player's marker.
+fn player_watches() -> [Watch; 4] {
+    use kobo_core::ram::{GAME_MODE, LEVEL_NUMBER, PLAYER_X, PLAYER_Y};
+    let watch = |name: &str, addr, size| Watch {
+        name: name.into(),
+        addr,
+        size,
+        pause_on_write: false,
+    };
+    [
+        watch("game mode", GAME_MODE, 1),
+        watch("level", LEVEL_NUMBER, 2),
+        watch("player x", PLAYER_X, 2),
+        watch("player y", PLAYER_Y, 2),
+    ]
+}
+
 impl WatchState {
+    /// The level the build is playing and the player's place in it, from
+    /// the last report, while in a level (game mode `$14`).
+    pub fn player(&self) -> Option<(u16, u16, u16)> {
+        if !self.show_player {
+            return None;
+        }
+        let values = &self.report.as_ref()?.values;
+        let [mode, level, x, y] = values.get(self.watches.len()..self.watches.len() + 4)? else {
+            return None;
+        };
+        (*mode == 0x14).then_some((*level & 0x1FF, *x, *y))
+    }
+
     /// Before Mesen opens the ROM at `rom`: the script for the watches,
     /// beside it; `None` without watches. The report of an earlier play goes.
     pub fn script_for(&mut self, rom: &Path) -> Result<Option<PathBuf>, String> {
         let _ = std::fs::remove_file(emulator::report_path(rom));
         self.report = None;
         self.playing = Some(rom.to_path_buf());
-        if self.watches.is_empty() {
+        let mut watches = self.watches.clone();
+        if self.show_player {
+            watches.extend(player_watches());
+        }
+        if watches.is_empty() {
             return Ok(None);
         }
         let built = kobo_core::Rom::load(rom).map_err(|e| e.to_string())?;
         let map = kobo_core::ram::RamMap::of(&built);
-        let script = emulator::mesen_script(&self.watches, map, &emulator::report_path(rom));
+        let script = emulator::mesen_script(&watches, map, &emulator::report_path(rom));
         let path = emulator::script_path(rom);
         std::fs::write(&path, script).map_err(|e| e.to_string())?;
         Ok(Some(path))
@@ -92,6 +144,8 @@ fn show(state: &mut WatchState, ui: &mut egui::Ui) {
         .small()
         .color(theme::MUTED),
     );
+    ui.checkbox(&mut state.show_player, "Show the player on the canvas")
+        .on_hover_text("While the build plays the level open, a box where the player is (applies from the next play)");
     let values = state.report.as_ref().map(|r| r.values.clone());
     let mut remove = None;
     Grid::new("watch-list")

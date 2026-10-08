@@ -296,7 +296,10 @@ script beside the ROM (`kobo_core::emulator`), which after every frame writes th
 values to a report the window shows a few times a second, the frame with them. A
 watch set to *pause* stops the game, as a breakpoint does, when the game writes the
 variable through any of its addresses, and the window says what was written at which
-frame. An SA-1 build's variables are read where SA-1 Pack moves them. Mesen runs the
+frame. With *Show the player on the canvas* (on by default), the script also reports
+the game mode, the level (`$010B`), and the player's place, and while the build plays
+the level that is open, a NOW box shows on the canvas where the player is. An SA-1
+build's variables are read where SA-1 Pack moves them. Mesen runs the
 script only with its script window's "Allow access to I/O and OS functions" on, and
 other emulators get the ROM alone.
 

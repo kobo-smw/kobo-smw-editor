@@ -2495,4 +2495,16 @@ fn the_watch_window_writes_mesen_s_script_and_shows_its_report() {
     harness.run_steps(2);
     assert!(harness.query_by_label("01A8").is_some());
     assert!(harness.query_by_label("Frame 42.").is_some());
+    assert!(
+        text.contains("0x7E0094, 2 },\n  { 0x7E0096, 2 },"),
+        "the player's place: {text}"
+    );
+    // The player, in level 105 (game mode 14).
+    std::fs::write(report_path(&rom), "frame 43\n1A8 14 105 40 150\n").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    harness.run_steps(2);
+    assert_eq!(
+        harness.state().ram_watch.player(),
+        Some((0x105, 0x40, 0x150))
+    );
 }

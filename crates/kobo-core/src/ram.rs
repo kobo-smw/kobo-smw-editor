@@ -418,6 +418,9 @@ const fn ram(addr: u32) -> RamAddr {
 
 /// `$0100`: the game mode.
 pub const GAME_MODE: RamAddr = ram(0x7E_0100);
+/// `$010B`: the level loaded, which Lunar Magic's level number code (and
+/// Kobo's, `level.asm`) keeps.
+pub const LEVEL_NUMBER: RamAddr = ram(0x7E_010B);
 /// `$0101`-`$0108`: the GFX files currently in VRAM. `$FF` forces uploads.
 /// Where the game decompresses a GFX file to before uploading it.
 pub const GFX_BUFFER: RamAddr = ram(0x7E_AD00);

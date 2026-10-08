@@ -585,6 +585,11 @@ fn show_canvas(
     let mut play: Option<kobo_core::playtest::Start> = None;
     let mut edit_map16: Option<u16> = None;
     let app_powerup = app.play.settings.powerup;
+    // The player, as the emulator watched has them, in this level.
+    let player = app
+        .ram_watch
+        .player()
+        .filter(|&(level, _, _)| level == number);
     // A screen exit's label double-clicked: go where it leads.
     let mut follow: Option<kobo_core::level::objects::ScreenExit> = None;
     let mut clip: Option<(crate::clipboard::Action, Option<(u16, u16)>)> = None;
@@ -1001,6 +1006,9 @@ fn show_canvas(
             view,
             hovered_item,
         );
+        if let Some((_, x, y)) = player {
+            draw_player(&painter, canvas, &camera, x, y);
+        }
         for (rect, galley, lit) in pill_shapes {
             let fill = if lit {
                 theme::SELECTION
@@ -1964,6 +1972,29 @@ fn draw_play_start(
     let at = body.center_top() + Vec2::new(-galley.size().x / 2.0, -galley.size().y - 3.0);
     let r = Rect::from_min_size(at, galley.size()).expand2(Vec2::new(4.0, 1.0));
     painter.rect_filled(r, CornerRadius::same(3), theme::OK);
+    painter.galley(at, galley, theme::ON_SELECTION);
+}
+
+/// The player where the emulator watched has them: a box from their
+/// position to their feet, 32 pixels below.
+fn draw_player(painter: &egui::Painter, canvas: Rect, camera: &Camera, x: u16, y: u16) {
+    let body = camera.rect_to_screen(
+        canvas,
+        Rect::from_min_size(
+            Pos2::new(f32::from(x), f32::from(y)),
+            Vec2::new(TILE, TILE * 2.0),
+        ),
+    );
+    painter.rect_stroke(
+        body,
+        CornerRadius::same(2),
+        Stroke::new(2.0, theme::ACCENT),
+        egui::StrokeKind::Outside,
+    );
+    let galley = painter.layout_no_wrap("NOW".into(), FontId::monospace(10.5), theme::ON_SELECTION);
+    let at = body.center_top() + Vec2::new(-galley.size().x / 2.0, -galley.size().y - 3.0);
+    let r = Rect::from_min_size(at, galley.size()).expand2(Vec2::new(4.0, 1.0));
+    painter.rect_filled(r, CornerRadius::same(3), theme::ACCENT);
     painter.galley(at, galley, theme::ON_SELECTION);
 }
 
