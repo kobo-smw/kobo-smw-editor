@@ -86,9 +86,20 @@ pub struct Config {
     #[serde(default)]
     pub roms: Roms,
     #[serde(default)]
+    pub play: Play,
+    #[serde(default)]
     pub tools: Tools,
     #[serde(default)]
     pub tests: Tests,
+}
+
+/// How the editor plays a build.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Play {
+    /// The emulator to open a build with, a program taking the ROM's path
+    /// (`KOBO_EMULATOR`); without one, what the system opens a ROM with.
+    pub emulator: Option<PathBuf>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -239,6 +250,18 @@ pub fn set_vanilla_rom_in(file: &Path, path: &Path) -> Result<(), ConfigError> {
     fs::write(&file, doc.to_string()).map_err(|source| ConfigError::Io { path: file, source })
 }
 
+/// The variable that names the emulator a build is played in.
+pub const EMULATOR_ENV_VAR: &str = "KOBO_EMULATOR";
+
+/// The emulator to play builds in: `KOBO_EMULATOR`, then `play.emulator`;
+/// `None` for what the system opens a ROM with.
+pub fn emulator_path() -> Result<Option<PathBuf>, ConfigError> {
+    if let Some(p) = env::var_os(EMULATOR_ENV_VAR).filter(|p| !p.is_empty()) {
+        return Ok(Some(PathBuf::from(p)));
+    }
+    Ok(load()?.play.emulator)
+}
+
 /// Resolves the path to the vanilla SMW ROM.
 pub fn vanilla_rom_path() -> Result<PathBuf, ConfigError> {
     if let Some(p) = env::var_os(ROM_ENV_VAR).filter(|p| !p.is_empty()) {
@@ -308,6 +331,16 @@ pub fn asar_library_path() -> Result<PathBuf, ConfigError> {
 #[cfg(test)]
 mod set_tests {
     use super::*;
+
+    #[test]
+    fn an_emulator_is_read_from_the_play_table() {
+        let config: Config = toml::from_str("[play]\nemulator = \"/opt/mesen/Mesen\"\n").unwrap();
+        assert_eq!(
+            config.play.emulator,
+            Some(PathBuf::from("/opt/mesen/Mesen"))
+        );
+        assert!(toml::from_str::<Config>("[play]\nemulators = \"x\"\n").is_err());
+    }
 
     #[test]
     fn the_rom_is_recorded_and_the_rest_kept() {

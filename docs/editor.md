@@ -220,7 +220,8 @@ the system's editor for it.
 The Build window (Ctrl+B) builds the project as the editor has it, unsaved edits
 included, into `build.sfc` and, with the box ticked, `build.bps`. It shows each stage as
 it runs or comes from the stage cache. A failed build says why, and opens the level it was
-about. *Build and play* opens the ROM with what the system opens it with. Beside the ROM
+about. *Build and play* opens the ROM in the emulator the config file names
+(`[play] emulator`, or `KOBO_EMULATOR`), else with what the system opens it with. Beside the ROM
 it writes `build.sym`, the labels of Kobo's code (`kobo_` and its patch, as
 `kobo_graphics_load_graphics`) and of the project's patches, as a WLA-DX symbol file:
 bsnes-plus and Mesen 2 load it beside a ROM of the same name (Mesen 2's default), so their
@@ -230,7 +231,8 @@ Tool, AddmusicK) give no labels, and nothing of Lunar Magic's is named.
 **Play from here** (the canvas's menu, with the power-up to start with, or F5 where the
 mouse is; the command palette plays from the level's start) builds the project as the
 editor has it into a ROM of its own in the user's cache (`kobo/play`, one per project,
-so the project's folder stays clean and an emulator's saves stay with it) and opens it. While the canvas's
+so the project's folder stays clean and an emulator's saves stay with it) and opens it,
+in the configured emulator if there is one. While the canvas's
 menu is open, a PLAY marker shows where the player will start: standing where it was
 opened, or, opened on the ground or a wall, on top of it. The game goes from power-on
 straight to that tile, with no title screen (a moment of dark "Nintendo Presents", whose

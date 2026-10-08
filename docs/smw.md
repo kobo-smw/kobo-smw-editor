@@ -529,3 +529,34 @@ are SMWDisX's.
   pairs have no RAM mirror (each game mode writes the registers directly), so the bus
   captures `$2128`-`$212B` and `$212E`-`$212F`. `compose` applies a window only to a fixed
   screen, because window positions are screen positions.
+
+## The overworld
+
+Read from SMWDisX (`bank_04.asm`, `bank_05.asm`), for the overworld work of roadmap
+step 4; nothing of it is built yet.
+
+- Layer 1 (the level tiles, paths, and what the player walks on): `MVN $7E,$0C` copies
+  `$800` bytes of tile numbers from `OWL1TileData` in bank `$0C` to `Map16TilesLow`
+  (`$7EC800`), one byte a 16x16 tile, the main map and the submaps' area together. Each
+  number's four 8x8 tiles are 8 bytes of `OWL1CharData` (`$05D000`), which the load points
+  `Map16Pointers` at in steps of 8.
+- Translevels are not stored: `CODE_04D7F2` scans the layer 1 tiles in order and gives each
+  level tile (numbers `56` to `80`) the next translevel number, writing it to
+  `OWLayer1Translevel` (`$7ED000`) at the tile's place, and its directions from
+  `DATA_04D678` to `OWLayer2Directions`. So in the game's own format, moving or adding a
+  level tile renumbers every translevel after it, and with them the levels the overworld
+  enters and the save file's progress.
+- Events change layer 1 at places the game's tables fix per event (`DATA_04D85D`, tile
+  positions; `DATA_04D93D`, VRAM addresses; `DATA_04DA1D` and `DATA_04DA33`, the tiles
+  before and after), and layer 2 from `OWEventTileNum` (`$0C8000`) and `OWEventTileProp`
+  (`$0C8D00`).
+- Layer 2 (the overworld's picture) is two streams, `OWTileNumbers` (`$04A533`) and
+  `OWTilemap` (`$04C02B`), decoded by `CODE_04DABA` (a byte `n` below `$80` copies the next
+  `n + 1` bytes; with bit 7 set, the next byte `(n & $7F) + 1` times) into every other
+  byte of `OWLayer2Tilemap` (`$7F4000`, `$4000` bytes): the tile numbers, then their
+  properties.
+
+Lunar Magic rewrites all of this into a layout of its own on its first overworld save,
+with each level tile's translevel and the events' changes as data (its hook at `$04DCFA`
+for layer 1 tiles past page 0 is in lunar-magic-install.md). A Kobo build keeps the
+clean ROM's overworld (build.md, "What is left to Lunar Magic").

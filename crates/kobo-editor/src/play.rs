@@ -109,7 +109,7 @@ pub fn poll(app: &mut App) {
     let handle = app.play.running.take().expect("checked");
     match handle.join() {
         Ok(Ok((path, start))) => {
-            crate::start::reveal(app, &path);
+            crate::start::play_rom(app, &path);
             let from = match start.at {
                 Some((x, y)) => format!("({x}, {y})"),
                 None => "its start".to_string(),

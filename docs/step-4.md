@@ -47,12 +47,24 @@ from the editor where the user is working.
 6. **The overworld**: read, a source format, built in Lunar Magic's layout, and edited
    (layers 1 and 2, the level tiles and their translevels, paths, events, sprites). The
    level list then groups and names levels by the project's own overworld (editor.md,
-   "The level list by overworld level").
-7. **The emulator**: Play from here already opens one; debugging (Mesen 2,
-   bsnes-plus) through `kobo_core::clean_room`.
+   "The level list by overworld level"). Not started; waiting on review (review.md).
+   The game's own format numbers translevels by the order of the level tiles and fixes
+   its events' places (smw.md, "The overworld"), so editing it in place would renumber
+   levels with every level tile moved: a project's overworld has to be built in Lunar
+   Magic's layout, with Kobo's own code for each of its overworld hooks, found as step 2
+   found the level ones. Lunar Magic saves an overworld only from its window, but
+   `-TransferOverworld` copies one between ROMs on the command line, which lets byte
+   diffs of a corpus hack's overworld moved into a clean ROM show what that layout holds.
+7. **The emulator**: Play from here already opens one, the configured one if there is
+   one (`play.emulator`); builds give it the labels of Kobo's and the project's code
+   (`.sym`). Driving an emulator from the editor (breakpoints, watching RAM) stays to
+   do, through `kobo_core::clean_room`.
 
 ## Done
 
+- The emulator to play in (2026-10-08, item 7): `play.emulator` in the config file, or
+  `KOBO_EMULATOR`, opens Play's and Build and play's ROM in place of what the system
+  opens a ROM with.
 - Symbols for emulators' debuggers (2026-10-08, item 7): a build's labels of Kobo's and
   the project's code, kept through the stage cache, written beside the ROM as a WLA-DX
   `.sym` by `kobo build --sym`, the editor's builds, and play builds; Mesen 2 loads it

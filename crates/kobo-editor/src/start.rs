@@ -676,6 +676,23 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
+/// Opens a ROM in the configured emulator (`play.emulator`,
+/// `KOBO_EMULATOR`), or with what the system opens it with.
+pub(crate) fn play_rom(app: &mut App, path: &Path) {
+    if cfg!(test) {
+        return;
+    }
+    match kobo_core::config::emulator_path() {
+        Ok(Some(emulator)) => {
+            if let Err(e) = std::process::Command::new(&emulator).arg(path).spawn() {
+                app.say(format!("Could not start {}: {e}", emulator.display()));
+            }
+        }
+        Ok(None) => reveal(app, path),
+        Err(e) => app.say(e.to_string()),
+    }
+}
+
 /// Opens a file or folder with what the system opens it with.
 pub(crate) fn reveal(app: &mut App, path: &Path) {
     // The tests open nothing.

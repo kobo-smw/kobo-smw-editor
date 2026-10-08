@@ -205,7 +205,7 @@ pub fn poll(app: &mut App) {
         let path = built.path.clone();
         state.play = false;
         state.result = Some(result);
-        crate::start::reveal(app, &path);
+        crate::start::play_rom(app, &path);
         app.say(format!("Built and opened {}", path.display()));
         return;
     }
