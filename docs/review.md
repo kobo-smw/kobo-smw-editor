@@ -14,6 +14,17 @@ settle it.
 
 ## Open
 
+- **Whether step 4 is done (2026-10-09).** Every item of step-4.md's work order now has
+  a first version in the editor and the build: Map16, graphics, the shared palettes,
+  ExAnimation, layer 3 tilemaps, the overworld (read, built in Lunar Magic's layout,
+  imported, and edited, with its graphics, palettes, ExAnimation, border, and lists),
+  and the emulator (Play, symbols, and watching RAM in Mesen with pauses on writes and
+  the player on the canvas). Left, as step-4.md's entries say: the first frames after a
+  submap change, Lunar Magic's other overworld Extra Options, the title screen, older
+  Lunar Magic versions' overworld formats, and breakpoints on code rather than RAM.
+  Settled by closing step 4 (folding step-4.md into the other docs) or naming what
+  else it needs.
+
 - **The FG1-2 merge's byte (2026-10-09).** Lunar Magic keeps its overworld option to
   merge FG1-2 into SP3-4 as `$D0` at `$0FF9F0`, in its own area, where unmerged ROMs
   have `$F0` (lunar-magic-install.md, "The overworld"). Kobo writes `$D0` there for a
