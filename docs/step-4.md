@@ -128,7 +128,8 @@ from the editor where the user is working.
   level's event, and where a new game starts, renames levels, and shows and edits an
   event's layer 2 blocks and layer 1 tile (editor.md, "The overworld"). The events'
   further tiles, crushed tiles, the reveal list, and sprites are to come. Its options
-  (the path reveal speed, the FG1-2 merge) and ExAnimation followed (2026-10-09).
+  (the path reveal speed, the FG1-2 merge) and ExAnimation followed (2026-10-09), and
+  the sprite list, the reveal list, the crushed tiles, and an event's further tiles.
 
 - The emulator to play in (2026-10-08, item 7): `play.emulator` in the config file, or
   `KOBO_EMULATOR`, opens Play's and Build and play's ROM in place of what the system

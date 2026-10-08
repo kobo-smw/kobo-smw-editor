@@ -199,6 +199,8 @@ enum Change {
     RevealSpeed(Option<u8>),
     /// Lunar Magic's FG1-2 merge on or off.
     Merge(bool),
+    /// The overworld as changed by one of its lists.
+    Edited(crate::overworld_lists::Edited),
     /// The overworld's ExAnimation as `to`.
     Animation {
         label: String,
@@ -277,6 +279,10 @@ impl Change {
                 false,
                 |ow| ow.merge_fg = on,
             ),
+            Change::Edited(edited) => {
+                let to = *edited.to;
+                app.change_overworld(&edited.label, false, |ow| *ow = to)
+            }
             Change::Animation { label, to } => {
                 app.change_overworld(&label, false, |ow| ow.animation = to.map(|a| *a))
             }
@@ -666,6 +672,19 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
                     amend: false,
                 });
             }
+            ui.label(RichText::new("Further tiles").strong());
+            if let Some(edited) =
+                crate::overworld_lists::extras(
+                    ui,
+                    overworld,
+                    e,
+                    state.chosen,
+                    state.chosen2,
+                    state.brush,
+                )
+            {
+                change = Some(Change::Edited(edited));
+            }
         });
     }
     if let Some((m, x, y)) = state.chosen {
@@ -800,6 +819,24 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
     }
     if let Some(c) = settings(ui, state.submap, overworld, document.changes()) {
         change = Some(c);
+    }
+    for (title, salt) in [
+        ("Sprites", "overworld-sprites-header"),
+        ("Reveal list", "overworld-reveal-header"),
+        ("Crushed tiles", "overworld-crush-header"),
+    ] {
+        egui::CollapsingHeader::new(title)
+            .id_salt(salt)
+            .show(ui, |ui| {
+                let edited = match title {
+                    "Sprites" => crate::overworld_lists::sprites(ui, overworld, state.chosen),
+                    "Reveal list" => crate::overworld_lists::reveal(ui, overworld),
+                    _ => crate::overworld_lists::crush(ui, overworld, state.chosen),
+                };
+                if let Some(edited) = edited {
+                    change = Some(Change::Edited(edited));
+                }
+            });
     }
     change
 }

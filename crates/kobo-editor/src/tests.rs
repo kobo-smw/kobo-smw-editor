@@ -2379,3 +2379,78 @@ fn the_overworld_window_sets_its_options_and_animation() {
         "{file}"
     );
 }
+
+#[test]
+fn the_overworld_window_edits_its_lists_and_an_event_s_further_tiles() {
+    use egui_kittest::kittest::Queryable;
+    use kobo_core::overworld::{ExtraTile, layer1_index};
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "overworld-lists");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().overworld_editor.open = true;
+    harness.run_steps(2);
+    wait_for(&mut harness, "the overworld's picture", |app| {
+        app.overworld_editor.drawn()
+    });
+    let overworld = |app: &App| app.open_overworld().unwrap().overworld().clone();
+    // The main map's tile at 12, 3 chosen with a right click.
+    let map = harness.get_by_label("The overworld's map").rect();
+    let pos = map.min + egui::vec2(12.0 * 16.0 + 8.0, 3.0 * 16.0 + 8.0);
+    harness.event(egui::Event::PointerMoved(pos));
+    for pressed in [true, false] {
+        harness.event(egui::Event::PointerButton {
+            pos,
+            button: PointerButton::Secondary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        });
+    }
+    harness.run_steps(2);
+    let at = layer1_index(0, 12, 3) as u16;
+    // A crushed tile moved there.
+    harness.get_by_label("Crushed tiles").click();
+    harness.run_steps(2);
+    harness.get_all_by_label("Here").next().unwrap().click();
+    harness.run_steps(2);
+    assert_eq!(overworld(harness.state()).events.crush[0].place, at);
+    // Event 2's further tiles: a layer 1 tile of the brush added there.
+    harness.state_mut().overworld_editor.show_event = true;
+    harness.state_mut().overworld_editor.event = 2;
+    harness.run_steps(2);
+    let brush = harness.state().overworld_editor.brush;
+    let before = overworld(harness.state()).event_list()[2].extras.len();
+    harness
+        .get_by_label(&format!("Add layer 1 tile {brush:03X} here"))
+        .click();
+    harness.run_steps(2);
+    let extras = overworld(harness.state()).event_list()[2].extras.clone();
+    assert_eq!(extras.len(), before + 1);
+    assert_eq!(
+        extras.last(),
+        Some(&ExtraTile::Layer1 {
+            place: at,
+            tile: brush
+        })
+    );
+    // And a further layer 2 block at an 8x8 tile chosen on layer 2.
+    harness.state_mut().overworld_editor.layer = 2;
+    harness.run_steps(2);
+    let pos = map.min + egui::vec2(20.0 * 8.0 + 4.0, 10.0 * 8.0 + 4.0);
+    harness.event(egui::Event::PointerMoved(pos));
+    for pressed in [true, false] {
+        harness.event(egui::Event::PointerButton {
+            pos,
+            button: PointerButton::Secondary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        });
+    }
+    harness.run_steps(2);
+    harness.get_by_label("Add a 2x2 further block here").click();
+    harness.run_steps(2);
+    let extras = overworld(harness.state()).event_list()[2].extras.clone();
+    assert_eq!(extras.len(), before + 2);
+    assert!(matches!(extras.last(), Some(ExtraTile::Layer2(block)) if block.tiles.len() == 4));
+}

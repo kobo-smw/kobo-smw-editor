@@ -146,6 +146,7 @@ struct Source {
     exanimation_types: BTreeMap<String, String>,
     exanimation_triggers: BTreeMap<String, String>,
     overworld_exanimation_triggers: BTreeMap<String, String>,
+    overworld_sprites: BTreeMap<String, String>,
     layer3_scroll: BTreeMap<String, String>,
     entrance_actions: BTreeMap<String, String>,
     backgrounds: BTreeMap<String, String>,
@@ -164,6 +165,7 @@ struct Names {
     exanimation_types: Table,
     exanimation_triggers: Table,
     overworld_exanimation_triggers: Table,
+    overworld_sprites: Table,
     layer3_scroll: Table,
     entrance_actions: Table,
     /// The game's backgrounds, by address.
@@ -201,6 +203,7 @@ static NAMES: LazyLock<Names> = LazyLock::new(|| {
             "overworld_exanimation_triggers",
             source.overworld_exanimation_triggers,
         ),
+        overworld_sprites: Table::parse("overworld_sprites", source.overworld_sprites),
         layer3_scroll: Table::parse("layer3_scroll", source.layer3_scroll),
         entrance_actions: Table::parse("entrance_actions", source.entrance_actions),
         backgrounds: source
@@ -325,6 +328,11 @@ pub fn overworld_exanimation_trigger(trigger: u8) -> Option<&'static str> {
         .or_else(|| exanimation_trigger(trigger))
 }
 
+/// An overworld sprite of the game's sprite list (`00`-`0A`).
+pub fn overworld_sprite(sprite: u8) -> Option<&'static str> {
+    NAMES.overworld_sprites.get(sprite)
+}
+
 /// A layer 3 scroll setting of Lunar Magic's (`00`-`1F`,
 /// [`crate::exgfx::Layer3Settings`]).
 pub fn layer3_scroll(setting: u8) -> Option<&'static str> {
@@ -397,6 +405,11 @@ mod tests {
                 "overworld_exanimation_triggers",
                 &NAMES.overworld_exanimation_triggers,
                 ids(0x01..=0x08),
+            ),
+            (
+                "overworld_sprites",
+                &NAMES.overworld_sprites,
+                ids(0x00..=0x0A),
             ),
             ("layer3_scroll", &NAMES.layer3_scroll, ids(0x00..=0x1F)),
             (

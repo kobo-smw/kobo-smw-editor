@@ -898,6 +898,22 @@ FF = "Unused"
 06 = "Event in manual frame D"
 07 = "Event in manual frame E"
 08 = "Event in manual frame F"
+
+# The game's overworld sprites (OverworldSprites, the sprite list), as Lunar Magic's
+# help names them.
+[overworld_sprites]
+00 = "Nothing"
+01 = "Lakitu"
+02 = "Blue bird"
+03 = "Fish x3"
+04 = "Piranha plant"
+05 = "Moving cloud"
+06 = "Koopa kid x3"
+07 = "Smoke x2"
+08 = "Bowser sign"
+09 = "Bowser"
+0A = "Ghost x2"
+
 [layer3_scroll]
 00 = "None"
 01 = "Constant"

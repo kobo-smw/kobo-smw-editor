@@ -223,7 +223,13 @@ reveal list turns into another) outlined more boldly. Drawing on layer 2 then dr
 the event's blocks, and nowhere else; *Add a 2x2 block* or *Add a 6x6 block* puts a
 block of the event at the chosen 8x8 tile, of the tiles there, *Remove the block*
 takes the one there away, and *Its layer 1 tile here* and *No layer 1 tile* set the
-event's layer 1 tile (its VRAM address worked out from its place). *Options* sets Lunar
+event's layer 1 tile (its VRAM address worked out from its place). Its *Further tiles*
+are listed in the order the event makes them, each removable; *Add layer 1 tile … here*
+adds the brush's tile at the chosen 16x16 tile, and *Add a 2x2 (6x6) further block here*
+a layer 2 block at the chosen 8x8 tile, of the tiles there. *Sprites* is the game's sprite list (13
+slots of a sprite and its place in pixels, *Here* the chosen tile of the main map),
+*Reveal list* the layer 1 tiles events turn into others, and *Crushed tiles* each
+crushed tile's event and place (*Here* the chosen tile). *Options* sets Lunar
 Magic's path reveal speed (the event path fade off) and its merge of FG1-2 into SP3-4.
 *ExAnimation* installs Lunar Magic's overworld ExAnimation, sets the shown submap's
 settings (the game's tiles, the level dots' colours, its list, the global list), and

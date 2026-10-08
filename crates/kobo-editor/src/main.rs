@@ -19,6 +19,7 @@ mod map16;
 mod outline;
 mod overview;
 mod overworld;
+mod overworld_lists;
 mod palette;
 mod palettes;
 mod picture;
