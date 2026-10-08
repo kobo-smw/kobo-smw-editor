@@ -875,3 +875,61 @@ fn pixi_sprites_carry_through_an_import() {
         let _ = fs::remove_dir_all(dir);
     }
 }
+
+/// A build's symbols name Kobo's code (`kobo_` and its patch) and the
+/// project's patches' labels as they are, and a build from the stage
+/// cache gives the same ones.
+#[test]
+fn a_builds_symbols_name_kobos_code_and_the_projects() {
+    use kobo_core::source::map16::{Map16Entry, Map16Page};
+
+    if common::asar().is_none() {
+        return;
+    }
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = temp_dir("symbols");
+    write(
+        &dir,
+        "asm/late.asm",
+        "lorom\nfreecode\nmy_routine:\n    RTL\n",
+    );
+    // A tile of page 2 installs Kobo's code for Lunar Magic's layout.
+    let mut page = Map16Page::default();
+    page.tiles.insert(0x200, Map16Entry::default());
+    let project = Project {
+        root: dir.to_path_buf(),
+        manifest: Manifest {
+            late_patches: vec![PathBuf::from("asm/late.asm")],
+            ..Manifest::default()
+        },
+        map16: vec![(2, page)],
+        ..Default::default()
+    };
+    let cache_dir = temp_dir("symbols-cache");
+    let cache = Cache::new(cache_dir.to_path_buf());
+    let (built, symbols) =
+        build::build_with_symbols(&clean, &project, Some(&cache), &mut |_, _| {}).unwrap();
+    let mine = symbols
+        .iter()
+        .find(|s| s.name == "my_routine")
+        .expect("the patch's label");
+    assert_eq!(built.read_u8(mine.addr).unwrap(), 0x6B, "RTL");
+    assert!(
+        symbols.iter().any(|s| s.name.starts_with("kobo_map16_")),
+        "{:?}",
+        symbols.iter().map(|s| &s.name).take(10).collect::<Vec<_>>()
+    );
+    let (_, again) =
+        build::build_with_symbols(&clean, &project, Some(&cache), &mut |_, _| {}).unwrap();
+    assert_eq!(again, symbols);
+    let text = build::Symbol::wla(&symbols);
+    assert!(text.contains("[labels]\n"));
+    let line = format!(
+        "{:02X}:{:04X} my_routine\n",
+        mine.addr.raw() >> 16,
+        mine.addr.raw() & 0xFFFF
+    );
+    assert!(text.contains(&line), "{text}");
+}

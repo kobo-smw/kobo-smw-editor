@@ -1038,6 +1038,21 @@ fn face_left_turns_the_player_and_the_slanted_pipe() {
     }
 }
 
+/// The snapshots in a stage cache: one per stage key, each with its
+/// symbols beside it.
+fn snapshots(dir: &Path) -> usize {
+    fs::read_dir(dir)
+        .unwrap()
+        .filter(|e| {
+            e.as_ref()
+                .unwrap()
+                .path()
+                .extension()
+                .is_some_and(|x| x == "bin")
+        })
+        .count()
+}
+
 #[test]
 fn cached_builds_equal_clean_ones() {
     let Some(clean) = common::vanilla() else {
@@ -1057,10 +1072,7 @@ fn cached_builds_equal_clean_ones() {
     let warm = build::build_cached(&clean, &project, Some(&cache)).unwrap();
     assert_eq!(cold.data(), uncached.data());
     assert_eq!(warm.data(), uncached.data());
-    assert_eq!(
-        fs::read_dir(&cache_dir).unwrap().count(),
-        build::Stage::ALL.len()
-    );
+    assert_eq!(snapshots(&cache_dir), build::Stage::ALL.len());
 
     // An edit reruns the level stage from the cached base.
     project.levels[0].1.layer1.pop();
@@ -1069,10 +1081,7 @@ fn cached_builds_equal_clean_ones() {
         edited.data(),
         build::build(&clean, &project).unwrap().data()
     );
-    assert_eq!(
-        fs::read_dir(&cache_dir).unwrap().count(),
-        build::Stage::ALL.len() + 1
-    );
+    assert_eq!(snapshots(&cache_dir), build::Stage::ALL.len() + 1);
 }
 
 /// A build needs no ROM data to check that its output is the same on every

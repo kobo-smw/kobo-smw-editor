@@ -72,6 +72,9 @@ pub struct Workspace {
     broken: Arc<std::sync::Mutex<BTreeMap<u16, (String, Level)>>>,
 }
 
+/// A build, its symbols, and the levels it left out, and why.
+pub type BuiltLeavingOut = (Rom, Vec<build::Symbol>, Vec<(u16, String)>);
+
 /// A level's picture, and the ROM it was rendered from.
 pub struct Preview {
     pub rom: Arc<Rom>,
@@ -301,6 +304,20 @@ impl Workspace {
         )?)
     }
 
+    /// Builds the project as it is in memory, with the symbols of the code
+    /// the build put in the ROM, telling `report` of each stage as it goes.
+    pub fn build_with_symbols(
+        &self,
+        report: &mut dyn FnMut(build::Stage, build::StageEvent),
+    ) -> Result<(Rom, Vec<build::Symbol>), WorkspaceError> {
+        Ok(build::build_with_symbols(
+            &self.clean,
+            &self.project,
+            self.cache.as_ref(),
+            report,
+        )?)
+    }
+
     /// Builds the project as it is in memory, telling `report` of each
     /// stage as it goes.
     pub fn build_reporting(
@@ -322,6 +339,15 @@ impl Workspace {
         &self,
         keep: Option<u16>,
     ) -> Result<(Rom, Vec<(u16, String)>), WorkspaceError> {
+        let (rom, _, left_out) = self.build_leaving_out_with_symbols(keep)?;
+        Ok((rom, left_out))
+    }
+
+    /// [`Workspace::build_leaving_out`], with the build's symbols.
+    pub fn build_leaving_out_with_symbols(
+        &self,
+        keep: Option<u16>,
+    ) -> Result<BuiltLeavingOut, WorkspaceError> {
         let mut copy = self.clone();
         let mut left_out: Vec<(u16, String)> = Vec::new();
         let leave_out = |copy: &mut Workspace, level: u16| {
@@ -343,8 +369,8 @@ impl Workspace {
             left_out.push((level, why));
         }
         loop {
-            match copy.build() {
-                Ok(rom) => return Ok((rom, left_out)),
+            match copy.build_with_symbols(&mut |_, _| {}) {
+                Ok((rom, symbols)) => return Ok((rom, symbols, left_out)),
                 Err(WorkspaceError::Build(BuildError::Level { level, message }))
                     if Some(level) != keep && !left_out.iter().any(|(n, _)| *n == level) =>
                 {

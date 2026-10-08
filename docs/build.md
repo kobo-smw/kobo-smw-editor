@@ -148,6 +148,15 @@ constraints come from the tools ([toolchain.md](toolchain.md)):
   checks the blocks that were there before it with a `rats::Snapshot` and fails the
   build on damage, as Asar patches already do.
 
+A build also gives the labels of the code it put in the ROM (`build::Symbol`, from each
+Asar patch's labels as `asar::collecting_labels` gathers them): Kobo's install patches'
+named `kobo_` and the patch, the project's patches' as they are, and the play patch's
+`kobo_playtest_`. The stage cache keeps them beside each snapshot (`.sym`), so a build
+from the cache has the same. `kobo build --sym`, the editor's build, and play builds
+write them beside the ROM as a WLA-DX symbol file, which Mesen 2 loads by default
+(checked 2026-10-08: `emu.getLabelAddress` finds a patch's label) and bsnes-plus loads by
+name.
+
 ## Lunar Magic's layout, piece by piece
 
 A build that writes nothing only Lunar Magic's layout holds (and whose changed sprite

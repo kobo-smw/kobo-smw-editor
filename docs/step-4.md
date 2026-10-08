@@ -53,6 +53,11 @@ from the editor where the user is working.
 
 ## Done
 
+- Symbols for emulators' debuggers (2026-10-08, item 7): a build's labels of Kobo's and
+  the project's code, kept through the stage cache, written beside the ROM as a WLA-DX
+  `.sym` by `kobo build --sym`, the editor's builds, and play builds; Mesen 2 loads it
+  (docs/build.md, "Stages").
+
 - The Map16 window (2026-10-08): `edit::Map16Document` over the page, game page, and
   tileset files, its changes as `TileChange`s for a tileset, undo by snapshot, saving
   new files into the manifest, and `Workspace::set_map16` for builds of unsaved edits;

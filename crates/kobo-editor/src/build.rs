@@ -119,7 +119,7 @@ pub fn start(app: &mut App) {
             let _ = send.send((stage, event));
             ctx.request_repaint();
         };
-        let rom = workspace.build_reporting(&mut report).map_err(|e| {
+        let (rom, symbols) = workspace.build_with_symbols(&mut report).map_err(|e| {
             let level = match &e {
                 WorkspaceError::Build(BuildError::Level { level, .. }) => Some(*level),
                 _ => None,
@@ -136,6 +136,12 @@ pub fn start(app: &mut App) {
             })
         };
         write(&out, rom.data())?;
+        // Beside it, the names of Kobo's and the project's code, for an
+        // emulator's debugger.
+        write(
+            &out.with_extension("sym"),
+            build::Symbol::wla(&symbols).as_bytes(),
+        )?;
         let bps = match patch {
             Some(path) => {
                 let bytes = bps::create(workspace.clean().data(), rom.data());

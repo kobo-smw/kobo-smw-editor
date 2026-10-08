@@ -123,6 +123,11 @@ enum Command {
         /// Run every stage, without reading or keeping snapshots.
         #[arg(long)]
         no_cache: bool,
+        /// Also write the labels of Kobo's and the project's code beside
+        /// the ROM, as a WLA-DX symbol file (`build.sym`) for an
+        /// emulator's debugger.
+        #[arg(long)]
+        sym: bool,
         /// Print the result as JSON, for scripts (a refusal as well).
         #[arg(long)]
         json: bool,
@@ -686,10 +691,19 @@ fn main() -> Result<()> {
             out,
             bps,
             no_cache,
+            sym,
             json,
             rom,
         } => json_errors(json, || {
-            build(&dir, &out, bps.as_deref(), no_cache, &rom.load()?, json)
+            build(
+                &dir,
+                &out,
+                bps.as_deref(),
+                no_cache,
+                sym,
+                &rom.load()?,
+                json,
+            )
         }),
         Command::Fmt { dir, check } => fmt(&dir, check),
         Command::Play {
@@ -1569,8 +1583,12 @@ fn play(
         at,
         settings,
     };
-    let rom = playtest::build(&workspace, &start, &Asar::configured()?)?;
+    let (rom, symbols) = playtest::build_with_symbols(&workspace, &start, &Asar::configured()?)?;
     rom.save(out)?;
+    // An emulator's debugger finds the code's names beside it.
+    let sym = out.with_extension("sym");
+    fs::write(&sym, kobo_core::build::Symbol::wla(&symbols))
+        .with_context(|| format!("writing {}", sym.display()))?;
     match at {
         Some((x, y)) => println!("{}: level {level:03X} from ({x}, {y})", out.display()),
         None => println!("{}: level {level:03X} from its start", out.display()),
@@ -1583,6 +1601,7 @@ fn build(
     out: &Path,
     patch: Option<&Path>,
     no_cache: bool,
+    sym: bool,
     clean: &Rom,
     json: bool,
 ) -> Result<()> {
@@ -1605,8 +1624,14 @@ fn build(
         }
     }
     let cache = if no_cache { None } else { Cache::user() };
-    let rom = build::build_cached(clean, &project, cache.as_ref())?;
+    let (rom, symbols) =
+        build::build_with_symbols(clean, &project, cache.as_ref(), &mut |_, _| {})?;
     rom.save(out)?;
+    let symbols_file = sym.then(|| out.with_extension("sym"));
+    if let Some(path) = &symbols_file {
+        fs::write(path, build::Symbol::wla(&symbols))
+            .with_context(|| format!("writing {}", path.display()))?;
+    }
     let patch_len = match patch {
         Some(path) => {
             let bytes = bps::create(clean.data(), rom.data());
@@ -1626,6 +1651,8 @@ fn build(
             "notes": notes,
             "bps": patch.map(|p| p.display().to_string()),
             "bps_size": patch_len,
+            "sym": symbols_file.as_ref().map(|p| p.display().to_string()),
+            "symbols": symbols.len(),
         });
         println!("{value:#}");
         return Ok(());

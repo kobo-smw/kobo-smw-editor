@@ -220,7 +220,12 @@ the system's editor for it.
 The Build window (Ctrl+B) builds the project as the editor has it, unsaved edits
 included, into `build.sfc` and, with the box ticked, `build.bps`. It shows each stage as
 it runs or comes from the stage cache. A failed build says why, and opens the level it was
-about. *Build and play* opens the ROM with what the system opens it with.
+about. *Build and play* opens the ROM with what the system opens it with. Beside the ROM
+it writes `build.sym`, the labels of Kobo's code (`kobo_` and its patch, as
+`kobo_graphics_load_graphics`) and of the project's patches, as a WLA-DX symbol file:
+bsnes-plus and Mesen 2 load it beside a ROM of the same name (Mesen 2's default), so their
+debuggers name that code. Tools that run as programs of their own (PIXI, GPS, UberASM
+Tool, AddmusicK) give no labels, and nothing of Lunar Magic's is named.
 
 **Play from here** (the canvas's menu, with the power-up to start with, or F5 where the
 mouse is; the command palette plays from the level's start) builds the project as the
@@ -237,7 +242,7 @@ after a death, a game over (with four lives again), or the level's end, with the
 level as it was at first (coins collected are back); the project is not changed. The
 **▾** beside Play sets how the game starts, for every way of playing: the power-up
 (which the menus' choice of one also sets), the switch palaces pressed, and the ON/OFF
-switch. A hack with kkevinm's Retry System (the Romhack Races
+switch. The play ROM has its `.sym` beside it too. A hack with kkevinm's Retry System (the Romhack Races
 baserom's, and many others') retries there too, or at a midway point once the player has
 touched one. The pixelated fade on the way in is the game's own, as from
 the overworld. `kobo play` does the same from the command line.

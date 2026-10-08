@@ -1333,8 +1333,23 @@ impl Cache {
         fs::read(self.path(key)).ok()
     }
 
+    /// The symbols a build had made by the end of the stage `key` is for.
+    fn get_symbols(&self, key: &[u8; 20]) -> Option<Vec<Symbol>> {
+        let text = fs::read_to_string(self.path(key).with_extension("sym")).ok()?;
+        text.lines().map(Symbol::parse).collect()
+    }
+
+    fn put_symbols(&self, key: &[u8; 20], symbols: &[Symbol]) -> Result<(), BuildError> {
+        let text: String = symbols.iter().map(|s| s.line() + "\n").collect();
+        self.write(&self.path(key).with_extension("sym"), text.as_bytes())
+    }
+
     fn put(&self, key: &[u8; 20], data: &[u8]) -> Result<(), BuildError> {
-        let path = self.path(key);
+        self.write(&self.path(key), data)
+    }
+
+    fn write(&self, path: &Path, data: &[u8]) -> Result<(), BuildError> {
+        let path = path.to_path_buf();
         let fail = |source| BuildError::Cache {
             path: path.clone(),
             source,
@@ -1349,6 +1364,67 @@ impl Cache {
         fs::write(&partial, data).map_err(fail)?;
         fs::rename(&partial, &path).map_err(fail)
     }
+}
+
+/// A label of the code a build put in the ROM: Kobo's own (named
+/// `kobo_` and its patch, `kobo_graphics_load_graphics`) and the project's
+/// patches' (as they name them). Tools run as programs of their own (PIXI,
+/// GPS, UberASM Tool, AddmusicK) give none.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Symbol {
+    pub name: String,
+    pub addr: SnesAddr,
+}
+
+impl Symbol {
+    fn line(&self) -> String {
+        format!("{:06X} {}", self.addr.raw(), self.name)
+    }
+
+    fn parse(line: &str) -> Option<Self> {
+        let (addr, name) = line.split_once(' ')?;
+        Some(Self {
+            name: name.to_string(),
+            addr: SnesAddr::new(u32::from_str_radix(addr, 16).ok()?),
+        })
+    }
+
+    /// The symbols as a WLA-DX symbol file (`[labels]`, `BB:AAAA name`),
+    /// which bsnes-plus loads beside a ROM of the same name and Mesen 2
+    /// imports.
+    pub fn wla(symbols: &[Symbol]) -> String {
+        let mut out = String::from("; Kobo's and the project's own code\n[labels]\n");
+        let mut sorted: Vec<&Symbol> = symbols.iter().collect();
+        sorted.sort_by_key(|s| (s.addr.raw(), s.name.clone()));
+        for s in sorted {
+            let raw = s.addr.raw();
+            out += &format!("{:02X}:{:04X} {}\n", raw >> 16, raw & 0xFFFF, s.name);
+        }
+        out
+    }
+}
+
+/// The symbols of the patches a stage applied, named as [`Symbol`] says.
+fn stage_symbols(stage: Stage, labels: Vec<(PathBuf, crate::asar::Label)>) -> Vec<Symbol> {
+    labels
+        .into_iter()
+        .map(|(patch, label)| {
+            let name = match stage {
+                Stage::Install => {
+                    let stem = patch
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().replace(['-', '.'], "_"))
+                        .unwrap_or_default();
+                    format!("kobo_{stem}_{}", label.name)
+                }
+                _ => label.name,
+            };
+            Symbol {
+                name,
+                addr: label.addr,
+            }
+        })
+        .collect()
 }
 
 /// The image a project with this manifest builds onto: the clean ROM
@@ -1422,6 +1498,29 @@ fn build_on_reporting(
     cache: Option<&Cache>,
     report: &mut dyn FnMut(Stage, StageEvent),
 ) -> Result<Rom, BuildError> {
+    Ok(build_symbols_on(base, project, cache, report)?.0)
+}
+
+/// [`build_reporting`], with the symbols of the code the build put in the
+/// ROM ([`Symbol`]).
+pub fn build_with_symbols(
+    clean: &Rom,
+    project: &Project,
+    cache: Option<&Cache>,
+    report: &mut dyn FnMut(Stage, StageEvent),
+) -> Result<(Rom, Vec<Symbol>), BuildError> {
+    if clean.identify() != RomIdentity::VanillaUsa {
+        return Err(BuildError::NotClean(clean.sha1_hex()));
+    }
+    build_symbols_on(clean, project, cache, report)
+}
+
+fn build_symbols_on(
+    base: &Rom,
+    project: &Project,
+    cache: Option<&Cache>,
+    report: &mut dyn FnMut(Stage, StageEvent),
+) -> Result<(Rom, Vec<Symbol>), BuildError> {
     if project.manifest.lz3 && !project.manifest.sa1 {
         return Err(BuildError::Lz3WithoutSa1);
     }
@@ -1431,15 +1530,17 @@ fn build_on_reporting(
         Some(_) => stage_keys(base, project)?,
         None => Vec::new(),
     };
-    // The last stage with a snapshot, and the image it holds.
+    // The last stage with a snapshot, the image it holds, and the
+    // symbols the build had made by then.
     let resumed = cache.and_then(|cache| {
-        (0..keys.len())
-            .rev()
-            .find_map(|i| Some((i + 1, cache.get(&keys[i])?)))
+        (0..keys.len()).rev().find_map(|i| {
+            let symbols = cache.get_symbols(&keys[i])?;
+            Some((i + 1, cache.get(&keys[i])?, symbols))
+        })
     });
-    let (first, mut rom) = match resumed {
-        Some((next, data)) => (next, Rom::from_headerless(data)?),
-        None => (0, Rom::from_headerless(base.data().to_vec())?),
+    let (first, mut rom, mut symbols) = match resumed {
+        Some((next, data, symbols)) => (next, Rom::from_headerless(data)?, symbols),
+        None => (0, Rom::from_headerless(base.data().to_vec())?, Vec::new()),
     };
     for stage in &Stage::ALL[..first] {
         report(*stage, StageEvent::Cached);
@@ -1447,14 +1548,18 @@ fn build_on_reporting(
     for (i, stage) in Stage::ALL.iter().enumerate().skip(first) {
         report(*stage, StageEvent::Started);
         let started = std::time::Instant::now();
-        stage.run_guarded(&mut rom, base, project)?;
+        let (ran, labels) =
+            crate::asar::collecting_labels(|| stage.run_guarded(&mut rom, base, project));
+        ran?;
+        symbols.extend(stage_symbols(*stage, labels));
         report(*stage, StageEvent::Finished(started.elapsed()));
         if let Some(cache) = cache {
             cache.put(&keys[i], rom.data())?;
+            cache.put_symbols(&keys[i], &symbols)?;
         }
     }
     rom.fix_checksum()?;
-    Ok(rom)
+    Ok((rom, symbols))
 }
 
 /// The image a build of the project leaves after `last`, for a check that

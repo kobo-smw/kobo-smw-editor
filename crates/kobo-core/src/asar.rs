@@ -230,6 +230,32 @@ pub struct Label {
     pub addr: SnesAddr,
 }
 
+thread_local! {
+    /// The labels of the patches applied on this thread while
+    /// [`collecting_labels`] runs, each with its patch's main file.
+    static COLLECTED: std::cell::RefCell<Option<Vec<(PathBuf, Label)>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Runs `f`, and returns what it returned with the labels of every patch
+/// applied on this thread meanwhile, each with its patch's main file, in
+/// the order they were applied: what a build's symbols are made from.
+pub fn collecting_labels<T>(f: impl FnOnce() -> T) -> (T, Vec<(PathBuf, Label)>) {
+    let outer = COLLECTED.with(|c| c.borrow_mut().replace(Vec::new()));
+    let value = f();
+    let collected = COLLECTED.with(|c| {
+        let mut c = c.borrow_mut();
+        let mine = c.take().unwrap_or_default();
+        // An outer collection keeps these too.
+        *c = outer.map(|mut outer| {
+            outer.extend(mine.iter().cloned());
+            outer
+        });
+        mine
+    });
+    (value, collected)
+}
+
 /// What a patch reported besides its errors.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct Output {
@@ -457,6 +483,15 @@ impl Asar {
         if !damage.is_empty() {
             return Err(AsarError::Damaged { damage, output });
         }
+        COLLECTED.with(|c| {
+            if let Some(collected) = c.borrow_mut().as_mut() {
+                let labels = output
+                    .labels
+                    .iter()
+                    .map(|l| (patch.main.clone(), l.clone()));
+                collected.extend(labels);
+            }
+        });
         Ok(Patched { rom, output })
     }
 

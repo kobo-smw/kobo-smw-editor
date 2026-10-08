@@ -75,11 +75,16 @@ fn spawn(app: &mut App, level: u16, at: Option<(u16, u16)>, powerup: u8) {
                 settings,
             };
             let asar = Asar::configured().map_err(|e| e.to_string())?;
-            let rom = playtest::build(&workspace, &start, &asar).map_err(|e| e.to_string())?;
+            let (rom, symbols) = playtest::build_with_symbols(&workspace, &start, &asar)
+                .map_err(|e| e.to_string())?;
             if let Some(dir) = out.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
             }
             std::fs::write(&out, rom.data()).map_err(|e| format!("{}: {e}", out.display()))?;
+            // An emulator's debugger finds the code's names beside it.
+            let sym = out.with_extension("sym");
+            std::fs::write(&sym, kobo_core::build::Symbol::wla(&symbols))
+                .map_err(|e| format!("{}: {e}", sym.display()))?;
             Ok((out, start))
         })();
         ctx.request_repaint();

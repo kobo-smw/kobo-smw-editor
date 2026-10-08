@@ -136,6 +136,16 @@ pub fn entrance(level: &crate::source::level::Level, (x, y): (u16, u16), id: u16
 
 /// A build of `workspace` that starts at `start`.
 pub fn build(workspace: &Workspace, start: &Start, asar: &Asar) -> Result<Rom, PlaytestError> {
+    Ok(build_with_symbols(workspace, start, asar)?.0)
+}
+
+/// [`build`], with the symbols of the code the build put in the ROM,
+/// Kobo's play patch's among them (`kobo_playtest_`).
+pub fn build_with_symbols(
+    workspace: &Workspace,
+    start: &Start,
+    asar: &Asar,
+) -> Result<(Rom, Vec<crate::build::Symbol>), PlaytestError> {
     let level = workspace
         .level(start.level)
         .ok_or(PlaytestError::NoLevel(start.level))?;
@@ -152,7 +162,7 @@ pub fn build(workspace: &Workspace, start: &Start, asar: &Asar) -> Result<Rom, P
         }
         None => (start.level, 0),
     };
-    let (rom, _) = copy.build_leaving_out(Some(start.level))?;
+    let (rom, mut symbols, _) = copy.build_leaving_out_with_symbols(Some(start.level))?;
     let settings = start.settings;
     let mut patch = crate::install::patch(PATCH)
         .define("entrance", format!("${destination:03X}"))
@@ -176,9 +186,20 @@ pub fn build(workspace: &Workspace, start: &Start, asar: &Asar) -> Result<Rom, P
         Some(text) => patch.file("retry_ram.asm", text).define("retry", "1"),
         None => patch.define("retry", "0"),
     };
-    let mut rom = asar.patch(&rom, &patch).map_err(Box::new)?.rom;
+    let patched = asar.patch(&rom, &patch).map_err(Box::new)?;
+    symbols.extend(
+        patched
+            .output
+            .labels
+            .into_iter()
+            .map(|l| crate::build::Symbol {
+                name: format!("kobo_playtest_{}", l.name),
+                addr: l.addr,
+            }),
+    );
+    let mut rom = patched.rom;
     rom.fix_checksum()?;
-    Ok(rom)
+    Ok((rom, symbols))
 }
 
 /// The translevel the game would have entered `level` by: its own, or for

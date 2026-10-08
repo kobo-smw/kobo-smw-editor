@@ -261,7 +261,7 @@ cargo run -- import hack.smc dir [--all] [--pixi folder]  # a ROM's changed (or 
 cargo run -- import level.mwl dir [--level 105] [--sizes-from hack.smc]  # an MWL file's level into a project
 cargo run -- import callisto-project/ dir     # a Callisto project as a new project
 cargo run -- new dir --template rhr           # a project from a baserom template (--list names them)
-cargo run -- build [dir] [-o out.sfc] [--bps out.bps]  # a project onto the clean ROM (and as a patch)
+cargo run -- build [dir] [-o out.sfc] [--bps out.bps] [--sym]  # a project onto the clean ROM (a patch; labels)
                                              # rom info, import, build, diff: --json for scripts
 cargo run -- fmt [dir] [--check]             # rewrite a project's files in Kobo's format
 cargo run -- play [dir] --level 105 [--at 70,18] [--powerup 2] [--switches gybr] [--off] [-o play.sfc]  # a build that starts there
