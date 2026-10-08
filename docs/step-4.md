@@ -53,4 +53,8 @@ from the editor where the user is working.
 
 ## Done
 
-Nothing yet.
+- The Map16 window (2026-10-08): `edit::Map16Document` over the page, game page, and
+  tileset files, its changes as `TileChange`s for a tileset, undo by snapshot, saving
+  new files into the manifest, and `Workspace::set_map16` for builds of unsaved edits;
+  the editor's window, with the level's own tiles to pick 8x8 tiles from (editor.md,
+  "Map16"). Background Map16 and the pipes file are not edited yet.

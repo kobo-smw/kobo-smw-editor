@@ -226,6 +226,20 @@ impl Workspace {
         }
     }
 
+    /// Puts the Map16 as the editor has it in the project, for the next
+    /// build.
+    pub fn set_map16(&mut self, map16: &super::Map16Document) {
+        let mut project = (*self.project).clone();
+        map16.apply_to(&mut project);
+        if project.map16 != self.project.map16
+            || project.map16_game != self.project.map16_game
+            || project.map16_tileset != self.project.map16_tileset
+            || project.manifest != self.project.manifest
+        {
+            self.project = Arc::new(project);
+        }
+    }
+
     /// Builds the project as it is in memory.
     pub fn build(&self) -> Result<Rom, WorkspaceError> {
         Ok(build::build_cached(

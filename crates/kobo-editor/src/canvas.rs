@@ -583,6 +583,7 @@ fn show_canvas(
     let mut find_query: Option<String> = None;
     let mut copy_drop: Option<(Vec<Item>, (i32, i32))> = None;
     let mut play: Option<kobo_core::playtest::Start> = None;
+    let mut edit_map16: Option<u16> = None;
     let app_powerup = app.play.settings.powerup;
     // A screen exit's label double-clicked: go where it leads.
     let mut follow: Option<kobo_core::level::objects::ScreenExit> = None;
@@ -974,6 +975,7 @@ fn show_canvas(
                     &mut context_edit,
                     &mut find_query,
                     &mut play,
+                    &mut edit_map16,
                 );
             });
         }
@@ -1162,6 +1164,9 @@ fn show_canvas(
     if let Some(start) = play {
         crate::play::start(app, start);
     }
+    if let Some(tile) = edit_map16 {
+        app.map16_editor.show_tile(tile);
+    }
     if let Some(query) = find_query {
         app.levels.filter = query;
         app.left = crate::app::LeftTab::Levels;
@@ -1330,6 +1335,7 @@ fn context_menu(
     edit: &mut Option<(String, Vec<Edit>)>,
     find: &mut Option<String>,
     play: &mut Option<kobo_core::playtest::Start>,
+    edit_map16: &mut Option<u16>,
 ) {
     // The game, from where the menu was opened.
     if let Some(at) = open.menu_at {
@@ -1344,6 +1350,24 @@ fn context_menu(
         .response
         .on_hover_text("Build the project to start with the player where the marker shows: standing here, or on the ground above if this is in it. Opens the build in your emulator (F5 where the mouse is).");
         ui.separator();
+    }
+    // The Map16 tile layer 1 has there.
+    if let (Some(at), Some(geometry)) = (open.menu_at, &open.geometry) {
+        let tiles = &geometry.loaded.tiles;
+        let (width, height) = tiles.size();
+        let (x, y) = ((at.x / 16.0).floor(), (at.y / 16.0).floor());
+        if x >= 0.0 && y >= 0.0 && (x as usize) < width && (y as usize) < height {
+            let tile = tiles.tile_at(x as usize, y as usize);
+            if ui
+                .button(format!("Edit Map16 tile {tile:03X}"))
+                .on_hover_text("Open the Map16 window at the tile drawn here")
+                .clicked()
+            {
+                *edit_map16 = Some(tile);
+                ui.close();
+            }
+            ui.separator();
+        }
     }
     // A screen exit for the screen the menu was opened on, if it has none.
     if let Some(at) = open.menu_at {

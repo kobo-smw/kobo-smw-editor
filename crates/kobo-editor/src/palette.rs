@@ -483,7 +483,7 @@ fn map16(app: &mut App, ui: &mut egui::Ui, number: u16) {
             .get(usize::from(tile))
             .is_some_and(Option::is_some);
         let text = if defined {
-            format!("Map16 tile {tile:03X}")
+            format!("Map16 tile {tile:03X} (right-click to edit it)")
         } else {
             format!("Map16 tile {tile:03X}: not defined")
         };
@@ -493,5 +493,10 @@ fn map16(app: &mut App, ui: &mut egui::Ui, number: u16) {
         && let Some(tile) = response.interact_pointer_pos().and_then(tile_at)
     {
         app.placing = Some(Placing::Map16(tile));
+    }
+    if response.secondary_clicked()
+        && let Some(tile) = response.interact_pointer_pos().and_then(tile_at)
+    {
+        app.map16_editor.show_tile(tile);
     }
 }

@@ -125,6 +125,30 @@ Undo (Ctrl+Z) and redo (Ctrl+Shift+Z) work per level; the Edit menu undoes back 
 steps at once, and puts the level back as its file has it (one step, which undo takes
 back). Ctrl+S saves every changed level.
 
+## Map16
+
+The Map16 window (View menu; a right click on a tile in the palette's Map16 page, or
+*Edit Map16 tile* in the canvas's menu) edits the project's foreground Map16 tiles as the
+open level shows them: its object tileset picks which definition of a tile the game keeps
+per tileset is meant, and its graphics and palette draw them. A click chooses a tile, a
+double click (or *Place it*) places it on the level. The tile's four quarters are
+chosen on its large picture; each has its 8x8 tile (typed, or clicked among the level's
+1024, drawn in the quarter's palette), its palette row, its flips, and its priority. *Acts
+like* is the tile whose behaviour it has. A dot marks each tile the project changes, and
+*Back to the game's* puts one back (past page 1, empties it). The window says which
+object tilesets show the same definition, since a change shows in all of them.
+
+Changes go where the page files' rules put them (docs/build.md, "Source formats"): what
+pages 0 and 1 change of the game's tiles in their page files, or in a tileset file for a
+tile the game keeps per tileset (that of the tileset sharing its table that already has
+one); page 2's graphics in the tileset file when page 2 is per tileset; and the whole
+tile in its page's file past that. A file Kobo makes for this is named as import names
+it and added to `kobo.toml` when saved. Setting a tile back as the clean ROM has it takes
+it out of its file. The level is drawn again from a build with every change, saved or
+not; Ctrl+S saves the Map16 with the levels, and undo takes back Map16 changes while they
+are the last made. The Map16 files follow changes on disk while the window has no
+unsaved edits.
+
 ## The project
 
 *This project…* (Project menu) shows what the project holds (its levels, Map16, graphics,

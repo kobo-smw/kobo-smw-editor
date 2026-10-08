@@ -226,6 +226,15 @@ impl GameTables {
         Ok(Self { mask, specific })
     }
 
+    /// Tables made up for tests: the mask, and each tileset's table.
+    #[cfg(test)]
+    pub(crate) fn from_parts(
+        mask: [u8; FG_TILE_COUNT / 8],
+        specific: [u16; TILESET_COUNT as usize],
+    ) -> Self {
+        Self { mask, specific }
+    }
+
     /// Whether tile `tile` (below `$200`) has a definition per tileset.
     pub fn is_specific(&self, tile: u16) -> bool {
         let t = tile as usize;

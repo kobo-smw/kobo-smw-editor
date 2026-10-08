@@ -1764,3 +1764,52 @@ fn entries_past_the_edge_are_selected_and_brought_back() {
     harness.step();
     assert_eq!(object_place(harness.state(), 8), Some((0, 34)));
 }
+
+#[test]
+fn a_map16_tile_is_edited_undone_and_saved_with_the_project() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "map16-window");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().map16_editor.show_tile(0x130);
+    harness.run_steps(3);
+    let tileset = harness
+        .state()
+        .current()
+        .unwrap()
+        .document
+        .level()
+        .header
+        .object_tileset;
+    let entry = |app: &App| app.map16().unwrap().entry(0x130, tileset);
+    let before = entry(harness.state());
+    harness.get_by_label("Y").click();
+    harness.step();
+    let flipped = entry(harness.state());
+    assert!(flipped.gfx.top_left.flip_y());
+    assert!(!before.gfx.top_left.flip_y());
+    assert!(harness.state().map16().unwrap().is_modified());
+    // The level is drawn again with it.
+    wait_for(&mut harness, "the picture", drawn);
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    assert_eq!(entry(harness.state()), before);
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    harness.step();
+    assert_eq!(entry(harness.state()), flipped);
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    harness.step();
+    assert!(
+        !harness.state().map16().unwrap().is_modified(),
+        "{:?}",
+        harness.state().status()
+    );
+    let page = std::fs::read_to_string(project.0.join("map16/01.toml")).unwrap();
+    assert!(page.contains("0x130 = { gfx = ["), "{page}");
+    let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
+    assert!(manifest.contains("map16/01.toml"), "{manifest}");
+}

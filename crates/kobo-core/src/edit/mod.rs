@@ -11,11 +11,13 @@
 pub mod diff;
 mod document;
 pub mod find;
+pub mod map16;
 mod previews;
 pub mod reach;
 mod workspace;
 
 pub use document::{LevelDocument, Reload};
+pub use map16::{Map16Document, Map16EditError, TileChange};
 pub use previews::{background_preview, object_previews, sprite_previews};
 pub use workspace::{Preview, Workspace, WorkspaceError};
 

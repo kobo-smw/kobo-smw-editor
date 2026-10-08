@@ -511,3 +511,73 @@ fn sublevels_are_grouped_under_the_overworld_level_that_reaches_them() {
     // The credits' rooms are reached by the game's code, not an exit.
     assert!(reach.unreached.contains(&0x093));
 }
+
+#[test]
+fn map16_edits_build_unsaved_and_save_into_the_page_files() {
+    use kobo_core::edit::{Map16Document, TileChange};
+    use kobo_core::map16::{Map16Tile, Tile8Ref};
+    use kobo_core::source::map16::Map16Entry;
+
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-map16");
+    let (level, _) = import::read_level(&clean, 0x105).unwrap();
+    fs::create_dir_all(dir.join("levels")).unwrap();
+    fs::write(
+        dir.join("levels/105.toml"),
+        level.to_toml(&Default::default()),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("kobo.toml"),
+        "format = 1\n\n[levels]\n0x105 = \"levels/105.toml\"\n",
+    )
+    .unwrap();
+    let tileset = level.header.object_tileset;
+    let clean = Arc::new(clean);
+    let mut map16 = Map16Document::open(&dir, &clean).unwrap();
+    let mut workspace = Workspace::open(&dir, clean.clone())
+        .unwrap()
+        .without_cache();
+    let options = RenderOptions {
+        sprites: Sprites::Hidden,
+        player: false,
+        hidden_layers: 0,
+    };
+    let shown = |workspace: &Workspace, tile: u16| {
+        let render = workspace
+            .preview(0x105, options, &Operation::default())
+            .unwrap()
+            .render;
+        render.level.tiles.foreground_map16()[usize::from(tile)]
+    };
+
+    // A tile of page 0, the game's, and one of page 2, Lunar Magic's.
+    let quarter = |n| Tile8Ref::new(n, 3, false, true, false);
+    let gfx = Map16Tile {
+        top_left: quarter(0x40),
+        bottom_left: quarter(0x41),
+        top_right: quarter(0x42),
+        bottom_right: quarter(0x43),
+    };
+    let changes = [0x045, 0x210].map(|tile| TileChange {
+        tile,
+        tileset,
+        entry: Map16Entry { gfx, acts: 0x130 },
+    });
+    map16.apply("Edit Map16 tiles", &changes).unwrap();
+    workspace.set_map16(&map16);
+    assert_eq!(shown(&workspace, 0x045), Some(gfx));
+    assert_eq!(shown(&workspace, 0x210), Some(gfx));
+    assert!(map16.is_modified());
+
+    let written = map16.save().unwrap();
+    assert_eq!(written.len(), 3, "two page files and the manifest");
+    assert!(!map16.is_modified());
+    let reopened = Map16Document::open(&dir, &clean).unwrap();
+    assert_eq!(reopened.entry(0x045, tileset).gfx, gfx);
+    assert_eq!(reopened.entry(0x210, tileset).acts, 0x130);
+    let from_disk = Workspace::open(&dir, clean).unwrap().without_cache();
+    assert_eq!(shown(&from_disk, 0x210), Some(gfx));
+}

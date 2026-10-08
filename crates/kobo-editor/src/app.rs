@@ -277,6 +277,15 @@ pub struct App {
     pub dialogs: crate::dialogs::Dialogs,
     /// The project window is open.
     pub project_open: bool,
+    /// The project's Map16, open with it, or why it did not open.
+    map16: Option<Result<edit::Map16Document, String>>,
+    /// Counts the Map16's changes, for pictures drawn from it.
+    map16_generation: u64,
+    /// The last edit was to the Map16 rather than a level, so undo and
+    /// redo take that first.
+    map16_last: bool,
+    /// The Map16 window.
+    pub map16_editor: crate::map16::Map16Editor,
     startup: Startup,
     screenshot_frames: Option<u32>,
     /// The window's title as last set.
@@ -359,6 +368,10 @@ impl App {
             play: Default::default(),
             dialogs: Default::default(),
             project_open: false,
+            map16: None,
+            map16_generation: 0,
+            map16_last: false,
+            map16_editor: Default::default(),
             startup: startup.clone(),
             screenshot_frames: None,
             shown_title: String::new(),
@@ -392,6 +405,10 @@ impl App {
         app.overview.open = startup.tab.as_deref() == Some("overview");
         app.project_open = startup.tab.as_deref() == Some("project");
         app.backgrounds.open = startup.tab.as_deref() == Some("backgrounds");
+        if startup.tab.as_deref() == Some("map16-editor") {
+            // At the cement block, which every tileset has.
+            app.map16_editor.show_tile(0x130);
+        }
         match startup.tab.as_deref() {
             Some("sprites") => app.palette.show(crate::palette::Kind::Sprites),
             Some("map16") => app.palette.show(crate::palette::Kind::Map16),
@@ -415,7 +432,7 @@ impl App {
     /// `None`; with unsaved edits, once the user says what to do with
     /// them.
     pub fn switch_project(&mut self, to: Option<PathBuf>) {
-        if self.modified().count() > 0 {
+        if !self.unsaved().is_empty() {
             self.switching = Some(to);
         } else {
             let ctx = self.ctx.clone();
@@ -425,7 +442,7 @@ impl App {
 
     /// Quits, once any unsaved edits are dealt with.
     pub(crate) fn quit(&mut self) {
-        if self.modified().count() > 0 {
+        if !self.unsaved().is_empty() {
             self.confirm_close = true;
         } else {
             self.ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -444,16 +461,22 @@ impl App {
         self.current = None;
         self.placing = None;
         self.palette.forget_pictures();
+        self.map16 = None;
+        self.map16_last = false;
+        self.map16_editor.forget();
     }
 
     pub(crate) fn open_project(&mut self, ctx: &egui::Context, dir: &Path) {
         let Clean::Loaded(clean) = &self.clean else {
             return;
         };
+        let clean = clean.clone();
         match Workspace::open(dir, clean.clone()) {
             Ok(workspace) => {
                 self.close_project();
                 self.watcher = Watcher::new(dir, ctx.clone()).ok();
+                self.map16 =
+                    Some(edit::Map16Document::open(dir, &clean).map_err(|e| e.to_string()));
                 self.workspace = Some(workspace);
                 self.project_error = None;
                 self.open.clear();
@@ -728,6 +751,7 @@ impl App {
         };
         match open.document.apply(label, &edits) {
             Ok(()) => {
+                self.map16_last = false;
                 open.keep_valid_selection();
                 self.request_preview(number);
                 true
@@ -748,6 +772,57 @@ impl App {
         match open.document.amend(&edits) {
             Ok(()) => self.request_preview(number),
             Err(e) => self.say(e.to_string()),
+        }
+    }
+
+    /// The project's Map16, if its files opened.
+    pub fn map16(&self) -> Option<&edit::Map16Document> {
+        self.map16.as_ref()?.as_ref().ok()
+    }
+
+    /// Why the project's Map16 files did not open.
+    pub fn map16_error(&self) -> Option<&str> {
+        self.map16.as_ref()?.as_ref().err().map(String::as_str)
+    }
+
+    pub fn map16_generation(&self) -> u64 {
+        self.map16_generation
+    }
+
+    /// Changes a Map16 tile, as one undo step or, while a value is being
+    /// dragged, part of the last.
+    pub fn apply_map16(&mut self, label: &str, change: edit::TileChange, amend: bool) {
+        let Some(Ok(map16)) = &mut self.map16 else {
+            return;
+        };
+        let result = if amend {
+            map16.amend(&[change])
+        } else {
+            map16.apply(label, &[change])
+        };
+        match result {
+            Ok(()) => {
+                self.map16_last = true;
+                self.map16_changed();
+            }
+            Err(e) => self.say(format!("{label}: {e}")),
+        }
+    }
+
+    /// After the Map16 changed: every level's picture may have, so the
+    /// open one is drawn again and the rest when next shown.
+    fn map16_changed(&mut self) {
+        self.map16_generation += 1;
+        if let (Some(workspace), Some(Ok(map16))) = (&mut self.workspace, &self.map16) {
+            workspace.set_map16(map16);
+        }
+        self.thumbnails.forget();
+        self.palette.forget_pictures();
+        for open in self.open.values_mut() {
+            open.requested = u64::MAX;
+        }
+        if let Some(number) = self.current {
+            self.request_preview(number);
         }
     }
 
@@ -777,6 +852,9 @@ impl App {
     }
 
     fn undo(&mut self, redo: bool) {
+        if self.map16_last && self.undo_map16(redo) {
+            return;
+        }
         let Some(number) = self.current else { return };
         let Some(open) = self.open.get_mut(&number) else {
             return;
@@ -798,6 +876,43 @@ impl App {
             self.request_preview(number);
             let verb = if redo { "Redid" } else { "Undid" };
             self.say(format!("{verb}: {}", label.unwrap_or_default()));
+        }
+    }
+
+    /// Undoes or redoes the Map16's last step, if it has one.
+    fn undo_map16(&mut self, redo: bool) -> bool {
+        let Some(Ok(map16)) = &mut self.map16 else {
+            return false;
+        };
+        let label = if redo {
+            map16.redo_label()
+        } else {
+            map16.undo_label()
+        }
+        .map(str::to_owned);
+        let done = if redo { map16.redo() } else { map16.undo() };
+        if done {
+            self.map16_changed();
+            let verb = if redo { "Redid" } else { "Undid" };
+            self.say(format!("{verb}: {}", label.unwrap_or_default()));
+        }
+        done
+    }
+
+    /// The labels of the step undo and redo would take, Map16 or level.
+    fn undo_labels(&self) -> (Option<String>, Option<String>) {
+        let level = self.current().map_or((None, None), |o| {
+            (
+                o.document.undo_label().map(str::to_owned),
+                o.document.redo_label().map(str::to_owned),
+            )
+        });
+        match self.map16().filter(|_| self.map16_last) {
+            Some(map16) => (
+                map16.undo_label().map(str::to_owned).or(level.0),
+                map16.redo_label().map(str::to_owned).or(level.1),
+            ),
+            None => level,
         }
     }
 
@@ -832,6 +947,14 @@ impl App {
                 Err(e) => failed.push(e.to_string()),
             }
         }
+        if let Some(Ok(map16)) = &mut self.map16
+            && map16.is_modified()
+        {
+            match map16.save() {
+                Ok(_) => saved.push("the Map16".into()),
+                Err(e) => failed.push(e.to_string()),
+            }
+        }
         if !failed.is_empty() {
             self.say(failed.join("; "));
         } else if !saved.is_empty() {
@@ -839,8 +962,18 @@ impl App {
         }
     }
 
-    fn modified(&self) -> impl Iterator<Item = &OpenLevel> {
-        self.open.values().filter(|o| o.document.is_modified())
+    /// What has unsaved edits: the levels' files, and the Map16.
+    fn unsaved(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .open
+            .values()
+            .filter(|o| o.document.is_modified())
+            .map(OpenLevel::file_name)
+            .collect();
+        if self.map16().is_some_and(edit::Map16Document::is_modified) {
+            names.push("the Map16".into());
+        }
+        names
     }
 
     /// Follows the files that changed outside the editor.
@@ -885,8 +1018,25 @@ impl App {
                 .values()
                 .map(|o| (o.number, o.document.level().clone()))
                 .collect();
+            // The Map16 follows its files unless it has unsaved edits,
+            // which stay over them.
+            let map16_saved = !self.map16().is_some_and(edit::Map16Document::is_modified);
+            if map16_saved
+                && let (Some(workspace), Clean::Loaded(clean)) = (&self.workspace, &self.clean)
+            {
+                let root = workspace.project().root.clone();
+                let reopened = edit::Map16Document::open(&root, clean).map_err(|e| e.to_string());
+                self.map16 = Some(reopened);
+                self.map16_generation += 1;
+            }
             if let Some(workspace) = &mut self.workspace {
-                match workspace.reload(&keep) {
+                let result = workspace.reload(&keep);
+                if let Some(Ok(map16)) = &self.map16
+                    && map16.is_modified()
+                {
+                    workspace.set_map16(map16);
+                }
+                match result {
                     Ok(()) => {
                         self.project_error = None;
                         self.palette.forget_pictures();
@@ -1005,10 +1155,13 @@ impl App {
         let command = |key| KeyboardShortcut::new(Modifiers::COMMAND, key);
         let shift_command = |key| KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, key);
         let (save, undo, redo, redo_y, build, find) = ctx.input_mut(|i| {
+            // egui ignores an extra Shift, so Ctrl+Shift+Z is taken before
+            // Ctrl+Z would take it.
+            let redo = i.consume_shortcut(&shift_command(Key::Z));
             (
                 i.consume_shortcut(&command(Key::S)),
                 i.consume_shortcut(&command(Key::Z)),
-                i.consume_shortcut(&shift_command(Key::Z)),
+                redo,
                 i.consume_shortcut(&command(Key::Y)),
                 i.consume_shortcut(&command(Key::B)),
                 i.consume_shortcut(&shift_command(Key::F)),
@@ -1128,7 +1281,7 @@ impl App {
                 if play.clicked() {
                     crate::play::from_start(self, self.play.settings.powerup);
                 }
-                let modified = self.modified().count();
+                let modified = self.unsaved().len();
                 let save = ui
                     .add_enabled(modified > 0, egui::Button::new(icon("💾")))
                     .on_hover_text("Save every changed level (Ctrl+S)")
@@ -1152,12 +1305,7 @@ impl App {
 
     /// Undo and redo, as arrows, named by what they would undo and redo.
     fn undo_buttons(&mut self, ui: &mut egui::Ui) {
-        let (undo_label, redo_label) = self.current().map_or((None, None), |o| {
-            (
-                o.document.undo_label().map(str::to_owned),
-                o.document.redo_label().map(str::to_owned),
-            )
-        });
+        let (undo_label, redo_label) = self.undo_labels();
         let undo = ui
             .add_enabled(undo_label.is_some(), egui::Button::new(icon("⟲")))
             .on_hover_text(format!(
@@ -1518,6 +1666,14 @@ impl App {
             ui.radio_value(&mut self.view.sprites, SpriteView::Hidden, "Hidden");
             ui.separator();
             ui.checkbox(&mut self.view.source, "The level file beside the canvas");
+            if ui
+                .button("Map16")
+                .on_hover_text("The project's Map16 tiles, as the open level draws them")
+                .clicked()
+            {
+                self.map16_editor.open = true;
+                ui.close();
+            }
             if ui.button("All levels as pictures").clicked() {
                 self.overview.open = true;
                 ui.close();
@@ -1540,7 +1696,7 @@ impl App {
         let Some(to) = self.switching.clone() else {
             return;
         };
-        let names: Vec<String> = self.modified().map(OpenLevel::file_name).collect();
+        let names = self.unsaved();
         let (mut go, mut cancel) = (false, false);
         egui::Modal::new(egui::Id::new("confirm-switch")).show(ctx, |ui| {
             ui.heading("Save your changes?");
@@ -1548,7 +1704,7 @@ impl App {
             ui.horizontal(|ui| {
                 if ui.button("Save").clicked() {
                     self.save_all();
-                    go = self.modified().count() == 0;
+                    go = self.unsaved().is_empty();
                 }
                 go |= ui.button("Don't save").clicked();
                 cancel = ui.button("Cancel").clicked();
@@ -1665,7 +1821,7 @@ impl App {
     fn close_requests(&mut self, ctx: &egui::Context) {
         if ctx.input(|i| i.viewport().close_requested())
             && !self.allow_close
-            && self.modified().count() > 0
+            && !self.unsaved().is_empty()
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm_close = true;
@@ -1673,7 +1829,7 @@ impl App {
         if !self.confirm_close {
             return;
         }
-        let names: Vec<String> = self.modified().map(OpenLevel::file_name).collect();
+        let names = self.unsaved();
         let mut close = false;
         let mut cancel = false;
         egui::Modal::new(egui::Id::new("confirm-close")).show(ctx, |ui| {
@@ -1682,7 +1838,7 @@ impl App {
             ui.horizontal(|ui| {
                 if ui.button("Save and close").clicked() {
                     self.save_all();
-                    close = self.modified().count() == 0;
+                    close = self.unsaved().is_empty();
                 }
                 if ui.button("Close without saving").clicked() {
                     close = true;
@@ -1719,7 +1875,7 @@ impl App {
                     None => format!("{name} / {:03X} — Kobo", open.number),
                 };
             }
-            if self.modified().count() > 0 {
+            if !self.unsaved().is_empty() {
                 title = format!("● {title}");
             }
         }
@@ -1917,6 +2073,7 @@ impl eframe::App for App {
             });
         crate::build::window(self, &ctx);
         crate::backgrounds::window(self, &ctx);
+        crate::map16::window(self, &ctx);
         crate::project::window(self, &ctx);
         crate::commands::window(self, &ctx);
         crate::changes::window(self, &ctx);
