@@ -1926,3 +1926,53 @@ fn an_animation_list_is_given_and_a_slot_added_from_the_inspector() {
     wait_for(&mut harness, "the picture", drawn);
     assert!(harness.state().current().unwrap().render_error.is_none());
 }
+
+#[test]
+fn a_level_is_given_a_layer3_tilemap_drawn_on_and_saved() {
+    use egui_kittest::kittest::Queryable;
+    use kobo_core::edit::layer3::Tilemap;
+    use kobo_core::map16::Tile8Ref;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "layer3-window");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().layer3_editor.open = true;
+    harness.run_steps(3);
+    harness
+        .get_by_label("Give the level a layer 3 tilemap")
+        .click();
+    harness.run_steps(2);
+    let level = harness.state().current().unwrap().document.level().clone();
+    let tilemap = Tilemap::of(&level).expect("the level loads a tilemap");
+    assert_eq!(tilemap.file, 0x80);
+    assert!(harness.state().open_tilemap(0x80).is_some());
+    wait_for(&mut harness, "the picture", drawn);
+
+    let tile = Tile8Ref::new(0x12, 3, true, false, false);
+    harness
+        .state_mut()
+        .draw_tilemap(0x80, &[(tilemap.skip(), tile)], false);
+    harness.state_mut().tilemap_changed(0x80);
+    harness.step();
+    let word = |app: &App| app.open_tilemap(0x80).unwrap().word(tilemap.skip());
+    assert_eq!(word(harness.state()), Some(tile));
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    assert_eq!(word(harness.state()), Some(Tile8Ref(0x38FC)));
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    harness.step();
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    harness.step();
+    assert!(
+        !harness.state().open_tilemap(0x80).unwrap().is_modified(),
+        "{:?}",
+        harness.state().status()
+    );
+    let bytes = std::fs::read(project.0.join("graphics/ExGFX80.bin")).unwrap();
+    let at = tilemap.skip() * 2;
+    assert_eq!(u16::from_le_bytes([bytes[at], bytes[at + 1]]), tile.0);
+    let saved = std::fs::read_to_string(project.level_file()).unwrap();
+    assert!(saved.contains("[graphics]"), "{saved}");
+}

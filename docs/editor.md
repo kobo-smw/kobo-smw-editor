@@ -168,6 +168,20 @@ where the project uses Lunar Magic's graphics formats), and saving adds it as
 `graphics/GFXnn.png`. An ExGFX file the project holds as a PNG is drawn in the same way;
 one held as `.bin` bytes is not, having no colours to draw in.
 
+## Layer 3
+
+The layer 3 window (View menu) draws on the open level's layer 3 tilemap: the ExGFX file
+its graphics list's LT3 slot loads as layer 3's tilemap (Lunar Magic's "T"). It shows
+layer 3's tilemap, 64 tiles wide, in 32x32 screens, drawn with the level's own layer 3
+tiles and colours, the rows the file does not reach or that stay under the status bar
+dimmed. Drawing sets a cell to the tile chosen among the level's layer 3 tiles, with a
+palette (0 to 7, groups of four of the first 32 colours), flips, and priority; a right
+click on the map takes a cell's word. A level without a tilemap is given one: the first
+free ExGFX number, a `$1000`-byte `.bin` file of blank tiles (`$38FC`, as the game's own
+layer 3 is) placed under the status bar, with the list's `T` set and nothing else of
+it changed (one undo step of the level). Saving writes the file and names it in
+`kobo.toml`'s `[exgfx]`.
+
 ## Shared palettes
 
 The shared palettes window (View menu) edits the game's colour tables, which every level

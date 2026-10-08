@@ -71,3 +71,8 @@ from the editor where the user is working.
   list a build would refuse, and `exanimation::Slot::refit_frames` keeping a slot's
   frames as its type, trigger, and count change. The global list is still edited in its
   file, and the level's picture shows the frame the load leaves.
+- Layer 3 tilemaps (2026-10-08): `edit::layer3` (where LT3's file goes, giving a level
+  one with `T` set, `TilemapDocument` over the `.bin` file) and the editor's layer 3
+  window (editor.md, "Layer 3"). Layer 3's own graphics files are drawn in through the
+  graphics window; the game's stripe images (tides, the castle windows) are not
+  editable, as they are the game's code's.

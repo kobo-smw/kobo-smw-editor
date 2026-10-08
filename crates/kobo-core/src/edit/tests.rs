@@ -2,7 +2,7 @@ use super::*;
 use crate::level::objects::Object;
 use crate::source::level::Sprite;
 
-const LEVEL: &str = r#"[header]
+pub(crate) const LEVEL: &str = r#"[header]
 screens = 2
 mode = 0x00  # Horizontal, background
 tileset = 0x0  # Normal 1

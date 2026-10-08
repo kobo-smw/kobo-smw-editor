@@ -216,6 +216,7 @@ enum LastEdit {
     Map16,
     Graphics(edit::GraphicsFile),
     Palettes,
+    Layer3(u16),
 }
 
 pub struct App {
@@ -303,6 +304,12 @@ pub struct App {
     palettes: Option<Result<edit::PalettesDocument, String>>,
     /// The shared palettes window.
     pub palettes_editor: crate::palettes::PalettesEditor,
+    /// The layer 3 tilemaps open for drawing on, by ExGFX file.
+    tilemaps: BTreeMap<u16, edit::TilemapDocument>,
+    /// Counts the tilemaps' changes, for pictures drawn from them.
+    layer3_generation: u64,
+    /// The layer 3 window.
+    pub layer3_editor: crate::layer3::Layer3Editor,
     /// The Map16 window.
     pub map16_editor: crate::map16::Map16Editor,
     startup: Startup,
@@ -395,6 +402,9 @@ impl App {
             graphics_editor: Default::default(),
             palettes: None,
             palettes_editor: Default::default(),
+            tilemaps: BTreeMap::new(),
+            layer3_generation: 0,
+            layer3_editor: Default::default(),
             map16_editor: Default::default(),
             startup: startup.clone(),
             screenshot_frames: None,
@@ -431,6 +441,7 @@ impl App {
         app.backgrounds.open = startup.tab.as_deref() == Some("backgrounds");
         app.graphics_editor.open = startup.tab.as_deref() == Some("graphics");
         app.palettes_editor.open = startup.tab.as_deref() == Some("palettes");
+        app.layer3_editor.open = startup.tab.as_deref() == Some("layer3");
         if startup.tab.as_deref() == Some("map16-editor") {
             // At the cement block, which every tileset has.
             app.map16_editor.show_tile(0x130);
@@ -493,6 +504,8 @@ impl App {
         self.graphics.clear();
         self.graphics_editor.forget();
         self.palettes = None;
+        self.tilemaps.clear();
+        self.layer3_editor.forget();
     }
 
     pub(crate) fn open_project(&mut self, ctx: &egui::Context, dir: &Path) {
@@ -918,6 +931,105 @@ impl App {
         }
     }
 
+    pub fn layer3_generation(&self) -> u64 {
+        self.layer3_generation
+    }
+
+    /// A layer 3 tilemap, opened for drawing on if it is not yet: ExGFX
+    /// `file` as the project has it, or a new one `bytes` long.
+    pub fn tilemap_document(
+        &mut self,
+        file: u16,
+        bytes: usize,
+    ) -> Result<&edit::TilemapDocument, String> {
+        if !self.tilemaps.contains_key(&file) {
+            let Some(workspace) = &self.workspace else {
+                return Err("No project is open.".into());
+            };
+            let document = edit::TilemapDocument::open(workspace.project(), file, bytes)
+                .map_err(|e| e.to_string())?;
+            self.tilemaps.insert(file, document);
+        }
+        Ok(&self.tilemaps[&file])
+    }
+
+    /// A layer 3 tilemap already open.
+    pub fn open_tilemap(&self, file: u16) -> Option<&edit::TilemapDocument> {
+        self.tilemaps.get(&file)
+    }
+
+    /// Gives the open level a layer 3 tilemap: a new ExGFX file of blank
+    /// tiles, which its graphics list loads, as one undo step of the
+    /// level; saving writes the file.
+    pub fn give_tilemap(&mut self) {
+        let Some(workspace) = &self.workspace else {
+            return;
+        };
+        let Some(level) = self.current().map(|o| o.document.level().clone()) else {
+            return;
+        };
+        let free = (kobo_core::exgfx::EXGFX_FIRST..=kobo_core::exgfx::EXGFX_LAST).find(|n| {
+            !workspace.project().manifest.exgfx.contains_key(n) && !self.tilemaps.contains_key(n)
+        });
+        let Some(file) = free else {
+            self.say("The project has every ExGFX number.");
+            return;
+        };
+        let list = edit::layer3::with_tilemap(&level, file);
+        let tilemap = edit::layer3::Tilemap::of(&kobo_core::source::level::Level {
+            graphics: Some(list),
+            ..level
+        })
+        .expect("the list loads a tilemap");
+        if let Err(e) = self.tilemap_document(file, tilemap.bytes()) {
+            self.say(e);
+            return;
+        }
+        if let (Some(workspace), Some(document)) = (&mut self.workspace, self.tilemaps.get(&file)) {
+            workspace.set_tilemap(document);
+        }
+        self.apply(
+            "Give layer 3 a tilemap",
+            vec![Edit::SetGraphics(Some(list))],
+        );
+    }
+
+    /// Draws on a layer 3 tilemap: `cells` set, as a step of its own or,
+    /// through a stroke, part of the last.
+    pub fn draw_tilemap(
+        &mut self,
+        file: u16,
+        cells: &[(usize, kobo_core::map16::Tile8Ref)],
+        stroke: bool,
+    ) {
+        let Some(tilemap) = self.tilemaps.get_mut(&file) else {
+            return;
+        };
+        if stroke {
+            tilemap.amend(cells);
+        } else {
+            tilemap.set("Draw on layer 3", cells);
+        }
+        self.last_edit = LastEdit::Layer3(file);
+        self.layer3_generation += 1;
+    }
+
+    /// After a layer 3 tilemap changed: the level is built with it and
+    /// drawn again.
+    pub fn tilemap_changed(&mut self, file: u16) {
+        self.layer3_generation += 1;
+        if let (Some(workspace), Some(tilemap)) = (&mut self.workspace, self.tilemaps.get(&file)) {
+            workspace.set_tilemap(tilemap);
+        }
+        self.thumbnails.forget();
+        for open in self.open.values_mut() {
+            open.requested = u64::MAX;
+        }
+        if let Some(number) = self.current {
+            self.request_preview(number);
+        }
+    }
+
     pub fn graphics_generation(&self) -> u64 {
         self.graphics_generation
     }
@@ -1038,6 +1150,7 @@ impl App {
             LastEdit::Map16 => self.undo_map16(redo),
             LastEdit::Graphics(file) => self.undo_graphics(file, redo),
             LastEdit::Palettes => self.undo_palettes(redo),
+            LastEdit::Layer3(file) => self.undo_tilemap(file, redo),
         };
         if done {
             return;
@@ -1080,6 +1193,26 @@ impl App {
         let done = if redo { map16.redo() } else { map16.undo() };
         if done {
             self.map16_changed();
+            let verb = if redo { "Redid" } else { "Undid" };
+            self.say(format!("{verb}: {}", label.unwrap_or_default()));
+        }
+        done
+    }
+
+    /// Undoes or redoes a layer 3 tilemap's last step, if it has one.
+    fn undo_tilemap(&mut self, file: u16, redo: bool) -> bool {
+        let Some(tilemap) = self.tilemaps.get_mut(&file) else {
+            return false;
+        };
+        let label = if redo {
+            tilemap.redo_label()
+        } else {
+            tilemap.undo_label()
+        }
+        .map(str::to_owned);
+        let done = if redo { tilemap.redo() } else { tilemap.undo() };
+        if done {
+            self.tilemap_changed(file);
             let verb = if redo { "Redid" } else { "Undid" };
             self.say(format!("{verb}: {}", label.unwrap_or_default()));
         }
@@ -1155,6 +1288,10 @@ impl App {
             LastEdit::Palettes => self
                 .palettes()
                 .map_or((None, None), |p| (p.undo_label(), p.redo_label())),
+            LastEdit::Layer3(file) => self
+                .tilemaps
+                .get(&file)
+                .map_or((None, None), |t| (t.undo_label(), t.redo_label())),
         };
         (
             undo.map(str::to_owned).or(level.0),
@@ -1216,6 +1353,12 @@ impl App {
                     Err(e) => failed.push(e.to_string()),
                 }
             }
+            for tilemap in self.tilemaps.values_mut().filter(|t| t.is_modified()) {
+                match tilemap.save(&root) {
+                    Ok(_) => saved.push(format!("ExGFX{:X}", tilemap.file())),
+                    Err(e) => failed.push(e.to_string()),
+                }
+            }
         }
         if !failed.is_empty() {
             self.say(failed.join("; "));
@@ -1247,6 +1390,12 @@ impl App {
         {
             names.push("the shared palettes".into());
         }
+        names.extend(
+            self.tilemaps
+                .values()
+                .filter(|t| t.is_modified())
+                .map(|t| format!("ExGFX{:X}", t.file())),
+        );
         names
     }
 
@@ -1313,6 +1462,8 @@ impl App {
             {
                 self.palettes = None;
             }
+            self.tilemaps.retain(|_, t| t.is_modified());
+            self.layer3_generation += 1;
             if let Some(workspace) = &mut self.workspace {
                 let result = workspace.reload(&keep);
                 if let Some(Ok(map16)) = &self.map16
@@ -1325,6 +1476,9 @@ impl App {
                 }
                 if let Some(Ok(palettes)) = &self.palettes {
                     workspace.set_palettes(palettes);
+                }
+                for tilemap in self.tilemaps.values() {
+                    workspace.set_tilemap(tilemap);
                 }
                 match result {
                     Ok(()) => {
@@ -1973,6 +2127,14 @@ impl App {
                 ui.close();
             }
             if ui
+                .button("Layer 3")
+                .on_hover_text("The level's layer 3 tilemap, to draw on")
+                .clicked()
+            {
+                self.layer3_editor.open = true;
+                ui.close();
+            }
+            if ui
                 .button("Shared palettes")
                 .on_hover_text("The game's colour tables, which levels without a palette of their own draw from")
                 .clicked()
@@ -2382,6 +2544,7 @@ impl eframe::App for App {
         crate::map16::window(self, &ctx);
         crate::graphics::window(self, &ctx);
         crate::palettes::window(self, &ctx);
+        crate::layer3::window(self, &ctx);
         crate::project::window(self, &ctx);
         crate::commands::window(self, &ctx);
         crate::changes::window(self, &ctx);

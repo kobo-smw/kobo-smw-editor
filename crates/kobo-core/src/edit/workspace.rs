@@ -269,6 +269,16 @@ impl Workspace {
         }
     }
 
+    /// Puts a layer 3 tilemap as the editor has it in the project, for the
+    /// next build.
+    pub fn set_tilemap(&mut self, tilemap: &super::TilemapDocument) {
+        let mut project = (*self.project).clone();
+        tilemap.apply_to(&mut project);
+        if project.exgfx != self.project.exgfx || project.manifest != self.project.manifest {
+            self.project = Arc::new(project);
+        }
+    }
+
     /// Builds the project as it is in memory.
     pub fn build(&self) -> Result<Rom, WorkspaceError> {
         Ok(build::build_cached(

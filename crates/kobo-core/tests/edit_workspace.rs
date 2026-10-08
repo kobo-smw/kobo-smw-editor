@@ -646,3 +646,65 @@ fn a_graphics_file_drawn_in_builds_unsaved_and_saves_into_the_project() {
     let from_disk = Workspace::open(&dir, clean).unwrap().without_cache();
     assert_eq!(vram_tile(&from_disk), drawn);
 }
+
+#[test]
+fn a_layer3_tilemap_given_to_a_level_builds_unsaved_and_saves_into_the_project() {
+    use kobo_core::edit::TilemapDocument;
+    use kobo_core::edit::layer3::{self, Tilemap};
+    use kobo_core::map16::Tile8Ref;
+
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let dir = TempDir::new("edit-layer3");
+    let (level, _) = import::read_level(&clean, 0x105).unwrap();
+    fs::create_dir_all(dir.join("levels")).unwrap();
+    let path = dir.join("levels/105.toml");
+    fs::write(&path, level.to_toml(&Default::default())).unwrap();
+    fs::write(
+        dir.join("kobo.toml"),
+        "format = 1\n\n[levels]\n0x105 = \"levels/105.toml\"\n",
+    )
+    .unwrap();
+    let clean = Arc::new(clean);
+    let mut workspace = Workspace::open(&dir, clean.clone())
+        .unwrap()
+        .without_cache();
+    let mut document = LevelDocument::open(&path).unwrap();
+    let file = layer3::free_file(workspace.project()).unwrap();
+    assert_eq!(file, 0x80);
+    let list = layer3::with_tilemap(document.level(), file);
+    document
+        .apply("Give layer 3 a tilemap", &[Edit::SetGraphics(Some(list))])
+        .unwrap();
+    let tilemap = Tilemap::of(document.level()).unwrap();
+    let mut words = TilemapDocument::open(workspace.project(), file, tilemap.bytes()).unwrap();
+    assert!(!words.in_project());
+    // The first word that loads: under the status bar, row 5.
+    let tile = Tile8Ref::new(0x12, 3, true, true, false);
+    words.set("Draw", &[(tilemap.skip(), tile)]);
+    workspace.set_level(0x105, document.level());
+    workspace.set_tilemap(&words);
+    let options = RenderOptions {
+        sprites: Sprites::Hidden,
+        player: false,
+        hidden_layers: 0,
+    };
+    let vram_word = |workspace: &Workspace, at: u16| {
+        let render = workspace
+            .preview(0x105, options, &Operation::default())
+            .unwrap()
+            .render;
+        let vram = &render.level.video.vram;
+        let i = usize::from(at) * 2;
+        u16::from_le_bytes([vram[i], vram[i + 1]])
+    };
+    assert_eq!(vram_word(&workspace, 0x50A0), tile.0);
+    assert_eq!(vram_word(&workspace, 0x50A1), layer3::BLANK);
+
+    document.save().unwrap();
+    let written = words.save(&dir).unwrap();
+    assert_eq!(written.len(), 2, "the file and the manifest");
+    let from_disk = Workspace::open(&dir, clean).unwrap().without_cache();
+    assert_eq!(vram_word(&from_disk, 0x50A0), tile.0);
+}
