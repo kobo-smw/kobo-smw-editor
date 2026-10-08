@@ -1739,3 +1739,28 @@ fn the_play_settings_menu_sets_how_the_game_starts() {
     assert_eq!(settings.switches, 0b1000);
     assert!(settings.off);
 }
+
+#[test]
+fn entries_past_the_edge_are_selected_and_brought_back() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    // Vanilla 108 has three ledges below its two screens.
+    let project = Project::with_level(&clean, "past-edge", 0x108);
+    let mut harness = harness_for(&project.0, 0x108);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.get_by_label("Select them").click();
+    harness.run_steps(2);
+    let ledges: Vec<Item> = (8..=10)
+        .map(|i| Item::object(ObjectLayer::One, i))
+        .collect();
+    assert_eq!(harness.state().current().unwrap().selection, ledges);
+    // Up a row takes them no further out, so it applies.
+    harness.key_press(Key::ArrowUp);
+    harness.step();
+    assert_eq!(object_place(harness.state(), 8), Some((0, 34)));
+    // Down a row would, from where they are now, so nothing moves.
+    harness.key_press(Key::ArrowDown);
+    harness.step();
+    assert_eq!(object_place(harness.state(), 8), Some((0, 34)));
+}

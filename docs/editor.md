@@ -95,7 +95,11 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
 - **Move**: drag (with Ctrl held, copy to where it is dropped), or the arrow keys (Shift:
   16 tiles). The moved picture shows at once and
   the level is drawn again behind it. A sprite moved to another screen moves in the list
-  too, since the game's loader needs the list in screen order (docs/smw.md).
+  too, since the game's loader needs the list in screen order (docs/smw.md). Nothing is
+  moved or placed outside the level; an object or sprite a file already has past its
+  edge (vanilla `108` has three ledges below its two screens), which the game loads but
+  the level never shows, can be edited and moved back in, never further out. The
+  inspector's diagnostics count them, and *Select them* selects them.
 - **Resize**: the handle at a selected object's bottom right, for objects with a width,
   height, or length, and direct Map16 tiles.
 - **Order**: Ctrl+[ and Ctrl+] send an object back and bring it forward in its list; with

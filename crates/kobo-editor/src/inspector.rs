@@ -69,6 +69,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     };
     let mut go_to = false;
     let mut select_only = None;
+    let mut select_past: Vec<Item> = Vec::new();
     // The game's palette for the level, to start one of its own from.
     let game_palette = app
         .workspace()
@@ -191,7 +192,28 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     });
                 }
             }
-            if diagnostics.is_empty() && unreached.is_empty() {
+            let past = edit::past_edge(&level);
+            if !past.is_empty() {
+                let (width, height) = edit::layer_size(&level, ObjectLayer::One);
+                let n = past.len();
+                let what = if n == 1 { "1 entry is".to_string() } else { format!("{n} entries are") };
+                ui.label(
+                    RichText::new(format!(
+                        "{what} past the level's edge ({width} by {height} tiles): the game loads them, but the level never shows them."
+                    ))
+                    .color(theme::WARNING),
+                );
+                if ui.button(if n == 1 { "Select it" } else { "Select them" }).clicked() {
+                    select_past = past
+                        .iter()
+                        .map(|entry| match *entry {
+                            edit::find::Entry::Object(layer, index) => Item::object(layer, index),
+                            edit::find::Entry::Sprite(index) => Item::Sprite(index),
+                        })
+                        .collect();
+                }
+            }
+            if diagnostics.is_empty() && unreached.is_empty() && past.is_empty() {
                 ui.label(RichText::new("None: the level loaded and drew in full.").color(theme::MUTED));
             } else {
                 for line in &diagnostics {
@@ -206,6 +228,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     {
         open.selection = vec![item];
         open.focus = true;
+    }
+    if !select_past.is_empty()
+        && let Some(open) = app.current_mut()
+    {
+        open.selection = select_past;
     }
     if let Some(table) = show_table {
         app.view.source = true;
@@ -280,6 +307,10 @@ fn picture_of(app: &App, ui: &mut egui::Ui, item: Item) {
     let source = bounds
         .expand(16.0)
         .intersect(egui::Rect::from_min_size(egui::Pos2::ZERO, picture.size));
+    // An entry past the level's edge is outside the picture.
+    if !source.is_positive() {
+        return;
+    }
     let room = egui::vec2(ui.available_width() - 8.0, 120.0);
     let scale = (room / source.size()).min_elem().floor().clamp(1.0, 4.0);
     let size = source.size() * scale;
@@ -369,7 +400,8 @@ fn object(
             if let Some((x, y)) = edit::object_position(object) {
                 let (mut nx, mut ny) = (x, y);
                 ui.label("X");
-                let r = number_field(ui, &mut nx, 0, width.saturating_sub(1), false);
+                // An object already past the edge may stay there.
+                let r = number_field(ui, &mut nx, 0, width.saturating_sub(1).max(x), false);
                 if r.changed() {
                     *change = Some(Change::new(
                         &r,
@@ -379,7 +411,7 @@ fn object(
                 }
                 ui.end_row();
                 ui.label("Y");
-                let r = number_field(ui, &mut ny, 0, height.saturating_sub(1), false);
+                let r = number_field(ui, &mut ny, 0, height.saturating_sub(1).max(y), false);
                 if r.changed() {
                     *change = Some(Change::new(
                         &r,
@@ -568,7 +600,7 @@ fn sprite(ui: &mut egui::Ui, level: &Level, index: usize, change: &mut Option<Ch
                 Some(Change::new(r, "Move sprite", edits).selecting(Item::Sprite(at[0])))
             };
             ui.label("X");
-            let r = number_field(ui, &mut x, 0, width.saturating_sub(1), false);
+            let r = number_field(ui, &mut x, 0, width.saturating_sub(1).max(sprite.x), false);
             if r.changed() {
                 *change = moved(
                     &r,
@@ -580,7 +612,7 @@ fn sprite(ui: &mut egui::Ui, level: &Level, index: usize, change: &mut Option<Ch
             }
             ui.end_row();
             ui.label("Y");
-            let r = number_field(ui, &mut y, 0, height.saturating_sub(1), false);
+            let r = number_field(ui, &mut y, 0, height.saturating_sub(1).max(sprite.y), false);
             if r.changed() {
                 *change = moved(
                     &r,

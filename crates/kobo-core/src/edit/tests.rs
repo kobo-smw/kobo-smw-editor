@@ -133,6 +133,37 @@ fn a_failed_edit_changes_nothing() {
 }
 
 #[test]
+fn an_entry_past_the_edge_comes_back_but_goes_no_further() {
+    // Vanilla 108 has ledges below its last screen; this one is past the
+    // right edge, at column 40 of 32.
+    let text = LEVEL.replace("x = 10, y = 18 }", "x = 40, y = 18 }");
+    let mut document = LevelDocument::from_text("105.toml", text).unwrap();
+    let block = object(&document, 2).clone();
+    let place = |x, y| Edit::ReplaceObject {
+        layer: ObjectLayer::One,
+        index: 2,
+        object: object_at(&block, x, y),
+    };
+    let further = [place(41, 18)];
+    assert!(matches!(
+        document.apply("Move", &further),
+        Err(EditError::Outside { x: 41, .. })
+    ));
+    assert_eq!(
+        past_edge(document.level()),
+        [find::Entry::Object(ObjectLayer::One, 2)]
+    );
+    for (x, y) in [(40, 18), (39, 20), (12, 18)] {
+        let edit = [place(x, y)];
+        document.apply("Move", &edit).unwrap();
+    }
+    assert!(past_edge(document.level()).is_empty());
+    // Back inside, it is held to the level like any other.
+    let out_again = [place(33, 18)];
+    assert!(document.apply("Move", &out_again).is_err());
+}
+
+#[test]
 fn comments_follow_their_entries() {
     let mut document = document();
     let coins = object(&document, 2).clone();

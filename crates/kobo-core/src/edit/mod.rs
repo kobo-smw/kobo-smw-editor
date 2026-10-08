@@ -318,6 +318,36 @@ pub fn unreached_sprites(level: &Level) -> Vec<usize> {
     unreached
 }
 
+/// The objects and sprites placed outside their layer
+/// ([`layer_size`]). The game loads them, into the rows or screens past
+/// the level's end, but the level never shows them: vanilla `108` has
+/// three ledges below its second screen.
+pub fn past_edge(level: &Level) -> Vec<find::Entry> {
+    let outside = |layer, (x, y): (u16, u16)| {
+        let (width, height) = layer_size(level, layer);
+        x >= width || y >= height
+    };
+    let mut entries = Vec::new();
+    for layer in [ObjectLayer::One, ObjectLayer::Two] {
+        let list = match (layer, &level.layer2) {
+            (ObjectLayer::One, _) => &level.layer1,
+            (ObjectLayer::Two, Layer2::Objects(list)) => list,
+            (ObjectLayer::Two, _) => continue,
+        };
+        for (index, object) in list.iter().enumerate() {
+            if object_position(object).is_some_and(|at| outside(layer, at)) {
+                entries.push(find::Entry::Object(layer, index));
+            }
+        }
+    }
+    for (index, sprite) in level.sprites.list.iter().enumerate() {
+        if outside(ObjectLayer::One, (sprite.x, sprite.y)) {
+            entries.push(find::Entry::Sprite(index));
+        }
+    }
+    entries
+}
+
 /// The edits that put the sprite list in screen order, keeping the order
 /// within each screen, so that the loader reaches every sprite.
 pub fn sort_sprites(level: &Level) -> Vec<Edit> {
@@ -562,10 +592,20 @@ fn check_index(what: &'static str, index: usize, len: usize) -> Result<(), EditE
     }
 }
 
-fn check_place(level: &Level, layer: ObjectLayer, at: Option<(u16, u16)>) -> Result<(), EditError> {
+/// Refuses a place outside the layer, unless the entry was already outside
+/// it (`before`) and the edit takes it no further out on either axis: the
+/// game loads an object past a level's edge (vanilla `108` has three below
+/// its second screen), so such an entry can be edited and brought back in.
+fn check_place(
+    level: &Level,
+    layer: ObjectLayer,
+    before: Option<(u16, u16)>,
+    at: Option<(u16, u16)>,
+) -> Result<(), EditError> {
     let Some((x, y)) = at else { return Ok(()) };
     let (width, height) = layer_size(level, layer);
-    if x < width && y < height {
+    let (bx, by) = before.unwrap_or((0, 0));
+    if x < width.max(bx.saturating_add(1)) && y < height.max(by.saturating_add(1)) {
         Ok(())
     } else {
         Err(EditError::Outside {
@@ -591,7 +631,7 @@ impl Edit {
                 index,
                 object,
             } => {
-                check_place(level, *layer, object_position(object))?;
+                check_place(level, *layer, None, object_position(object))?;
                 let list = objects_mut(level, *layer)?;
                 check_index("object", *index, list.len() + 1)?;
                 list.insert(*index, object.clone());
@@ -609,7 +649,10 @@ impl Edit {
                 index,
                 object,
             } => {
-                check_place(level, *layer, object_position(object))?;
+                let before = objects_mut(level, *layer)?
+                    .get(*index)
+                    .and_then(object_position);
+                check_place(level, *layer, before, object_position(object))?;
                 let list = objects_mut(level, *layer)?;
                 check_index("object", *index, list.len())?;
                 list[*index] = object.clone();
@@ -623,7 +666,7 @@ impl Edit {
                 comments.move_entry(object_list(*layer), *from, *to);
             }
             Edit::InsertSprite { index, sprite } => {
-                check_place(level, ObjectLayer::One, Some((sprite.x, sprite.y)))?;
+                check_place(level, ObjectLayer::One, None, Some((sprite.x, sprite.y)))?;
                 let list = &mut level.sprites.list;
                 check_index("sprite", *index, list.len() + 1)?;
                 list.insert(*index, sprite.clone());
@@ -637,7 +680,8 @@ impl Edit {
                 comments.remove_entry(SPRITE_LIST, *index, len);
             }
             Edit::ReplaceSprite { index, sprite } => {
-                check_place(level, ObjectLayer::One, Some((sprite.x, sprite.y)))?;
+                let before = level.sprites.list.get(*index).map(|s| (s.x, s.y));
+                check_place(level, ObjectLayer::One, before, Some((sprite.x, sprite.y)))?;
                 let list = &mut level.sprites.list;
                 check_index("sprite", *index, list.len())?;
                 list[*index] = sprite.clone();

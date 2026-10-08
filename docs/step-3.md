@@ -256,10 +256,11 @@ Since (2026-10-05 and 06, on master):
   the level list and the overview's cards.
 - Every entrance's position by the game's places or by tile, and its camera at the game's
   positions or rows from the player (`entrance::Camera`).
+- Objects and sprites past a level's edge (`edit::past_edge`): edited and brought back,
+  never taken further out, and counted in the diagnostics.
 
 Next:
 
-- Positions in tiles past a vertical level's edge.
 - ExAnimation, and the graphics and palette editors themselves (the tiles and colours a
   project's files hold), which are step 4's.
 
