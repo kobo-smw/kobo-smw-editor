@@ -120,6 +120,13 @@ pub enum Edit {
     /// Lunar Magic's palette for the level, or none: the game's, by the
     /// header's palette settings.
     SetPalette(Option<Box<CustomPalette>>),
+    /// Lunar Magic's ExAnimation for the level: its settings byte (or
+    /// none: what a build gives the level) and its list (or none). A
+    /// list a build would refuse ([`exanimation::refusal`]) is refused.
+    SetAnimation {
+        settings: Option<u8>,
+        list: Option<Box<crate::exanimation::List>>,
+    },
     /// The background layer 2 has, for a level mode that draws one: the
     /// game's, or one of the level's own. Layer 2's objects are edited one
     /// by one instead.
@@ -152,6 +159,8 @@ pub enum EditError {
     NoLayer2,
     #[error("layer 2 has objects, which are edited one by one")]
     Layer2Objects,
+    #[error("ExAnimation: {0}")]
+    Animation(String),
     #[error("({x}, {y}) is outside the level, which is {width} by {height} tiles")]
     Outside {
         x: u16,
@@ -715,6 +724,13 @@ impl Edit {
             }
             Edit::SetGraphics(graphics) => level.graphics = *graphics,
             Edit::SetPalette(palette) => level.palette = palette.as_deref().cloned(),
+            Edit::SetAnimation { settings, list } => {
+                if let Some(why) = list.as_deref().and_then(crate::exanimation::refusal) {
+                    return Err(EditError::Animation(why));
+                }
+                level.animation_settings = *settings;
+                level.animation = list.as_deref().cloned();
+            }
             Edit::SetLayer2(layer2) => {
                 if matches!(layer2, Layer2::Objects(_))
                     || matches!(level.layer2, Layer2::Objects(_))

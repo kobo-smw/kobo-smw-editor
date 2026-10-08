@@ -116,6 +116,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     entrances(ui, &level, free_entrance, layer3_names, scroll_names, &mut change, |ui, change| {
                         graphics_and_palette(
                             ui,
+                            number,
                             &level,
                             game_palette.as_ref(),
                             change,
@@ -953,7 +954,7 @@ fn header(
 /// A number chosen by name: a button with the number and its name, which
 /// opens a list of every one, found by typing. Returns the button and the
 /// number chosen, if one was.
-fn named_picker(
+pub(crate) fn named_picker(
     ui: &mut egui::Ui,
     id: &str,
     value: u8,
@@ -1610,9 +1611,10 @@ fn entrances(
 }
 
 /// Lunar Magic's graphics list and palette for the level, and its
-/// ExAnimation, which only its file edits.
+/// ExAnimation.
 fn graphics_and_palette(
     ui: &mut egui::Ui,
+    number: u16,
     level: &Level,
     game: Option<&kobo_core::palette::CustomPalette>,
     change: &mut Option<Change>,
@@ -1806,16 +1808,11 @@ fn graphics_and_palette(
 
             ui.add_space(6.0);
             ui.label(RichText::new("ANIMATION").small().color(theme::MUTED));
-            match &level.animation {
-                None => {
-                    ui.label(RichText::new("No ExAnimation of its own.").color(theme::MUTED));
-                }
-                Some(list) => {
-                    ui.label(format!("ExAnimation in {} slots, edited in the file.", list.count));
-                    if ui.button("Show in the file").clicked() {
-                        *show_table = Some("animation");
-                    }
-                }
+            if let Some((r, label, edit)) = crate::animation::section(ui, number, level) {
+                *change = Some(Change::new(&r, label, vec![edit]));
+            }
+            if level.animation.is_some() && ui.button("Show in the file").clicked() {
+                *show_table = Some("animation");
             }
         });
 }

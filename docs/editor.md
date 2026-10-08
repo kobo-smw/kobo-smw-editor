@@ -79,8 +79,10 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
   the level would draw it, to choose from), the main entrance, Lunar Magic's settings
   (size, background, spawning, the midway entrance), its graphics list (each slot's file,
   and whether they replace the tilesets'), its palette (a click on a colour changes it; a
-  palette of its own starts from the game's colours for it), its ExAnimation (shown in the
-  file), the secondary entrances into it, copying it, starting an empty level, or taking
+  palette of its own starts from the game's colours for it), its ExAnimation (which of
+  the game's and Lunar Magic's animations run, and its list's slots: type, trigger,
+  frames, where they go, and the frames' words, with why a build would refuse the list),
+  the secondary entrances into it, copying it, starting an empty level, or taking
   it out of the project; and diagnostics.
 - **Source** (top bar): the level's file beside the canvas, the selection's line marked.
   Typing in it applies as soon as the text reads.

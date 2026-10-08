@@ -592,3 +592,39 @@ fn sprites_past_a_later_screens_are_found_and_sorted() {
         ["# The second."]
     );
 }
+
+#[test]
+fn an_animation_list_a_build_refuses_is_refused() {
+    use crate::exanimation::{List, Slot};
+
+    let mut document = document();
+    let mut list = List::default();
+    list.slots.insert(
+        0,
+        Slot {
+            kind: 0x01,
+            trigger: 0x00,
+            frames_less_one: 1,
+            dest: 0x2000,
+            frames: vec![0xAD00, 0xAD20],
+        },
+    );
+    list.count = 1;
+    let good = Edit::SetAnimation {
+        settings: Some(0x40),
+        list: Some(Box::new(list.clone())),
+    };
+    document.apply("Animate", &[good]).unwrap();
+    assert_eq!(document.level().animation.as_ref(), Some(&list));
+    assert_eq!(document.level().animation_settings, Some(0x40));
+    // Three frames where its type takes two: a build would refuse it.
+    list.slots.get_mut(&0).unwrap().frames.push(0xAD40);
+    let bad = Edit::SetAnimation {
+        settings: None,
+        list: Some(Box::new(list)),
+    };
+    assert!(matches!(
+        document.apply("Animate", &[bad]),
+        Err(EditError::Animation(_))
+    ));
+}

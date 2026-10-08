@@ -1899,3 +1899,30 @@ fn a_shared_colour_is_changed_undone_and_saved_into_the_project() {
         "{manifest}"
     );
 }
+
+#[test]
+fn an_animation_list_is_given_and_a_slot_added_from_the_inspector() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "animation");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.get_by_label("Graphics and palette").click();
+    harness.run_steps(2);
+    harness
+        .get_by_label("Give the level an ExAnimation list")
+        .click();
+    harness.run_steps(2);
+    harness.get_by_label("Add a slot").click();
+    harness.run_steps(2);
+    let open = harness.state().current().unwrap();
+    let list = open.document.level().animation.as_ref().expect("a list");
+    assert_eq!(list.slots.len(), 1);
+    assert_eq!(list.count, 1);
+    assert_eq!(open.document.undo_label(), Some("Add ExAnimation slot 00"));
+    assert!(open.document.text().contains("[animation]"));
+    // It builds and draws.
+    wait_for(&mut harness, "the picture", drawn);
+    assert!(harness.state().current().unwrap().render_error.is_none());
+}

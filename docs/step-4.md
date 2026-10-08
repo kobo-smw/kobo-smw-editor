@@ -67,3 +67,7 @@ from the editor where the user is working.
   a project changes them, `[palettes] shared`), written by the graphics stage, carried by
   ROM and Callisto imports, checked against Lunar Magic's shared palette export and
   import; `edit::PalettesDocument` and the editor's window (editor.md, "Shared palettes").
+- A level's ExAnimation in the inspector (2026-10-08): `Edit::SetAnimation`, refusing a
+  list a build would refuse, and `exanimation::Slot::refit_frames` keeping a slot's
+  frames as its type, trigger, and count change. The global list is still edited in its
+  file, and the level's picture shows the frame the load leaves.

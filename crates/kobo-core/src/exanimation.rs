@@ -140,6 +140,40 @@ impl Slot {
         (frames_less_one as usize + 1) * if second_set(trigger) { 2 } else { 1 }
     }
 
+    /// Gives the slot as many frame words as its type, trigger, and frame
+    /// count take, from those it had as `before`: each set keeps its
+    /// frames, a new frame repeats its set's last, and a new second set
+    /// starts as a copy of the first.
+    pub fn refit_frames(&mut self, before: &Slot) {
+        let rotation = |s: &Slot| Kind::of(s.kind) == Some(Kind::Rotation);
+        let old: Vec<&[u16]> = if rotation(before) {
+            Vec::new()
+        } else {
+            before
+                .frames
+                .chunks(usize::from(before.frames_less_one) + 1)
+                .collect()
+        };
+        let sets = if rotation(self) {
+            0
+        } else if second_set(self.trigger) {
+            2
+        } else {
+            1
+        };
+        let per_set = usize::from(self.frames_less_one) + 1;
+        let first: &[u16] = old.first().copied().unwrap_or(&[]);
+        let mut frames = Vec::with_capacity(sets * per_set);
+        for i in 0..sets {
+            let mut set = old.get(i).copied().unwrap_or(first).to_vec();
+            let last = set.last().copied().unwrap_or(0);
+            set.truncate(per_set);
+            set.resize(per_set, last);
+            frames.extend(set);
+        }
+        self.frames = frames;
+    }
+
     /// Its entry's length in bytes.
     pub fn entry_len(&self) -> usize {
         5 + 2 * self.frames.len()
@@ -529,6 +563,39 @@ pub fn refusal(list: &List) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_slot_refits_its_frames_to_its_type_and_trigger() {
+        let before = Slot {
+            kind: 0x01,
+            trigger: 0x00,
+            frames_less_one: 1,
+            dest: 0x2000,
+            frames: vec![0x10, 0x20],
+        };
+        // Three frames: the new one repeats the last.
+        let mut slot = Slot {
+            frames_less_one: 2,
+            ..before.clone()
+        };
+        slot.refit_frames(&before);
+        assert_eq!(slot.frames, [0x10, 0x20, 0x20]);
+        // A trigger with a second set: a copy of the first.
+        let before = slot.clone();
+        slot.trigger = 0x03;
+        slot.refit_frames(&before);
+        assert_eq!(slot.frames, [0x10, 0x20, 0x20, 0x10, 0x20, 0x20]);
+        // Fewer frames keep each set's first.
+        let before = slot.clone();
+        slot.frames_less_one = 0;
+        slot.refit_frames(&before);
+        assert_eq!(slot.frames, [0x10, 0x10]);
+        // A rotation has none.
+        let before = slot.clone();
+        slot.kind = 0x18;
+        slot.refit_frames(&before);
+        assert!(slot.frames.is_empty());
+    }
 
     fn sample() -> List {
         let mut list = List {
