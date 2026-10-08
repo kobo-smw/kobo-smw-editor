@@ -2145,7 +2145,24 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   at `$00A153`): riff2's layer 3 is the list's tilemap whole, and Kobo's build of it
   is too once the border is left out (2026-10-09). Kobo's hook at `$00A153` gives
   stripe image 0 then (`graphics.asm`), and a build installs `layer3.asm` for a
-  submap's list as for a level's.
+  submap's list as for a level's. With an ExGFX file as the animated tiles' source,
+  which is in the buffer as 4bpp, the game's animation takes its tiles whole:
+  Akogare2's `GfxDecompOWAni` holds 32-byte tiles of its AN2 file at `$AD00` + 32 times
+  the tile the game's 3bpp address names (its offset from `$AD00` over 24), where the
+  game's `CODE_0480B9` would expand 24-byte ones; Kobo's hook on `CODE_0480B9` copies
+  so for such a list, and Akogare2's import animates as the hack (2026-10-09).
+- The border on layer 3 (`OWBorderStripe`, stripe image `$06`, `$04A400`) is Lunar
+  Magic's overworld editor's layer 3 when no list gives a tilemap: an edited border is
+  a stripe image of its own in a RATS block, `StripeImages` entry 6 (`$0084D6`)
+  pointing at it (Akogare2's, all short runs, as from a tilemap); the others keep the
+  game's pointer. Kobo reads the border as what its image writes of layer 3's tilemap
+  from `$5000` (`stripe::Tilemap`), carries the rows that differ (`[border]` in the
+  overworld file), and writes it as a stripe image in a block of its own behind that
+  pointer. A repeated run's byte count is odd, `2n-1` for `n` words, in the game's
+  images and Lunar Magic's: the game's loader copies a repeated run in two passes, the
+  low bytes and then the high, and with an even count the first also writes the high
+  byte of the word after it. Lunar Magic's overworld transfer does not carry the
+  border (the destination keeps its own).
 - The overworld's palettes: a `JSL` at `$00AD32` (`CODE_00AD25`'s `STY $00`, where the
   game picks the overworld's colours by the submap and Special World) leads to code with
   the pointer to a block of 14 palettes of 256 colours (`$1C00` bytes: each map's, 0 the

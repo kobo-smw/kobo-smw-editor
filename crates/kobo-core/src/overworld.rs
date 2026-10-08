@@ -579,7 +579,19 @@ pub struct Overworld {
     /// Lunar Magic's option to merge FG1 and FG2 into SP3 and SP4
     /// ([`MERGE_FG`]).
     pub merge_fg: bool,
+    /// The border on layer 3: what its stripe image ([`BORDER_IMAGE`])
+    /// writes of the tilemap from [`BORDER_BASE`].
+    pub border: crate::stripe::Tilemap,
 }
+
+/// The overworld border's stripe image's pointer: `StripeImages` entry 6
+/// (`OWBorderStripe`, `$04A400`, in the game), which Lunar Magic points at
+/// a block of its own when its overworld editor changes layer 3 (Akogare2).
+/// The image writes layer 3's tilemap, `BORDER_ROWS` rows of 32 from
+/// `BORDER_BASE`.
+pub const BORDER_IMAGE: SnesAddr = SnesAddr::new(0x00_84D6);
+pub const BORDER_BASE: u16 = 0x5000;
+pub const BORDER_ROWS: usize = 32;
 
 /// Lunar Magic's option to merge the overworld's FG1 and FG2 into SP3 and
 /// SP4, as it keeps it: [`MERGE_FG_ON`] here, which its code reads (found
@@ -766,6 +778,11 @@ impl Overworld {
         let tiles = read_tiles(rom)?;
         let animation = crate::exanimation::read_overworld(rom)?;
         let merge_fg = rom.read_u8(MERGE_FG)? == MERGE_FG_ON;
+        let border_at = rom.read_ptr(BORDER_IMAGE)?;
+        let border =
+            crate::stripe::Tilemap::read(BORDER_BASE, BORDER_ROWS, rom.read_tail(border_at)?)
+                .map_err(|_| OverworldError::Decode("border's stripe image"))?
+                .0;
         Ok(Self {
             layout,
             layer1,
@@ -782,6 +799,7 @@ impl Overworld {
             palettes,
             animation,
             merge_fg,
+            border,
         })
     }
 }
@@ -1535,6 +1553,13 @@ impl Overworld {
                 ],
             ));
         }
+        // The border's stripe image, as Lunar Magic's editor writes one: in a
+        // block of its own, pointed to from the game's table.
+        plan.blocks.push((
+            "the overworld's border",
+            self.border.to_stripe(),
+            vec![Pointer::new(BORDER_IMAGE, Form::Long)],
+        ));
         // Lunar Magic's FG1-2 merge: its byte, and the game's animated tiles
         // where the merged layout has them.
         if self.merge_fg {
@@ -1759,6 +1784,8 @@ pub struct Changes {
     pub animation: Option<crate::exanimation::OverworldAnimation>,
     /// Lunar Magic's option to merge FG1 and FG2 into SP3 and SP4.
     pub merge_fg: bool,
+    /// By row: the border's 32 cells, `None` where its image writes none.
+    pub border: std::collections::BTreeMap<u8, Vec<Option<u16>>>,
     /// Lunar Magic's option to turn the event path fade off, with how much
     /// each frame adds to a step's timer (a step every `$40`): installed as
     /// Kobo's code, not read from the ROM's tables (an import finds it with
@@ -1899,6 +1926,17 @@ impl Overworld {
             changes.animation = self.animation.clone();
         }
         changes.merge_fg = self.merge_fg && !clean.merge_fg;
+        for (r, (ours, theirs)) in self
+            .border
+            .cells
+            .chunks(32)
+            .zip(clean.border.cells.chunks(32))
+            .enumerate()
+        {
+            if ours != theirs {
+                changes.border.insert(r as u8, ours.to_vec());
+            }
+        }
         for (n, ours) in self.tiles.iter().enumerate() {
             if clean.tiles.get(n) != Some(ours) {
                 changes.tiles.insert(n as u16, *ours);
@@ -1972,6 +2010,14 @@ impl Overworld {
             self.animation = Some(animation.clone());
         }
         self.merge_fg |= changes.merge_fg;
+        for (&r, row) in &changes.border {
+            let at = 32 * usize::from(r);
+            if let Some(cells) = self.border.cells.get_mut(at..at + 32) {
+                for (cell, &value) in cells.iter_mut().zip(row) {
+                    *cell = value;
+                }
+            }
+        }
         for (&n, words) in &changes.tiles {
             let n = usize::from(n);
             if n >= MAX_TILES {

@@ -114,7 +114,31 @@ impl OverworldDocument {
     ) -> Result<(), OverworldEditError> {
         let mut next = self.current.clone();
         change(&mut next);
-        let changes = next.changes_from(&self.clean);
+        let mut changes = next.changes_from(&self.clean);
+        // What only the changes hold, which the overworld read gives none of.
+        changes.graphics = self.changes.graphics.clone();
+        changes.reveal_speed = self.changes.reveal_speed;
+        self.commit(label, amend, changes)
+    }
+
+    /// Changes what only the changes hold (the submaps' graphics lists, the
+    /// path reveal speed) with `change`, as one undo step.
+    pub fn change_settings(
+        &mut self,
+        label: impl Into<String>,
+        change: impl FnOnce(&mut Changes),
+    ) -> Result<(), OverworldEditError> {
+        let mut changes = self.changes.clone();
+        change(&mut changes);
+        self.commit(label, false, changes)
+    }
+
+    fn commit(
+        &mut self,
+        label: impl Into<String>,
+        amend: bool,
+        changes: Changes,
+    ) -> Result<(), OverworldEditError> {
         if changes == self.changes {
             return Ok(());
         }
@@ -228,6 +252,37 @@ mod tests {
     fn vanilla() -> Option<Rom> {
         let rom = Rom::load(crate::config::vanilla_rom_path().ok()?).ok()?;
         (rom.identify() == RomIdentity::VanillaUsa).then_some(rom)
+    }
+
+    /// What only the changes hold outlives an edit of the overworld, and
+    /// changes as an undo step of its own.
+    #[test]
+    fn graphics_lists_and_the_reveal_speed_outlive_an_edit() {
+        let Some(clean) = vanilla() else {
+            eprintln!("skipping: no vanilla ROM configured");
+            return;
+        };
+        let mut project = Project::default();
+        let mut changes = Changes {
+            reveal_speed: Some(6),
+            ..Default::default()
+        };
+        changes
+            .graphics
+            .insert(1, crate::exgfx::GraphicsList([0x8014; 16]));
+        project.overworld = Some(changes.clone());
+        let mut doc = OverworldDocument::open(&project, &clean).unwrap();
+        let at = layer1_index(0, 3, 4);
+        doc.change("Paint", false, |ow| ow.layer1[at] = 0x58)
+            .unwrap();
+        assert_eq!(doc.changes().reveal_speed, Some(6));
+        assert_eq!(doc.changes().graphics, changes.graphics);
+        doc.change_settings("Speed", |c| c.reveal_speed = Some(0x10))
+            .unwrap();
+        assert_eq!(doc.changes().reveal_speed, Some(0x10));
+        assert_eq!(doc.changes().layer1.len(), 1);
+        assert!(doc.undo());
+        assert_eq!(doc.changes().reveal_speed, Some(6));
     }
 
     /// A tile changed is a row of the file; set back, it leaves; a stroke

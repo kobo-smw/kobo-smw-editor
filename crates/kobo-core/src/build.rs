@@ -627,7 +627,12 @@ impl Stage {
     /// Changes whenever what the stage writes for the same inputs does, so
     /// no snapshot of an older version is reused.
     fn version(self) -> u32 {
-        1
+        match self {
+            // 2026-10-09: the 16x16 tiles moved, the event properties' run,
+            // the palettes, ExAnimation, the FG1-2 merge, and the border.
+            Stage::Overworld => 2,
+            _ => 1,
+        }
     }
 
     /// The stage's inputs, as bytes that differ whenever its output would.

@@ -194,6 +194,9 @@ Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-
   `GlobalAnimation` the global ExAnimation list;
   `Workspace` is the project in memory, built and a level rendered from it
   (`preview`). The editor makes no change any other way.
+- `kobo_core::stripe` is the one place that knows the game's stripe images (runs of VRAM
+  words, layer 3's tilemaps above all): `Tilemap` is what one writes, read and written
+  back as an image (the overworld's border).
 - `kobo_core::names` holds the names Kobo writes after ids (objects by object set, extended
   objects, sprites, tilesets, music, the game's backgrounds) as data in `names.toml`; `LevelMode::name` names level
   modes. Take names from there; do not write lists of them elsewhere.

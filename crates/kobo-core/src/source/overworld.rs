@@ -22,6 +22,9 @@
 //! [event_tiles]                  # where the event tile data's 2x2 blocks start
 //! split = 0x0900
 //!
+//! [border]                       # a row of the border on layer 3: 32 tilemap words, ----
+//! 0x00 = "38FE 38FE ---- ..."    # where its stripe image writes nothing
+//!
 //! [tiles]                        # a layer 1 16x16 tile's four 8x8 tiles, as tilemap words:
 //! 0x0C1 = "0CA0 0CB0 0CA1 0CB1"  # top left, bottom left, top right, bottom right
 //!
@@ -220,6 +223,17 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
         for (&t, name) in &changes.names {
             let quoted = toml_edit::Value::from(name_text(name)).to_string();
             text += &format!("{} = {}\n", hex(u32::from(t), 2), quoted.trim());
+        }
+        sections.push(text);
+    }
+    if !changes.border.is_empty() {
+        let mut text = String::from("[border]\n");
+        for (&r, row) in &changes.border {
+            let cells: Vec<String> = row
+                .iter()
+                .map(|c| c.map_or("----".to_string(), |w| format!("{w:04X}")))
+                .collect();
+            text += &format!("{} = \"{}\"\n", hex(u32::from(r), 2), cells.join(" "));
         }
         sections.push(text);
     }
@@ -535,6 +549,38 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                         .as_str()
                         .ok_or_else(|| invalid(&at, "must be a name"))?;
                     changes.names.insert(t, parse_name(&at, text)?);
+                }
+            }
+            "border" => {
+                let table = item
+                    .as_table()
+                    .ok_or_else(|| invalid(key, "must be a table of rows"))?;
+                for (r, value) in table.iter() {
+                    let at = format!("border.{r}");
+                    let r = r
+                        .strip_prefix("0x")
+                        .and_then(|h| u8::from_str_radix(h, 16).ok())
+                        .filter(|&r| usize::from(r) < crate::overworld::BORDER_ROWS)
+                        .ok_or_else(|| invalid(&at, "a row is 0x00 to 0x1F"))?;
+                    let text = value
+                        .as_str()
+                        .ok_or_else(|| invalid(&at, "must be 32 words or ----"))?;
+                    let cells = text
+                        .split_whitespace()
+                        .map(|w| {
+                            if w == "----" {
+                                Ok(None)
+                            } else {
+                                u16::from_str_radix(w, 16)
+                                    .map(Some)
+                                    .map_err(|_| invalid(&at, format!("{w:?} is not a word")))
+                            }
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    if cells.len() != 32 {
+                        return Err(invalid(&at, "must be 32 words or ----"));
+                    }
+                    changes.border.insert(r, cells);
                 }
             }
             "tiles" => {
@@ -903,6 +949,10 @@ mod tests {
         changes.event_split = Some(0x0A00);
         changes.reveal_speed = Some(6);
         changes.merge_fg = true;
+        let mut row = vec![Some(0x38FE); 32];
+        row[3] = None;
+        row[4] = Some(0x7895);
+        changes.border.insert(0x1C, row);
         changes
             .tiles
             .insert(0x1C1, [0x0CA0, 0x0CB0, 0x4CA0, 0x4CB0]);

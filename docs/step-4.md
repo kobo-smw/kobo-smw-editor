@@ -92,7 +92,12 @@ from the editor where the user is working.
   overworld's animated tiles' source. Kaizo Kindergarten's import animates as the hack
   on every submap, and events as triggers play as Lunar Magic's; Lunar Magic's FG1-2
   merge followed, and submaps' layer 3 tilemaps without the game's border: riff2's
-  import builds to its overworld but for its own name code. Still left: the first
+  import builds to its overworld but for its own name code. The border on layer 3
+  (`[border]`, `kobo_core::stripe`) and the animated tiles from an ExGFX source
+  followed; across the corpus's `.smc` hacks, an import's overworld now differs from
+  the hack's only where the hack's own code or patches draw (names, lives), in the
+  player's tiles for a frame or two after the load, and in older Lunar Magic versions'
+  formats. Still left: the first
   frames after a submap change, and the other Extra Options.
 - The events' further tiles (2026-10-08): the game's list of 44 and Lunar Magic's
   tables of them, read (`Events::extras`), carried in the overworld file (an event's

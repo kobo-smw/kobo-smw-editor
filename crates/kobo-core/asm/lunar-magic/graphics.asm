@@ -86,6 +86,13 @@ org $00A140
 org $00A153
     JSL border_stripe
 
+; CODE_0480B9, which puts a tile of the overworld's animated tiles' source
+; (a 3bpp tile in the buffer at $7EAD00, [$00]) in GfxDecompOWAni (from X)
+; as 4bpp: LDY #$0000 : LDA #$0008. A list's AN2 file that is ExGFX is in
+; the buffer as 4bpp (prepare_file), and its tiles are copied as they are.
+org $0480B9
+    JML overworld_tile
+
 ; UploadSpriteGFX, entered with JSR; Kobo's returns through its RTS at $00AA6A.
 org $00A9DA
     JML load_graphics
@@ -207,6 +214,79 @@ submap_list:
     PLP
     SEP #$20
     RTL
+
+; CODE_0480B9 (A, X, Y 16-bit): the game's own copy, or, when the player's
+; submap's list has an ExGFX file in its AN2 slot, the tile that file has
+; at the place the game's 3bpp address names (the tile number, its 24-byte
+; place over 24, times 32), as a Lunar Magic-saved ROM's overworld leaves
+; GfxDecompOWAni (Akogare2's). $07-$09, the game's counters, are scratch.
+; Returns through the game's RTS at $0480DF, X 32 bytes on.
+overworld_tile:
+    LDA.l !List+1
+    CMP #$FFFF
+    BEQ .game
+    LDA.l $7FC006               ; the submap's list
+    STA $07
+    LDA.l $7FC007
+    STA $08
+    LDA [$07]
+    AND #$0FFF
+    CMP #$0080
+    BCS .exgfx
+.game:
+    LDY #$0000
+    LDA #$0008
+    STA $07
+    STA $09
+-   LDA [$00],y
+    STA.l $000AF6|!addr,x
+    INY
+    INY
+    INX
+    INX
+    DEC $07
+    BNE -
+-   LDA [$00],y
+    AND #$00FF
+    STA.l $000AF6|!addr,x
+    INY
+    INX
+    INX
+    DEC $09
+    BNE -
+    JML $0480DF
+.exgfx:
+    LDA $00
+    SEC
+    SBC #$AD00
+    LSR A
+    LSR A
+    LSR A
+    LDY #$0000
+-   CMP #$0003                  ; over 3: the tile
+    BCC +
+    SBC #$0003
+    INY
+    BRA -
++   TYA
+    ASL A
+    ASL A
+    ASL A
+    ASL A
+    ASL A
+    CLC
+    ADC #$AD00
+    STA $00
+    LDY #$0000
+-   LDA [$00],y
+    STA.l $000AF6|!addr,x
+    INY
+    INY
+    INX
+    INX
+    CPY #$0020
+    BNE -
+    JML $0480DF
 
 ; The overworld's border stripe image, or none (stripe image 0, the empty
 ; buffer) for a submap whose list has T. A 8-bit; $00-$02 kept.

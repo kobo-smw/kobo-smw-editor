@@ -37,6 +37,7 @@ pub mod render;
 pub mod rom;
 pub mod source;
 pub mod sprites;
+pub mod stripe;
 pub mod template;
 pub mod tiers;
 pub mod tools;
