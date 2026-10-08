@@ -77,6 +77,12 @@ are SMWDisX's.
   (`exit_probe`). Vanilla only stores the water bit there and never reads it. Every ROM in the corpus keeps the screen-exit path's `JMP
   CODE_05D8B7`. The oracle script instead keeps the real overworld entry and patches
   `$0E`-`$0F` at `CODE_05D8B7`, so the two sides reach a level by different routes.
+- The fade in (game mode `$13`, `GMTransitionMosaic` `$009F37`) adds `MosaicRate` to
+  `MosaicSize` (`$0DB0`) each step, `-$10` in, until the brightness reaches 15, and writes
+  `$2106` itself (`| $03`: layers 1 and 2); nothing else writes `$2106` while a level runs.
+  So whatever goes into a level sets `$0DB0 = $F0` first, as the overworld's override and
+  the bonus game do: from the 0 a fade out leaves, it wraps to `$F0` and ends at `$10`,
+  layers 1 and 2 in 2x2 blocks until the next fade (`asm/playtest.asm` once missed this).
 - "No Yoshi" entrance intro: when entering from the overworld with `$141A`, `$141D`, and
   `$141F` all zero and the header tileset 1, 2, 5, 6, or 8, `CODE_05DA24` loads one of six
   one-screen intro rooms (`PtrsLong05D766`, data at `$078000`, modes `$0E`/`$0F`) instead of

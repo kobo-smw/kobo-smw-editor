@@ -100,7 +100,11 @@ playtest_again:
     JSR enter
     ; The screen is dark already: load the level, as the overworld's
     ; load does for a level it goes into at once (OverworldOverride),
-    ; which turns NMI back on and returns (Mode04Finish).
+    ; which turns NMI back on and returns (Mode04Finish). Its mosaic too:
+    ; the fade in takes $10 off it each step, so from the 0 a fade out
+    ; leaves it wraps and ends at $10, the level's layers in 2x2 blocks.
+    LDA #$F0
+    STA $0DB0|!addr
     LDA #$10
     STA $0100|!addr
     JML $0093F7
