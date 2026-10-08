@@ -215,6 +215,7 @@ enum LastEdit {
     Level,
     Map16,
     Graphics(edit::GraphicsFile),
+    Palettes,
 }
 
 pub struct App {
@@ -297,6 +298,11 @@ pub struct App {
     graphics_generation: u64,
     /// The graphics window.
     pub graphics_editor: crate::graphics::GraphicsEditor,
+    /// The shared palettes, opened when first shown, or why they did not
+    /// open.
+    palettes: Option<Result<edit::PalettesDocument, String>>,
+    /// The shared palettes window.
+    pub palettes_editor: crate::palettes::PalettesEditor,
     /// The Map16 window.
     pub map16_editor: crate::map16::Map16Editor,
     startup: Startup,
@@ -387,6 +393,8 @@ impl App {
             graphics: BTreeMap::new(),
             graphics_generation: 0,
             graphics_editor: Default::default(),
+            palettes: None,
+            palettes_editor: Default::default(),
             map16_editor: Default::default(),
             startup: startup.clone(),
             screenshot_frames: None,
@@ -422,6 +430,7 @@ impl App {
         app.project_open = startup.tab.as_deref() == Some("project");
         app.backgrounds.open = startup.tab.as_deref() == Some("backgrounds");
         app.graphics_editor.open = startup.tab.as_deref() == Some("graphics");
+        app.palettes_editor.open = startup.tab.as_deref() == Some("palettes");
         if startup.tab.as_deref() == Some("map16-editor") {
             // At the cement block, which every tileset has.
             app.map16_editor.show_tile(0x130);
@@ -483,6 +492,7 @@ impl App {
         self.map16_editor.forget();
         self.graphics.clear();
         self.graphics_editor.forget();
+        self.palettes = None;
     }
 
     pub(crate) fn open_project(&mut self, ctx: &egui::Context, dir: &Path) {
@@ -845,6 +855,69 @@ impl App {
         }
     }
 
+    /// The shared palettes, if they are open.
+    pub fn palettes(&self) -> Option<&edit::PalettesDocument> {
+        self.palettes.as_ref()?.as_ref().ok()
+    }
+
+    /// The shared palettes, opened if they are not yet.
+    pub fn palettes_document(&mut self) -> Result<&edit::PalettesDocument, String> {
+        if self.palettes.is_none() {
+            let (Some(workspace), Clean::Loaded(clean)) = (&self.workspace, &self.clean) else {
+                return Err("No project is open.".into());
+            };
+            let opened =
+                edit::PalettesDocument::open(workspace.project(), clean).map_err(|e| e.to_string());
+            self.palettes = Some(opened);
+        }
+        match self.palettes.as_ref().expect("opened above") {
+            Ok(document) => Ok(document),
+            Err(e) => Err(e.clone()),
+        }
+    }
+
+    /// Sets a shared colour, as one undo step or, while a value is being
+    /// dragged, part of the last.
+    pub fn set_shared_colour(&mut self, n: u16, colour: kobo_core::palette::Color15, amend: bool) {
+        let Some(Ok(palettes)) = &mut self.palettes else {
+            return;
+        };
+        let result = if amend {
+            palettes.amend(n, colour)
+        } else {
+            palettes.set("Change a shared colour", n, colour)
+        };
+        match result {
+            Ok(()) => {
+                self.last_edit = LastEdit::Palettes;
+                self.palettes_changed();
+            }
+            Err(e) => self.say(e.to_string()),
+        }
+    }
+
+    /// After the shared palettes changed: the levels are built with them
+    /// and drawn again.
+    fn palettes_changed(&mut self) {
+        if let (Some(workspace), Some(Ok(palettes))) = (&mut self.workspace, &self.palettes) {
+            workspace.set_palettes(palettes);
+        }
+        self.thumbnails.forget();
+        self.palettes_pictures_changed();
+    }
+
+    /// Every picture drawn with the palettes is drawn again: the open
+    /// level now, the rest when next shown.
+    fn palettes_pictures_changed(&mut self) {
+        self.palette.forget_pictures();
+        for open in self.open.values_mut() {
+            open.requested = u64::MAX;
+        }
+        if let Some(number) = self.current {
+            self.request_preview(number);
+        }
+    }
+
     pub fn graphics_generation(&self) -> u64 {
         self.graphics_generation
     }
@@ -964,6 +1037,7 @@ impl App {
             LastEdit::Level => false,
             LastEdit::Map16 => self.undo_map16(redo),
             LastEdit::Graphics(file) => self.undo_graphics(file, redo),
+            LastEdit::Palettes => self.undo_palettes(redo),
         };
         if done {
             return;
@@ -1012,6 +1086,30 @@ impl App {
         done
     }
 
+    /// Undoes or redoes the shared palettes' last step, if they have one.
+    fn undo_palettes(&mut self, redo: bool) -> bool {
+        let Some(Ok(palettes)) = &mut self.palettes else {
+            return false;
+        };
+        let label = if redo {
+            palettes.redo_label()
+        } else {
+            palettes.undo_label()
+        }
+        .map(str::to_owned);
+        let done = if redo {
+            palettes.redo()
+        } else {
+            palettes.undo()
+        };
+        if done {
+            self.palettes_changed();
+            let verb = if redo { "Redid" } else { "Undid" };
+            self.say(format!("{verb}: {}", label.unwrap_or_default()));
+        }
+        done
+    }
+
     /// Undoes or redoes a graphics file's last step, if it has one.
     fn undo_graphics(&mut self, file: edit::GraphicsFile, redo: bool) -> bool {
         let Some(graphics) = self.graphics.get_mut(&file) else {
@@ -1054,6 +1152,9 @@ impl App {
                 .graphics
                 .get(&file)
                 .map_or((None, None), |g| (g.undo_label(), g.redo_label())),
+            LastEdit::Palettes => self
+                .palettes()
+                .map_or((None, None), |p| (p.undo_label(), p.redo_label())),
         };
         (
             undo.map(str::to_owned).or(level.0),
@@ -1107,6 +1208,14 @@ impl App {
                     Err(e) => failed.push(e.to_string()),
                 }
             }
+            if let Some(Ok(palettes)) = &mut self.palettes
+                && palettes.is_modified()
+            {
+                match palettes.save(&root) {
+                    Ok(_) => saved.push("the shared palettes".into()),
+                    Err(e) => failed.push(e.to_string()),
+                }
+            }
         }
         if !failed.is_empty() {
             self.say(failed.join("; "));
@@ -1132,6 +1241,12 @@ impl App {
                 .filter(|g| g.is_modified())
                 .map(|g| g.file().to_string()),
         );
+        if self
+            .palettes()
+            .is_some_and(edit::PalettesDocument::is_modified)
+        {
+            names.push("the shared palettes".into());
+        }
         names
     }
 
@@ -1192,6 +1307,12 @@ impl App {
             // opened again from the files when next drawn in.
             self.graphics.retain(|_, g| g.is_modified());
             self.graphics_generation += 1;
+            if !self
+                .palettes()
+                .is_some_and(edit::PalettesDocument::is_modified)
+            {
+                self.palettes = None;
+            }
             if let Some(workspace) = &mut self.workspace {
                 let result = workspace.reload(&keep);
                 if let Some(Ok(map16)) = &self.map16
@@ -1201,6 +1322,9 @@ impl App {
                 }
                 for graphics in self.graphics.values() {
                     let _ = workspace.set_graphics(graphics);
+                }
+                if let Some(Ok(palettes)) = &self.palettes {
+                    workspace.set_palettes(palettes);
                 }
                 match result {
                     Ok(()) => {
@@ -1848,6 +1972,14 @@ impl App {
                 self.graphics_editor.open = true;
                 ui.close();
             }
+            if ui
+                .button("Shared palettes")
+                .on_hover_text("The game's colour tables, which levels without a palette of their own draw from")
+                .clicked()
+            {
+                self.palettes_editor.open = true;
+                ui.close();
+            }
             if ui.button("All levels as pictures").clicked() {
                 self.overview.open = true;
                 ui.close();
@@ -2249,6 +2381,7 @@ impl eframe::App for App {
         crate::backgrounds::window(self, &ctx);
         crate::map16::window(self, &ctx);
         crate::graphics::window(self, &ctx);
+        crate::palettes::window(self, &ctx);
         crate::project::window(self, &ctx);
         crate::commands::window(self, &ctx);
         crate::changes::window(self, &ctx);

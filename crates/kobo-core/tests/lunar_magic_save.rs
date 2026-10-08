@@ -296,6 +296,7 @@ fn project(clean: &Rom) -> Project {
             pipes.diagonal.insert(0x1EC, entry(0x01EC).gfx);
             pipes
         },
+        shared_palettes: Default::default(),
         gfx: Vec::new(),
         exgfx: Vec::new(),
         animation_global: Some(animation_list(0x2400)),
@@ -2027,4 +2028,46 @@ fn the_background_and_level_number_checks() {
     assert_eq!(saved.read(hook, 4).unwrap(), built.read(hook, 4).unwrap());
     assert!(area(&saved).iter().any(|&b| b != 0xFF));
     assert_ne!(area(&saved), area(&built));
+}
+
+/// Lunar Magic's shared palette of a build is the game's colour tables
+/// with the project's changes in them, and its import of that palette into
+/// a copy of the clean ROM makes the same tables.
+#[test]
+fn lunar_magic_exports_the_shared_palettes_a_build_writes() {
+    use kobo_core::source::palettes::{self, SharedPalettes};
+
+    let Some(lunar_magic) = common::lunar_magic() else {
+        return;
+    };
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let mut shared = SharedPalettes::default();
+    shared.colours.insert(13, Color15::from_rgb5(31, 0, 8));
+    shared.colours.insert(1008, Color15::from_rgb5(1, 2, 3));
+    let project = Project {
+        root: std::path::PathBuf::from("."),
+        shared_palettes: shared,
+        ..Default::default()
+    };
+    let built = build::build(&clean, &project).unwrap();
+    let ws = lm::Workspace::new(&lunar_magic, "shared-palette", &built, None, true);
+    ws.run(&["-ExportSharedPalette", "rom.smc", "shared.smwpal"]);
+    let exported = fs::read(ws.path().join("shared.smwpal")).unwrap();
+    let ours: Vec<u8> = palettes::read_all(&built)
+        .unwrap()
+        .iter()
+        .flat_map(|c| c.0.to_le_bytes())
+        .collect();
+    assert!(exported.len() >= ours.len(), "{} bytes", exported.len());
+    assert_eq!(&exported[..ours.len()], &ours[..]);
+
+    let into = lm::Workspace::new(&lunar_magic, "shared-palette-in", &clean, None, true);
+    fs::write(into.path().join("shared.smwpal"), &exported).unwrap();
+    into.run(&["-ImportSharedPalette", "rom.smc", "shared.smwpal"]);
+    assert_eq!(
+        palettes::read_all(&into.rom()).unwrap(),
+        palettes::read_all(&built).unwrap()
+    );
 }

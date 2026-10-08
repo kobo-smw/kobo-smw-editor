@@ -1573,3 +1573,45 @@ fn lists_for_lunar_magics_loader_build() {
         assert!(error.contains("32 columns"), "{error}");
     }
 }
+
+/// A hack's changes to the game's shared colour tables import as the
+/// shared palettes file, which builds them back where the game keeps them,
+/// and nothing of them is left unmodelled.
+#[test]
+fn shared_palettes_import_and_build_back() {
+    use kobo_core::palette::Color15;
+    use kobo_core::source::palettes::{self, SharedPalettes};
+
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let mut hack = Rom::from_bytes(clean.data().to_vec()).unwrap();
+    // Background palette 0, row 0, colour 7; and an overworld colour.
+    let changed = [
+        (8 + 5, Color15::from_rgb5(31, 0, 8)),
+        (900, Color15::from_rgb5(1, 2, 3)),
+    ];
+    for (n, colour) in changed {
+        hack.write_u16(palettes::START.add(2 * n as u32), colour.0)
+            .unwrap();
+    }
+    hack.fix_checksum().unwrap();
+    let dir = temp_dir("shared-palettes");
+    let report = import::import_rom(&hack, &clean, &dir, false).unwrap();
+    assert!(report.unmodelled.is_empty(), "{:?}", report.unmodelled);
+    let text = fs::read_to_string(dir.join("palettes/shared.toml")).unwrap();
+    let (read, _) = SharedPalettes::from_toml(&text).unwrap();
+    assert_eq!(read.colours, changed.into_iter().collect());
+    let manifest = fs::read_to_string(dir.join("kobo.toml")).unwrap();
+    assert!(
+        manifest.contains("[palettes]\nshared = \"palettes/shared.toml\""),
+        "{manifest}"
+    );
+
+    let project = Project::load(&dir).unwrap();
+    let built = build::build(&clean, &project).unwrap();
+    assert_eq!(
+        palettes::read_all(&built).unwrap(),
+        palettes::read_all(&hack).unwrap()
+    );
+}

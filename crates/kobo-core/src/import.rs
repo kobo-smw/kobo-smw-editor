@@ -621,6 +621,11 @@ pub fn import_rom_with(
         pipes: read_pipes(rom, base)?,
     };
     write_map16_files(dir, &mut manifest, &mut report, map16)?;
+    write_shared_palettes(
+        dir,
+        &mut manifest,
+        &crate::source::palettes::SharedPalettes::changes(rom, base)?,
+    )?;
     let insert = crate::pixi::read(rom, base)?;
     let mut manifest_comments = Comments::default();
     if let Some(folder) = options.pixi {
@@ -1247,6 +1252,22 @@ fn write_map16_files(
 }
 
 /// Writes `text` to `path`, making its folder.
+/// Writes what a hack changes of the game's shared colour tables as
+/// `palettes/shared.toml`, if anything, and names it in the manifest.
+fn write_shared_palettes(
+    dir: &Path,
+    manifest: &mut Manifest,
+    palettes: &crate::source::palettes::SharedPalettes,
+) -> Result<(), ImportError> {
+    if palettes.is_empty() {
+        return Ok(());
+    }
+    let file = PathBuf::from("palettes").join("shared.toml");
+    write_text(&dir.join(&file), palettes.to_toml(&[]))?;
+    manifest.shared_palettes = Some(file);
+    Ok(())
+}
+
 fn write_text(path: &Path, text: impl AsRef<[u8]>) -> Result<(), ImportError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|source| ImportError::Io {
@@ -1662,6 +1683,11 @@ fn read_spans(rom: &Rom) -> Result<Vec<Range<usize>>, ImportError> {
     if level::has_level_flags(rom) {
         add(tables::LEVEL_FLAGS, count);
     }
+    // The shared palettes, which a project holds as what it changes.
+    add(
+        crate::source::palettes::START,
+        2 * usize::from(crate::source::palettes::COLOURS),
+    );
     if map16_pages::installed(rom) {
         let blocks = rats_spans(rom);
         for group in &PAGE_GROUPS {
@@ -2381,20 +2407,27 @@ pub fn import_callisto(
         .get("shared_palettes")
         .filter(|_| step("SharedPalettes"))
     {
+        // Lunar Magic's export: the tables' bytes as the ROM has them.
         let theirs = read(path)?;
-        let ours = clean.read(palette::tables::BACK_AREA_COLORS, theirs.len())?;
-        let changed = theirs
-            .chunks(2)
-            .zip(ours.chunks(2))
-            .filter(|(a, b)| a != b)
-            .count();
-        if changed > 0 {
-            report.notes.push(format!(
-                "its shared palettes ({}) change {changed} of the game's colours, which a \
-                 project cannot hold yet (docs/known-gaps.md); not carried",
-                path.display()
-            ));
-        }
+        let ours = crate::source::palettes::read_all(clean)?;
+        let colours = theirs
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .zip(&ours)
+            .enumerate()
+            .map(|(n, (word, clean))| {
+                (
+                    n as u16,
+                    crate::palette::Color15(u16::from_le_bytes(*word)),
+                    clean,
+                )
+            })
+            .filter(|(_, colour, clean)| colour != *clean)
+            .map(|(n, colour, _)| (n, colour))
+            .collect();
+        let palettes = crate::source::palettes::SharedPalettes { colours };
+        write_shared_palettes(dir, &mut manifest, &palettes)?;
     }
     if step("Graphics") && root.join(&beside).join("Graphics").is_dir() {
         let folder = beside.join("Graphics");

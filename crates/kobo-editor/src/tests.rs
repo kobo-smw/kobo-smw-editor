@@ -1858,3 +1858,44 @@ fn a_graphics_file_is_drawn_in_undone_and_saved_into_the_project() {
         "{manifest}"
     );
 }
+
+#[test]
+fn a_shared_colour_is_changed_undone_and_saved_into_the_project() {
+    use kobo_core::palette::Color15;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "palettes-window");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().palettes_editor.open = true;
+    harness.run_steps(3);
+    let colour = |app: &App| app.palettes().unwrap().colour(13);
+    let before = colour(harness.state());
+    let red = Color15::from_rgb5(31, 0, 0);
+    harness.state_mut().set_shared_colour(13, red, false);
+    harness.step();
+    assert_eq!(colour(harness.state()), red);
+    wait_for(&mut harness, "the picture", drawn);
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    assert_eq!(colour(harness.state()), before);
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    harness.step();
+    assert_eq!(colour(harness.state()), red);
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    harness.step();
+    assert!(
+        !harness.state().palettes().unwrap().is_modified(),
+        "{:?}",
+        harness.state().status()
+    );
+    let file = std::fs::read_to_string(project.0.join("palettes/shared.toml")).unwrap();
+    assert!(file.contains("[background]\n0x05 = \"#F80000\""), "{file}");
+    let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
+    assert!(
+        manifest.contains("shared = \"palettes/shared.toml\""),
+        "{manifest}"
+    );
+}

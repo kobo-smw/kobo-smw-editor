@@ -17,6 +17,7 @@ mod map16;
 mod outline;
 mod overview;
 mod palette;
+mod palettes;
 mod picture;
 mod play;
 mod preview;
@@ -54,7 +55,7 @@ struct Args {
     #[arg(long)]
     palette: bool,
     /// The left panel's tab (levels, objects, add, sprites, map16), or a window
-    /// (changes, overview, backgrounds, project, map16-editor, graphics).
+    /// (changes, overview, backgrounds, project, map16-editor, graphics, palettes).
     #[arg(long)]
     tab: Option<String>,
     /// Build the project once the level is open.

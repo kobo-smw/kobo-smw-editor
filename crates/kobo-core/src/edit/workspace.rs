@@ -257,6 +257,18 @@ impl Workspace {
         Ok(())
     }
 
+    /// Puts the shared palettes as the editor has them in the project, for
+    /// the next build.
+    pub fn set_palettes(&mut self, palettes: &super::PalettesDocument) {
+        let mut project = (*self.project).clone();
+        palettes.apply_to(&mut project);
+        if project.shared_palettes != self.project.shared_palettes
+            || project.manifest != self.project.manifest
+        {
+            self.project = Arc::new(project);
+        }
+    }
+
     /// Builds the project as it is in memory.
     pub fn build(&self) -> Result<Rom, WorkspaceError> {
         Ok(build::build_cached(

@@ -899,11 +899,11 @@ fn read_graphics(t: &Table) -> Result<GraphicsList, SourceError> {
 }
 
 /// `#RRGGBB`, each channel the SNES 5-bit value times 8.
-fn color_text(c: Color15) -> String {
+pub(crate) fn color_text(c: Color15) -> String {
     format!("#{:02X}{:02X}{:02X}", c.r() * 8, c.g() * 8, c.b() * 8)
 }
 
-fn parse_color(at: &str, text: &str) -> Result<Color15, SourceError> {
+pub(crate) fn parse_color(at: &str, text: &str) -> Result<Color15, SourceError> {
     let bad = || {
         invalid(
             at,

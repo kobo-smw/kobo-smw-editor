@@ -47,6 +47,7 @@ use crate::rom::{Rom, RomError, RomIdentity};
 use crate::source::SourceError;
 use crate::source::level::{BACKGROUND_ROWS, BackgroundTiles, Layer2, Level};
 use crate::source::map16::{self as page_source, GamePage, Map16Page, PageKind, Pipes};
+use crate::source::palettes::SharedPalettes;
 use crate::source::project::{MANIFEST, Manifest};
 use crate::sprites::{self, SpriteEncodeError};
 use crate::tools::{self, Located, Tool, ToolError};
@@ -148,6 +149,8 @@ pub struct Project {
     /// What the project changes of the vertical pipes' colours and the
     /// diagonal pipes.
     pub pipes: Pipes,
+    /// What the project changes of the game's shared colour tables.
+    pub shared_palettes: SharedPalettes,
     /// GFX files `00` to `33`, as images of colour indices.
     pub gfx: Vec<(u8, IndexedImage)>,
     /// ExGFX files, as the bytes the ROM holds decompressed.
@@ -326,6 +329,15 @@ impl Project {
             }
             None => Pipes::default(),
         };
+        let shared_palettes = match &manifest.shared_palettes {
+            Some(file) => {
+                let path = dir.join(file);
+                SharedPalettes::from_toml(&read(path.clone())?)
+                    .map_err(|source| BuildError::Source { path, source })?
+                    .0
+            }
+            None => SharedPalettes::default(),
+        };
         Ok(Self {
             root: dir.to_path_buf(),
             manifest,
@@ -335,6 +347,7 @@ impl Project {
             map16_tileset,
             map16_bg,
             pipes,
+            shared_palettes,
             gfx,
             exgfx,
             animation_global,
@@ -658,6 +671,10 @@ impl Stage {
                     bytes.push(*n);
                     bytes.extend(files);
                 }
+                for (n, colour) in &project.shared_palettes.colours {
+                    bytes.extend(n.to_le_bytes());
+                    bytes.extend(colour.0.to_le_bytes());
+                }
                 bytes
             }
             Stage::Map16 => {
@@ -890,6 +907,7 @@ impl Stage {
                 }
             }
             Stage::Graphics => {
+                project.shared_palettes.write(rom)?;
                 write_gfx(rom, clean, project)?;
                 if project.lunar_magic_graphics() {
                     write_exgfx(rom, project)?;
@@ -1124,11 +1142,13 @@ fn patch_can_include(project: &Project, path: &Path) -> bool {
     let m = &project.manifest;
     let owned = path == Path::new(MANIFEST)
         || m.levels.values().any(|file| path == file)
-        || [&m.map16, &m.map16_bg, &m.gfx]
+        || [&m.map16, &m.map16_bg, &m.map16_tileset, &m.gfx]
             .iter()
             .any(|files| files.values().any(|file| path == file))
         || m.exgfx.values().any(|file| path == file.path)
         || m.animation_global.as_deref() == Some(path)
+        || m.shared_palettes.as_deref() == Some(path)
+        || m.map16_pipes.as_deref() == Some(path)
         || m.animation_files.values().any(|file| path == file)
         || m.music.as_ref().is_some_and(|dir| path.starts_with(dir))
         || m.uberasm.as_ref().is_some_and(|dir| path.starts_with(dir))

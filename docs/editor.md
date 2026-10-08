@@ -166,6 +166,16 @@ where the project uses Lunar Magic's graphics formats), and saving adds it as
 `graphics/GFXnn.png`. An ExGFX file the project holds as a PNG is drawn in the same way;
 one held as `.bin` bytes is not, having no colours to draw in.
 
+## Shared palettes
+
+The shared palettes window (View menu) edits the game's colour tables, which every level
+without a palette of its own draws from by its header's BG, FG, sprite, and back area
+settings: each table's colours (by palette and row for the tables made of palettes),
+the ones the open level's header picks outlined, a dot on each the project changes. A
+chosen colour is set by its red, green, and blue (0 to 31 each), or put back as the
+game has it. Saving writes `palettes/shared.toml` (docs/build.md, "Source formats"),
+named in `kobo.toml` the first time.
+
 ## The project
 
 *This project…* (Project menu) shows what the project holds (its levels, Map16, graphics,

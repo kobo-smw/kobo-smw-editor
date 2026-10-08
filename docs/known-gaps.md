@@ -83,12 +83,6 @@ What a rendered level does not reproduce, and what the tooling does not handle.
   unaffected, since the ROM's own decompression runs for them. LC_LZ2 and LC_LZ3 have
   encoders (`compress::lz2::compress`, `compress::lz3::compress`); the LC_LZ3 one does not
   use its reversed and backwards copies (commands 5 and 6).
-- A project cannot hold Lunar Magic's shared palettes: the game's colour tables from
-  `$00B0A0` (`BackAreaColors` to `OWSpecialColors`, 1009 colours, Lunar Magic's
-  `-ExportSharedPalette`), which Lunar Magic edits in place. A ROM import reports a change
-  there among the ranges it did not carry, and a Callisto import says how many colours its
-  `shared_palettes` file changes (the Romhack Races baserom: 3). Every word there is a
-  colour, so the text format can be `#RRGGBB` by table.
 - Builds are not FastROM. A Callisto project whose initial patch (a ROM, which Kobo does
   not carry) is FastROM, as the Romhack Races baserom's is, imports with a note: code its
   patches put in banks `$80` and up runs at SlowROM speed in the build.

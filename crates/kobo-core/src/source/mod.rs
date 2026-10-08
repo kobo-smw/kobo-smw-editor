@@ -17,6 +17,7 @@ use toml_edit::{Decor, DocumentMut, Item};
 pub mod animation;
 pub mod level;
 pub mod map16;
+pub mod palettes;
 pub mod pixi;
 pub mod project;
 

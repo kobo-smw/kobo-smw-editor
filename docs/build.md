@@ -67,6 +67,14 @@ ROM.
   per line, rows labelled by generated comments.
 - Graphics are indexed PNG: the pixel index is the colour index, the PNG's palette is only
   a preview. `.bin` is import and export.
+- The shared palettes, the game's colour tables from `$00B0A0` (`BackAreaColors` to
+  `OWSpecialColors`, 1009 colours, which Lunar Magic edits in place and exports whole as
+  its shared palette), are one file (`[palettes] shared`, `source::palettes`): a table
+  per section, named after the disassembly's, listing only the colours a project
+  changes, by number in the table, as `#RRGGBB`; the rest are the clean ROM's. The
+  graphics stage writes them in place. A ROM import and a Callisto import carry a
+  hack's; Lunar Magic exports a build's as written, and its import of that export makes
+  the same tables (`lunar_magic_save.rs`).
 - Map16 pages past 1 are one file per page, listed in the manifest's `[map16]` table like
   levels, one tile per line keyed by its number: what it acts like, and its four 8x8
   tiles in reading order as `"TTT P xyp"` (`source::map16`). A tile a file does not list
@@ -206,8 +214,7 @@ and what each hack still has refused, are in [testing.md](testing.md).
 - The overworld (its layer 1 and 2, events, paths), the title screen, the credits, and
   messages: builds keep them as the game has them, and Lunar Magic edits them on the
   built ROM. Overworld graphics lists a hack names are noted on import, not carried.
-- Lunar Magic's shared palettes (the game's colour tables, which it edits in place).
-  Builds are not FastROM either ([known-gaps.md](known-gaps.md)).
+- Builds are not FastROM ([known-gaps.md](known-gaps.md)).
 - Lunar Magic's GUI operations (overworld save, message and title screen edits,
   ExAnimation, custom palettes, the VRAM patch options) have not been tried on a Kobo
   build: every Lunar Magic check so far runs its command line. They may write inside

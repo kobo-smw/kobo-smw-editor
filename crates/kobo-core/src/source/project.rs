@@ -93,6 +93,9 @@ pub struct Manifest {
     /// The file of the vertical pipes' colours and the diagonal pipes
     /// (`[map16_pipes] file`, `source::map16::Pipes`).
     pub map16_pipes: Option<PathBuf>,
+    /// What the project changes of the game's shared colour tables
+    /// (`[palettes] shared`, `source::palettes`).
+    pub shared_palettes: Option<PathBuf>,
     /// Level number to file, relative to the project directory.
     pub levels: BTreeMap<u16, PathBuf>,
     /// Lunar Magic's global ExAnimation list's file (`source::animation`).
@@ -245,6 +248,10 @@ impl Manifest {
             out.table("map16_pipes");
             out.key("map16_pipes", "file", quoted(pipes));
         }
+        if let Some(shared) = &self.shared_palettes {
+            out.table("palettes");
+            out.key("palettes", "shared", quoted(shared));
+        }
         if !self.exgfx.is_empty() {
             out.table("exgfx");
             for (file, entry) in &self.exgfx {
@@ -311,6 +318,7 @@ impl Manifest {
                 "map16_bg",
                 "map16_tileset",
                 "map16_pipes",
+                "palettes",
                 "animation",
                 "levels",
             ]
@@ -539,6 +547,22 @@ impl Manifest {
                         manifest.map16_pipes = Some(PathBuf::from(file));
                     }
                     _ => return Err(invalid("map16_pipes", format!("unknown key `{key}`"))),
+                }
+            }
+        }
+        if let Some(palettes) = doc.get("palettes") {
+            let palettes = palettes
+                .as_table()
+                .ok_or_else(|| invalid("palettes", "must be a table"))?;
+            for (key, item) in palettes.iter() {
+                match key {
+                    "shared" => {
+                        let file = item
+                            .as_str()
+                            .ok_or_else(|| invalid("palettes.shared", "must be a file path"))?;
+                        manifest.shared_palettes = Some(PathBuf::from(file));
+                    }
+                    _ => return Err(invalid("palettes", format!("unknown key `{key}`"))),
                 }
             }
         }
@@ -771,6 +795,7 @@ mod tests {
             map16_bg: BTreeMap::from([(0x01, PathBuf::from("map16/bg-01.toml"))]),
             map16_tileset: BTreeMap::from([(0x05, PathBuf::from("map16/tileset-05.toml"))]),
             map16_pipes: Some(PathBuf::from("map16/pipes.toml")),
+            shared_palettes: Some(PathBuf::from("palettes/shared.toml")),
             levels: BTreeMap::from([
                 (0x105, PathBuf::from("world1/yoshis-island-1.toml")),
                 (0x0C7, PathBuf::from("title.toml")),
@@ -786,6 +811,7 @@ mod tests {
              [gfx]\n0x00 = \"graphics/GFX00.png\"\n\n[map16]\n0x10 = \"map16/10.toml\"\n\n[map16_bg]\n0x01 = \"map16/bg-01.toml\"\n\n\
              [map16_tileset]\n0x05 = \"map16/tileset-05.toml\"  # pages 0 and 1 also tilesets 4, D\n\n\
              [map16_pipes]\nfile = \"map16/pipes.toml\"\n\n\
+             [palettes]\nshared = \"palettes/shared.toml\"\n\n\
              [exgfx]\n0x080 = \"graphics/ExGFX80.png\"\n\
              0x100 = { file = \"graphics/ExGFX100.png\", bpp = 2 }\n\
              0xFFF = \"graphics/ExGFXFFF.bin\"\n\n\

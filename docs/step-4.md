@@ -63,3 +63,7 @@ from the editor where the user is working.
   fills within a tile, undo, and `Workspace::set_graphics`; `edit::graphics::level_files`
   for the files a level loads (editor.md, "Graphics"). Importing a PNG or `.bin` into a
   slot, and drawing in `.bin` ExGFX, are not done yet.
+- The shared palettes (2026-10-08): `source::palettes` (the game's 21 colour tables as
+  a project changes them, `[palettes] shared`), written by the graphics stage, carried by
+  ROM and Callisto imports, checked against Lunar Magic's shared palette export and
+  import; `edit::PalettesDocument` and the editor's window (editor.md, "Shared palettes").

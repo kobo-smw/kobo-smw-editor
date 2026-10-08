@@ -13,6 +13,7 @@ mod document;
 pub mod find;
 pub mod graphics;
 pub mod map16;
+pub mod palettes;
 mod previews;
 pub mod reach;
 mod workspace;
@@ -20,6 +21,7 @@ mod workspace;
 pub use document::{LevelDocument, Reload};
 pub use graphics::{GraphicsDocument, GraphicsError, GraphicsFile};
 pub use map16::{Map16Document, Map16EditError, TileChange};
+pub use palettes::{PalettesDocument, PalettesError};
 pub use previews::{background_preview, object_previews, sprite_previews};
 pub use workspace::{Preview, Workspace, WorkspaceError};
 
