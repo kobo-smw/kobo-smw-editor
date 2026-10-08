@@ -367,7 +367,10 @@ upload_file:
 ; layout there, for the callers that read that (the MARIO START and GAME OVER
 ; letters, sprite tiles 4A-4F and 5A-5F, the overworld's animated tiles, the
 ; Mode 7 bosses' tiles). Returns with $00-$02 = $7EAD00 and Y kept, as the
-; game's does.
+; game's does. In the overworld's load, whose file $14 is the source of its
+; animated tiles, the player's submap's list (submap_list) gives the file
+; in its AN2 slot instead, as a Lunar Magic-saved ROM's overworld loads it:
+; a file the game keeps as 3bpp in the game's layout, ExGFX as it is.
 prepare_file:
     PHP
     REP #$30
@@ -377,7 +380,25 @@ prepare_file:
     PLB
     TYA
     AND #$00FF
-    PHA
+    CMP #$0014
+    BNE +
+    LDA $0100|!addr
+    AND #$00FF
+    CMP #$000C
+    BNE ++
+    LDA.l !List+1
+    CMP #$FFFF
+    BEQ ++
+    LDA.l $7FC006               ; the submap's list
+    STA $00
+    LDA.l $7FC007
+    STA $01
+    LDA [$00]
+    AND #$0FFF
+    CMP #$007F
+    BNE +                       ; 7F, none: the game's file
+++  LDA #$0014
++   PHA
     JSR decompress_file
     PLA
     CMP #$0027

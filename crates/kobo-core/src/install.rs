@@ -120,6 +120,14 @@ pub const OVERWORLD_PALETTES: (&str, &str) = (
     include_str!("../asm/lunar-magic/overworld-palettes.asm"),
 );
 
+/// Lunar Magic's overworld ExAnimation: each submap's list and settings,
+/// for a project whose overworld has any (docs/lunar-magic-install.md, "The
+/// overworld").
+pub const OVERWORLD_EXANIMATION: (&str, &str) = (
+    "overworld-exanimation.asm",
+    include_str!("../asm/lunar-magic/overworld-exanimation.asm"),
+);
+
 /// The banks of Choc Island 2's rooms, applied by a build that writes one
 /// of levels `0CD`-`0CF`, whose banks those rooms would otherwise take
 /// (docs/lunar-magic-install.md, "Choc Island 2's rooms").
@@ -141,10 +149,21 @@ pub const ENTRANCES: (&str, &str) = (
     include_str!("../asm/lunar-magic/entrances.asm"),
 );
 
-/// One of the patches, with [`MEMORY`] beside it for its `incsrc`.
+/// ExAnimation's engine, which [`EXANIMATION`] and
+/// [`OVERWORLD_EXANIMATION`] include.
+pub const EXANIMATION_ENGINE: (&str, &str) = (
+    "exanimation-engine.asm",
+    include_str!("../asm/lunar-magic/exanimation-engine.asm"),
+);
+
+/// One of the patches, with [`MEMORY`] and [`EXANIMATION_ENGINE`] beside it
+/// for its `incsrc`.
 pub fn patch((name, source): (&str, &str)) -> Patch {
     let (memory, text) = MEMORY;
-    Patch::source(name, source).file(memory, text.as_bytes())
+    let (engine, engine_text) = EXANIMATION_ENGINE;
+    Patch::source(name, source)
+        .file(memory, text.as_bytes())
+        .file(engine, engine_text.as_bytes())
 }
 
 /// Applies the Lunar Magic layout patches to a ROM.
@@ -205,7 +224,7 @@ pub fn apply_graphics(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
     Ok(asar.patch(rom, &patch(GRAPHICS))?.rom)
 }
 
-/// Applies [`LAYER3`], which reads the lists [`GRAPHICS`] finds.
+/// Applies [`OVERWORLD`].
 pub fn apply_overworld(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
     Ok(asar.patch(rom, &patch(OVERWORLD))?.rom)
 }
@@ -216,10 +235,17 @@ pub fn apply_overworld_reveal(asar: &Asar, rom: &Rom, speed: u8) -> Result<Rom, 
     Ok(asar.patch(rom, &patch)?.rom)
 }
 
+/// Applies [`OVERWORLD_PALETTES`], whose pointer the build then writes.
 pub fn apply_overworld_palettes(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
     Ok(asar.patch(rom, &patch(OVERWORLD_PALETTES))?.rom)
 }
 
+/// Applies [`OVERWORLD_EXANIMATION`], whose tables the build then writes.
+pub fn apply_overworld_exanimation(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
+    Ok(asar.patch(rom, &patch(OVERWORLD_EXANIMATION))?.rom)
+}
+
+/// Applies [`LAYER3`], which reads the lists [`GRAPHICS`] finds.
 pub fn apply_layer3(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
     Ok(asar.patch(rom, &patch(LAYER3))?.rom)
 }

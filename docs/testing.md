@@ -739,9 +739,15 @@ overworld's and the event process's steps frame by frame.
 - Lunar Magic's overworld transfer from a Kobo build into a clean ROM gives the build's
   overworld back (`tests/lunar_magic_overworld.rs`, the Lunar Magic tier), and loses
   layer 1's pages without the byte it checks for them.
+- Kobo's code for the overworld's ExAnimation, swapped into each corpus hack that has
+  Lunar Magic's (`common::swap`, `Piece::OverworldAnimation`), plays every submap for
+  64 frames as the hack does (`expand::play_overworld_on`), to the same VRAM, CGRAM, and
+  RAM but for the stack, the scratch, and what each implementation keeps for itself.
 - `examples/ow_probe.rs` compares loads by hand: two ROMs with every event passed or
   each alone (`pair`, `each`), each event's end (`end`, `ends`), or a hack against
-  Kobo's build of its overworld (`build`, `passed`, `write`).
+  Kobo's build of its overworld (`build`, `passed`, `write`), or two ROMs played on frame
+  by frame (`frames`, `DETAIL=1` for VRAM words; `ram` prints a range each frame,
+  `owanim` a ROM's overworld lists).
 
 ### Picture hashes
 

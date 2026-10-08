@@ -1307,13 +1307,27 @@ fn import_overworld(
             "its overworld's path reveal speed could not be found ({e}); the game's fade is kept"
         )),
     }
+    if let Some(animation) = &changes.animation {
+        let lists = animation
+            .submaps
+            .iter()
+            .enumerate()
+            .map(|(n, l)| (format!("submap {n}"), l));
+        for (what, list) in lists.chain([("the global list".to_string(), &animation.global)]) {
+            if let Some(why) = list.as_ref().and_then(exanimation::overworld_refusal) {
+                report.notes.push(format!(
+                    "its overworld's ExAnimation ({what}) has what this build cannot write yet: {why}"
+                ));
+            }
+        }
+    }
     if changes.is_empty() {
         return Ok(());
     }
     let file = PathBuf::from("overworld.toml");
     let top = [
         "# The hack's overworld, as what it changes of the clean ROM's.".to_string(),
-        "# Not carried yet: its ExAnimation, and Lunar Magic's other Extra Options.".into(),
+        "# Not carried yet: Lunar Magic's other Extra Options.".into(),
     ];
     write_text(
         &dir.join(&file),
@@ -1321,8 +1335,8 @@ fn import_overworld(
     )?;
     manifest.overworld = Some(file);
     report.notes.push(
-        "its overworld is carried (overworld.toml), but for its ExAnimation and Lunar Magic's \
-         Extra Options other than the path reveal speed"
+        "its overworld is carried (overworld.toml), but for Lunar Magic's Extra Options other \
+         than the path reveal speed"
             .into(),
     );
     Ok(())

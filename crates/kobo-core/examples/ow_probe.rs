@@ -572,6 +572,11 @@ fn main() {
                 ("level events", a.level_events == b.level_events),
                 ("tables", a.tables == b.tables),
                 ("16x16 tiles", a.tiles == b.tiles),
+                (
+                    "ExAnimation",
+                    a.animation.as_ref().filter(|x| !x.is_empty())
+                        == b.animation.as_ref().filter(|x| !x.is_empty()),
+                ),
             ] {
                 if !same {
                     differ.push(what);
@@ -770,6 +775,22 @@ fn main() {
                         line.push(format!("VRAM ${:04X} {differ}", k * 0x400));
                     }
                 }
+                if std::env::var_os("DETAIL").is_some() {
+                    let mut runs: Vec<(usize, usize)> = Vec::new();
+                    for w in 0..x.vram.len() / 2 {
+                        if x.vram[2 * w..2 * w + 2] != y.vram[2 * w..2 * w + 2] {
+                            match runs.last_mut() {
+                                Some(r) if r.1 + 1 == w => r.1 = w,
+                                _ => runs.push((w, w)),
+                            }
+                        }
+                    }
+                    let text: Vec<String> = runs
+                        .iter()
+                        .map(|(a, b)| format!("{a:04X}-{b:04X}"))
+                        .collect();
+                    line.push(format!("words {}", text.join(" ")));
+                }
                 let cg: Vec<usize> = (0..x.cgram.len() / 2)
                     .filter(|&i| x.cgram[2 * i..2 * i + 2] != y.cgram[2 * i..2 * i + 2])
                     .collect();
@@ -796,6 +817,90 @@ fn main() {
                 if !line.is_empty() {
                     println!("frame {n}: {}", line.join("; "));
                 }
+            }
+        }
+        Some("vfind") if args.len() == 4 => {
+            // `vfind rom.smc submap word`: where VRAM's 32 bytes from word
+            // (hex) are in the overworld's RAM, as the load leaves it.
+            let submap: u8 = args[2].parse().unwrap();
+            let w = usize::from_str_radix(&args[3], 16).unwrap();
+            let l = kobo_core::expand::load_overworld_on(&Rom::load(&args[1]).unwrap(), submap)
+                .unwrap();
+            let needle = &l.vram[2 * w..2 * w + 32];
+            let ram = l
+                .ram
+                .bytes(kobo_core::ram::RamAddr::new(0x7E_0000), 0x2_0000);
+            let hits: Vec<String> = ram
+                .windows(32)
+                .enumerate()
+                .filter(|(_, x)| *x == needle)
+                .map(|(i, _)| format!("{:06X}", 0x7E_0000 + i))
+                .collect();
+            println!("VRAM {w:04X}: {:02X?}... in RAM at {hits:?}", &needle[..8]);
+            let mut planes = Vec::new();
+            for i in (0..ram.len() - 16).step_by(1) {
+                if ram[i..i + 16] == needle[..16] {
+                    planes.push(format!("{:06X}", 0x7E_0000 + i));
+                }
+            }
+            println!(
+                "  its first 16 bytes at {:?}",
+                &planes[..planes.len().min(8)]
+            );
+        }
+        Some("ram") if args.len() == 7 => {
+            // `ram rom.smc submap frames from len`: RAM from `from` (hex),
+            // `len` bytes, after each frame of the overworld played on.
+            let submap: u8 = args[2].parse().unwrap();
+            let frames: u32 = args[3].parse().unwrap();
+            let from = u32::from_str_radix(&args[4], 16).unwrap();
+            let len: usize = args[5].parse().unwrap();
+            assert!(!(0x100..0x200).contains(&(from & 0xFFFF)), "not the stack");
+            let played =
+                kobo_core::expand::play_overworld_on(&Rom::load(&args[1]).unwrap(), submap, frames)
+                    .unwrap();
+            for (n, f) in played.iter().enumerate() {
+                let b = f.ram.bytes(kobo_core::ram::RamAddr::new(from), len);
+                let hex: Vec<String> = b.iter().map(|x| format!("{x:02X}")).collect();
+                println!(
+                    "{n:3} frame {} $14={:02X} {}",
+                    f.frames,
+                    f.ram.u8(kobo_core::ram::RamAddr::new(0x7E_0014)),
+                    hex.join(" ")
+                );
+            }
+        }
+        Some("owanim") if args.len() == 2 => {
+            // `owanim rom.smc`: the overworld's ExAnimation as read: each
+            // submap's settings and slots, and the global list's.
+            match kobo_core::exanimation::read_overworld(&Rom::load(&args[1]).unwrap()) {
+                Ok(Some(a)) => {
+                    let lists: Vec<String> = a
+                        .submaps
+                        .iter()
+                        .map(|l| l.as_ref().map_or("-".into(), |l| l.slots.len().to_string()))
+                        .collect();
+                    let mut triggers: Vec<u8> = a
+                        .submaps
+                        .iter()
+                        .chain(std::iter::once(&a.global))
+                        .flatten()
+                        .flat_map(|l| l.slots.values().map(|s| s.trigger))
+                        .collect();
+                    triggers.sort();
+                    triggers.dedup();
+                    println!("triggers {triggers:02X?}");
+                    println!(
+                        "settings {:02X?}, submaps' slots {}, global {}",
+                        a.settings,
+                        lists.join(" "),
+                        a.global
+                            .as_ref()
+                            .map_or("-".into(), |l| l.slots.len().to_string())
+                    );
+                }
+                Ok(None) => println!("none installed"),
+                Err(e) => println!("{e}"),
             }
         }
         Some("vram") if args.len() == 4 => {

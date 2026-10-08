@@ -475,7 +475,14 @@ fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
             && ours.start == theirs.start
             && ours.level_flags == theirs.level_flags
             && ours.level_events == theirs.level_events
-            && ours.tables == theirs.tables;
+            && ours.tables == theirs.tables
+            // A hack with fewer 16x16 tiles than the game's has the
+            // clean ROM's after its own.
+            && ours.tiles.get(..theirs.tiles.len()) == Some(&theirs.tiles[..])
+            && ours.palettes == theirs.palettes
+            // An install with no list and no setting is none.
+            && ours.animation.as_ref().filter(|a| !a.is_empty())
+                == theirs.animation.as_ref().filter(|a| !a.is_empty());
         if !same {
             failures.fail(&rom, None, "the build reads back otherwise");
         }
@@ -498,6 +505,110 @@ fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
                     }
                 }
                 Err(e) => failures.fail(&rom, None, format!("every event passed: {e}")),
+            }
+        }
+    }
+    failures.finish();
+}
+
+/// What two plays of an overworld leave differently, frame by frame: the
+/// first frame that differs and where, or `None`. WRAM is compared by bus
+/// address but for the stack, the scratch at `$00`-`$0F` (which Lunar
+/// Magic's code leaves otherwise), and what each implementation of its
+/// ExAnimation keeps for itself (`$7FC000`-`$7FC01F`, its queue at
+/// `$7FC0C0`-`$7FC0F7`), where the ROM's RAM map puts them and in WRAM.
+fn first_difference(
+    a: &[expand::LoadedOverworld],
+    b: &[expand::LoadedOverworld],
+) -> Option<String> {
+    use kobo_core::ram::RamAddr;
+    for (n, (x, y)) in a.iter().zip(b).enumerate() {
+        if x.vram != y.vram {
+            let w = (0..x.vram.len() / 2)
+                .find(|&w| x.vram[2 * w..2 * w + 2] != y.vram[2 * w..2 * w + 2])
+                .unwrap();
+            return Some(format!("frame {n}: VRAM word ${w:04X}"));
+        }
+        if x.cgram != y.cgram {
+            return Some(format!("frame {n}: CGRAM"));
+        }
+        let map = x.ram.map();
+        let skip: Vec<std::ops::Range<u32>> = [
+            (0x7E_0000, 0x10),
+            (0x7E_0100, 0x100),
+            (0x7F_C000, 0x20),
+            (0x7F_C0C0, 0x38),
+        ]
+        .into_iter()
+        .flat_map(|(at, len)| {
+            let start = map.resolve(RamAddr::new(at));
+            [start..start + len, at..at + len]
+        })
+        .collect();
+        for addr in 0x7E_0000..0x80_0000u32 {
+            if skip.iter().any(|r| r.contains(&addr)) {
+                continue;
+            }
+            if x.ram.read(addr) != y.ram.read(addr) {
+                return Some(format!("frame {n}: RAM ${addr:06X}"));
+            }
+        }
+    }
+    None
+}
+
+/// Kobo's code for the overworld's ExAnimation, swapped into each corpus
+/// hack that has Lunar Magic's in its place and pointed at its tables
+/// (`common::swap`), plays every submap's lists for 64 frames as Lunar
+/// Magic's does (docs/lunar-magic-install.md, "The overworld").
+#[test]
+fn kobo_overworld_animation_plays_as_lunar_magics() {
+    use common::swap::{Piece, swap};
+    use kobo_core::SnesAddr;
+
+    let Some(asar) = common::asar() else {
+        return;
+    };
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let failures = common::failures::Failures::new(
+        "overworld::kobo_overworld_animation_plays_as_lunar_magics",
+    );
+    for (path, rom) in common::lunar_magic_roms() {
+        if rom.read_u8(SnesAddr::new(0x04_8086)).ok() != Some(0x22) {
+            continue;
+        }
+        failures.checked(&path, &rom);
+        let ours = match swap(&asar, Piece::OverworldAnimation, &rom, &clean) {
+            Ok(mut ours) => {
+                // Lunar Magic's option to merge FG1-2 into SP3-4 moves the
+                // game's animated tiles with them; Kobo's code sends them
+                // where the game's LDY #$0750 says, which is how a build
+                // that carries the option will move them.
+                let merged =
+                    expand::load_overworld(&rom).is_ok_and(|l| l.bg_character_base[0] == 0xE000);
+                if merged {
+                    ours.write(SnesAddr::new(0x00_A4EB), &[0x50, 0x77]).unwrap();
+                }
+                ours
+            }
+            Err(e) => {
+                failures.fail(&rom, None, format!("swap: {e}"));
+                continue;
+            }
+        };
+        for submap in 0..7 {
+            let theirs = expand::play_overworld_on(&rom, submap, 64);
+            let kobo = expand::play_overworld_on(&ours, submap, 64);
+            match (theirs, kobo) {
+                (Ok(a), Ok(b)) => {
+                    if let Some(d) = first_difference(&a, &b) {
+                        failures.fail(&rom, None, format!("submap {submap}: {d}"));
+                    }
+                }
+                (Err(e), _) => failures.fail(&rom, None, format!("submap {submap}, the hack: {e}")),
+                (_, Err(e)) => failures.fail(&rom, None, format!("submap {submap}, Kobo's: {e}")),
             }
         }
     }

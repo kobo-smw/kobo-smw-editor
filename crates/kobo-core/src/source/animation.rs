@@ -47,19 +47,23 @@ use toml_edit::{Array, InlineTable, Table, Value};
 use super::level::{check_keys, inline_flag, int, keys_of, opt, read_list, req};
 use super::{Comments, SourceError, Writer, hex, invalid};
 use crate::exanimation::{
-    AN2_FRAMES, AN2_LEN, FIRST_ALT_FILE, Kind, List, Settings, Slot, second_set,
+    AN2_FRAMES, AN2_LEN, FIRST_ALT_FILE, Kind, List, Settings, Slot, second_set_on,
 };
 use crate::names;
 
-const SETTINGS: [(&str, u8); 4] = [
-    ("game_tiles", Settings::NO_GAME_TILES),
-    ("game_colours", Settings::NO_GAME_COLOURS),
-    ("level_list", Settings::NO_LEVEL),
-    ("global_list", Settings::NO_GLOBAL),
-];
+/// The settings' keys, `own` the list of the level's (or submap's) own.
+fn settings_keys(own: &'static str) -> [(&'static str, u8); 4] {
+    [
+        ("game_tiles", Settings::NO_GAME_TILES),
+        ("game_colours", Settings::NO_GAME_COLOURS),
+        (own, Settings::NO_LEVEL),
+        ("global_list", Settings::NO_GLOBAL),
+    ]
+}
 
-/// The keys a list takes, and with `settings`, those of a level's.
-fn keys(settings: bool) -> Vec<&'static str> {
+/// The keys a list takes, and with `settings` (the own list's key), those
+/// of a level's.
+fn keys(settings: Option<&'static str>) -> Vec<&'static str> {
     let mut keys = vec![
         "alt_file",
         "custom_keep",
@@ -68,8 +72,8 @@ fn keys(settings: bool) -> Vec<&'static str> {
         "count",
         "slots",
     ];
-    if settings {
-        keys.extend(SETTINGS.map(|(k, _)| k));
+    if let Some(own) = settings {
+        keys.extend(settings_keys(own).map(|(k, _)| k));
         keys.push("other_bits");
     }
     keys
@@ -78,9 +82,23 @@ fn keys(settings: bool) -> Vec<&'static str> {
 /// Writes table `table`: the level's settings byte if it has one of its
 /// own, and its list.
 pub(crate) fn write(out: &mut Writer, table: &str, settings: Option<u8>, list: Option<&List>) {
+    write_as(out, table, "level_list", false, settings, list);
+}
+
+/// [`write`], with `own` the key of the setting for the list of its own (an
+/// overworld submap's: `submap_list`), and with `overworld` an overworld's
+/// list, whose triggers `01`-`08` have second sets.
+pub(crate) fn write_as(
+    out: &mut Writer,
+    table: &str,
+    own: &'static str,
+    overworld: bool,
+    settings: Option<u8>,
+    list: Option<&List>,
+) {
     out.table(table);
     if let Some(byte) = settings {
-        for (key, bit) in SETTINGS {
+        for (key, bit) in settings_keys(own) {
             out.key(table, key, byte & bit == 0);
         }
         if byte & 0x0F != 0 {
@@ -119,7 +137,7 @@ pub(crate) fn write(out: &mut Writer, table: &str, settings: Option<u8>, list: O
         out.key(table, "count", list.count);
     }
     let slots: Vec<(u8, &Slot)> = list.slots.iter().map(|(&n, s)| (n, s)).collect();
-    out.list(table, "slots", &slots, |(n, s)| slot_line(*n, s));
+    out.list(table, "slots", &slots, |(n, s)| slot_line(*n, s, overworld));
 }
 
 /// A list of frames, as offsets from `base`.
@@ -128,7 +146,7 @@ fn words(list: &[u16], base: u16) -> String {
     format!("[{}]", parts.join(", "))
 }
 
-fn slot_line(n: u8, s: &Slot) -> (String, Option<String>) {
+fn slot_line(n: u8, s: &Slot, overworld: bool) -> (String, Option<String>) {
     let mut text = format!(
         "{{ slot = {}, type = {}",
         hex(n as u32, 2),
@@ -157,7 +175,7 @@ fn slot_line(n: u8, s: &Slot) -> (String, Option<String>) {
     let base = if an2 { AN2_FRAMES } else { 0 };
     if Kind::of(s.kind) == Some(Kind::Rotation) {
         text += &format!(", delay = {}", s.frames_less_one as u32 + 1);
-    } else if second_set(s.trigger) {
+    } else if second_set_on(s.trigger, overworld) {
         let half = s.frames.len() / 2;
         text += &format!(
             ", frames = {}, triggered = {}",
@@ -186,11 +204,25 @@ pub(crate) fn read(
     settings: bool,
     comments: &mut Comments,
 ) -> Result<(Option<u8>, Option<List>), SourceError> {
+    read_as(t, at, settings.then_some("level_list"), false, comments)
+}
+
+/// [`read`], with `settings` the key of the setting for the list of its
+/// own, or `None` for a list without settings, and with `overworld` an
+/// overworld's list.
+pub(crate) fn read_as(
+    t: &Table,
+    at: &str,
+    settings: Option<&'static str>,
+    overworld: bool,
+    comments: &mut Comments,
+) -> Result<(Option<u8>, Option<List>), SourceError> {
     check_keys(t.iter(), at, &keys(settings))?;
     let mut byte = None;
-    if settings && SETTINGS.iter().any(|(k, _)| t.contains_key(k)) {
+    let names = settings.map(settings_keys);
+    if let Some(names) = names.filter(|n| n.iter().any(|(k, _)| t.contains_key(k))) {
         let mut b = 0u8;
-        for (key, bit) in SETTINGS {
+        for (key, bit) in names {
             let on = match t.get(key) {
                 None => true,
                 Some(item) => item
@@ -249,7 +281,9 @@ pub(crate) fn read(
             }
         }
     }
-    for (n, slot) in read_list(t, "slots", at, comments, read_slot)? {
+    for (n, slot) in read_list(t, "slots", at, comments, |e, at| {
+        read_slot(e, at, overworld)
+    })? {
         if list.slots.insert(n, slot).is_some() {
             return Err(invalid(
                 format!("{at}.slots"),
@@ -288,7 +322,7 @@ fn frame_words(t: &InlineTable, at: &str, key: &str) -> Result<Vec<u16>, SourceE
         .collect()
 }
 
-fn read_slot(t: &InlineTable, at: &str) -> Result<(u8, Slot), SourceError> {
+fn read_slot(t: &InlineTable, at: &str, overworld: bool) -> Result<(u8, Slot), SourceError> {
     let n = req(t, at, "slot", 0x1F)? as u8;
     let kind = req(t, at, "type", 0xFF)? as u8;
     let trigger = opt(t, at, "trigger", 0xFF)?.unwrap_or(0) as u8;
@@ -312,7 +346,7 @@ fn read_slot(t: &InlineTable, at: &str) -> Result<(u8, Slot), SourceError> {
                 ],
             )?;
             let vram = req(t, at, "vram", 0x7FFF)? as u16;
-            let (count, frames) = read_frames(t, at, trigger)?;
+            let (count, frames) = read_frames(t, at, trigger, overworld)?;
             (vram | if alt { 0x8000 } else { 0 }, count, frames)
         }
         Kind::Colours | Kind::Rotation => {
@@ -348,7 +382,7 @@ fn read_slot(t: &InlineTable, at: &str) -> Result<(u8, Slot), SourceError> {
                 }
                 (dest, (delay - 1) as u8, Vec::new())
             } else {
-                let (count, frames) = read_frames(t, at, trigger)?;
+                let (count, frames) = read_frames(t, at, trigger, overworld)?;
                 (dest, count, frames)
             }
         }
@@ -390,9 +424,18 @@ fn read_slot(t: &InlineTable, at: &str) -> Result<(u8, Slot), SourceError> {
 }
 
 /// A slot's frames, and its frames less one.
-fn read_frames(t: &InlineTable, at: &str, trigger: u8) -> Result<(u8, Vec<u16>), SourceError> {
+fn read_frames(
+    t: &InlineTable,
+    at: &str,
+    trigger: u8,
+    overworld: bool,
+) -> Result<(u8, Vec<u16>), SourceError> {
     let mut frames = frame_words(t, at, "frames")?;
-    let limit = if second_set(trigger) { 0x80 } else { 0x100 };
+    let limit = if second_set_on(trigger, overworld) {
+        0x80
+    } else {
+        0x100
+    };
     if frames.is_empty() || frames.len() > limit {
         return Err(invalid(
             format!("{at}.frames"),
@@ -400,7 +443,10 @@ fn read_frames(t: &InlineTable, at: &str, trigger: u8) -> Result<(u8, Vec<u16>),
         ));
     }
     let count = (frames.len() - 1) as u8;
-    match (second_set(trigger), t.contains_key("triggered")) {
+    match (
+        second_set_on(trigger, overworld),
+        t.contains_key("triggered"),
+    ) {
         (true, true) => {
             let second = frame_words(t, at, "triggered")?;
             if second.len() != frames.len() {

@@ -14,6 +14,17 @@ settle it.
 
 ## Open
 
+- **The overworld's ExAnimation (2026-10-09).** Kobo carries each submap's list, the
+  global list, and the settings, with its own code for the three hooks
+  (lunar-magic-install.md, "The overworld"). Taken without asking: a submap change
+  runs the eight first frames but uploads only the last, where Lunar Magic waits for
+  vertical blanks to upload each (for about 12 frames after a change the list's
+  tiles differ; waiting would hang Kobo's machine, which raises no vertical blank
+  flags by default); the settings'
+  low bits are carried as data, the lightning colour's among them unknown; and the
+  game's animated tiles go where the game's `LDY #$0750` at `$00A4EA` says, so that
+  carrying Lunar Magic's FG1-2 merge later is that operand.
+
 - **A check byte that is never executed (2026-10-09).** Lunar Magic reads an overworld's
   layer 1 pages only when `$04D818` holds `$A2` (found by bisecting its overworld
   transfer, lunar-magic-install.md, "The overworld"). In its layout that byte begins an

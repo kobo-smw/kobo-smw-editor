@@ -328,3 +328,24 @@ sha1 = "c6d0a6ef65593086b1ae7fbbd9f1ccdfcc01b5ea"
 tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
 levels = "all"
 reason = "Its own code draws the level name 28 tiles wide from VRAM $5062: Kobo's build draws Lunar Magic's names, as Lunar Magic's own transfer of the overworld does."
+
+[[failure]]
+hack = "Kaizo Kindergarten v1.06.smc"
+sha1 = "2e99a4c03755e91482f09e62853118d93fc80eab"
+tests = "overworld::kobo_overworld_animation_plays_as_lunar_magics"
+levels = "all"
+reason = "Submaps 1 and 2, whose settings turn the game's animated tiles off: Lunar Magic's code leaves another value in the direct page scratch at $8A on one frame (VRAM, CGRAM, and the rest the same). Its overworld transferred into a clean ROM plays the same with either."
+
+[[failure]]
+hack = "QLDC 2022/22_Azula16.bps"
+sha1 = "cd463d4b2dcf51252325c212269dcee36b5bfbfb"
+tests = "overworld::kobo_overworld_animation_plays_as_lunar_magics"
+levels = "all"
+reason = "Submaps 2 and 3: Lunar Magic's code leaves another value in the direct page scratch at $8A on one frame (VRAM, CGRAM, and the rest the same), as in Kaizo Kindergarten."
+
+[[failure]]
+hack = "Super Diagonal Mario 2.smc"
+sha1 = "6983dd3f3b569e20db36d0632d34a42b62bd7349"
+tests = "overworld::kobo_overworld_animation_plays_as_lunar_magics"
+levels = "all"
+reason = "An older Lunar Magic's overworld ExAnimation (no waterfall fix: $048102 still $13), whose sprite tiles at VRAM $77A1 come out otherwise; not looked into."

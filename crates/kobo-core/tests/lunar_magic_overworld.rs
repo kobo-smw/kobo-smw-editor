@@ -3,9 +3,10 @@
 //! from a build into a clean ROM leaves the overworld the build has, as
 //! Kobo reads it. Run again without the byte Kobo writes only because
 //! Lunar Magic checks it (`$04D818`), when Lunar Magic must lose layer 1's
-//! pages and nothing else, and without the bank of layer 1's 16x16 tiles
-//! where Lunar Magic reads it (`$058B22`), as docs/lunar-magic-install.md
-//! records.
+//! pages and nothing else, without the bank of layer 1's 16x16 tiles
+//! where Lunar Magic reads it (`$058B22`), and without the `JSL` at
+//! `$00A4E3` it takes the overworld's ExAnimation as installed by, as
+//! docs/lunar-magic-install.md records.
 //!
 //! Opt-in: the Lunar Magic tier, with the vanilla ROM and Asar.
 
@@ -22,6 +23,9 @@ const GAME_BYTE: u8 = 0x05;
 /// Where Lunar Magic reads the bank of layer 1's 16x16 tiles: the second
 /// scroll upload's `LDY #$05` operand, `$05` in the game.
 const TILES_BANK: SnesAddr = SnesAddr::new(0x05_8B22);
+/// What Lunar Magic takes the overworld's ExAnimation as installed by: a
+/// `JSL` here.
+const ANIMATION_CHECK: SnesAddr = SnesAddr::new(0x00_A4E3);
 
 /// The overworld Lunar Magic leaves when it copies `rom`'s into a clean ROM.
 fn transferred(lunar_magic: &std::path::Path, clean: &Rom, rom: &Rom, name: &str) -> Overworld {
@@ -60,6 +64,26 @@ fn lunar_magic_reads_a_built_overworld() {
         tiles: vec![0x1C58; 4],
     });
     ours.set_event(6, event).unwrap();
+    // ExAnimation: a list on submap 1, a global one, and a setting.
+    let mut list = kobo_core::exanimation::List {
+        count: 1,
+        ..Default::default()
+    };
+    list.slots.insert(
+        0,
+        kobo_core::exanimation::Slot {
+            kind: 0x02,
+            trigger: 0x00,
+            frames_less_one: 1,
+            dest: 0x0400,
+            frames: vec![0xAD00, 0xAD40],
+        },
+    );
+    let mut animation = kobo_core::exanimation::OverworldAnimation::default();
+    animation.settings[2] = 0x40;
+    animation.submaps[1] = Some(list.clone());
+    animation.global = Some(list);
+    ours.animation = Some(animation);
     ours.start[0] = Start {
         submap: 0,
         x: 12 * 16 + 8,
@@ -81,6 +105,7 @@ fn lunar_magic_reads_a_built_overworld() {
     assert!(theirs.event_list() == read.event_list(), "events");
     assert_eq!(theirs.start, read.start);
     assert_eq!(theirs.level_events, read.level_events);
+    assert_eq!(theirs.animation, read.animation);
 
     // Without the check byte, Lunar Magic takes layer 1 for one page.
     let mut unchecked = Rom::from_bytes(built.data().to_vec()).unwrap();
@@ -101,5 +126,17 @@ fn lunar_magic_reads_a_built_overworld() {
     assert!(
         theirs.layer1 == read.layer1,
         "layer 1, without the tiles' bank"
+    );
+
+    // Lunar Magic takes the overworld's ExAnimation as installed by the
+    // JSL at $00A4E3 (Kobo's NMI hook): with the game's REP there, the
+    // transfer leaves none, and the rest as it was.
+    let mut unhooked = Rom::from_bytes(built.data().to_vec()).unwrap();
+    unhooked.write(ANIMATION_CHECK, &[0xC2]).unwrap();
+    let theirs = transferred(&lunar_magic, &clean, &unhooked, "overworld-unhooked");
+    assert_eq!(theirs.animation, None, "ExAnimation without its check");
+    assert!(
+        theirs.layer1 == read.layer1,
+        "layer 1, without the ExAnimation check"
     );
 }

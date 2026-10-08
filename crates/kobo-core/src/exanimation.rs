@@ -112,6 +112,14 @@ pub fn second_set(trigger: u8) -> bool {
     matches!(trigger, 0x01..=0x05 | 0x07 | 0x09..=0x0E | 0x20..=0x2F)
 }
 
+/// [`second_set`] in a level's list, or with `overworld` in an overworld's,
+/// where triggers `01`-`08` are events' ("Event Manual 8-F") and all have
+/// one, as Lunar Magic's overworld transfer sizes a list
+/// (docs/lunar-magic-install.md, "The overworld").
+pub fn second_set_on(trigger: u8, overworld: bool) -> bool {
+    second_set(trigger) || overworld && (0x01..=0x08).contains(&trigger)
+}
+
 /// One slot of a list.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Slot {
@@ -134,10 +142,20 @@ pub struct Slot {
 impl Slot {
     /// The words of frames its type and trigger give it.
     pub fn frame_words(kind: u8, trigger: u8, frames_less_one: u8) -> usize {
+        Self::frame_words_on(kind, trigger, frames_less_one, false)
+    }
+
+    /// [`Slot::frame_words`] in a level's list, or an overworld's.
+    pub fn frame_words_on(kind: u8, trigger: u8, frames_less_one: u8, overworld: bool) -> usize {
         if Kind::of(kind) == Some(Kind::Rotation) {
             return 0;
         }
-        (frames_less_one as usize + 1) * if second_set(trigger) { 2 } else { 1 }
+        (frames_less_one as usize + 1)
+            * if second_set_on(trigger, overworld) {
+                2
+            } else {
+                1
+            }
     }
 
     /// Gives the slot as many frame words as its type, trigger, and frame
@@ -263,6 +281,12 @@ impl List {
     /// Reads a list from its bytes, returning it and its length. Every
     /// corpus list's length by this equals its RATS tag.
     pub fn parse(bytes: &[u8]) -> Result<(Self, usize), AnimationError> {
+        Self::parse_on(bytes, false)
+    }
+
+    /// [`List::parse`] for a level's list, or with `overworld` an
+    /// overworld's.
+    pub fn parse_on(bytes: &[u8], overworld: bool) -> Result<(Self, usize), AnimationError> {
         let get = |i: usize, what| bytes.get(i).copied().ok_or(AnimationError::Truncated(what));
         let word = |i: usize, what| {
             Ok::<u16, AnimationError>(u16::from_le_bytes([get(i, what)?, get(i + 1, what)?]))
@@ -299,7 +323,7 @@ impl List {
             let trigger = get(p + 1, "slot")?;
             let frames_less_one = get(p + 2, "slot")?;
             let dest = word(p + 3, "slot")?;
-            let n = Slot::frame_words(kind, trigger, frames_less_one);
+            let n = Slot::frame_words_on(kind, trigger, frames_less_one, overworld);
             let frames = (0..n)
                 .map(|i| word(p + 5 + 2 * i, "frames"))
                 .collect::<Result<Vec<_>, _>>()?;
@@ -437,6 +461,74 @@ pub fn read_global(rom: &Rom) -> Result<Option<Found>, AnimationError> {
     }))
 }
 
+/// Lunar Magic's overworld ExAnimation: a list for each submap and a
+/// global one, in a level list's format, and a settings byte a submap. Its
+/// tables are at fixed offsets from the target of the `JSL` at
+/// [`OVERWORLD_HOOK`] (docs/lunar-magic-install.md, "The overworld").
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct OverworldAnimation {
+    /// Each submap's settings byte: the [`Settings`] bits, the level
+    /// dots' flashing colours for the game's colours and the submap's list
+    /// for the level's.
+    pub settings: [u8; OVERWORLD_SUBMAPS],
+    pub submaps: [Option<List>; OVERWORLD_SUBMAPS],
+    pub global: Option<List>,
+}
+
+/// The overworld's maps that have lists: the main map and the six submaps.
+pub const OVERWORLD_SUBMAPS: usize = 7;
+/// The `JSL` of the overworld's animation set up, over `CODE_048086`'s
+/// start; the tables' pointers are at offsets from its target: the
+/// settings' address, the global list's bank times `$100` and low word, and
+/// the submaps' pointers' address.
+pub const OVERWORLD_HOOK: SnesAddr = SnesAddr::new(0x048086);
+pub const OVERWORLD_SETTINGS_OFFSET: u32 = 0x4A;
+pub const OVERWORLD_GLOBAL_BANK_OFFSET: u32 = 0x57;
+pub const OVERWORLD_GLOBAL_LOW_OFFSET: u32 = 0x61;
+pub const OVERWORLD_TABLE_OFFSET: u32 = 0xE1;
+
+impl OverworldAnimation {
+    /// Whether it has anything a build writes: a list or a setting.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// The target of the `JSL` at [`OVERWORLD_HOOK`]; `None` without one.
+pub fn overworld_target(rom: &Rom) -> Result<Option<SnesAddr>, RomError> {
+    if rom.read_u8(OVERWORLD_HOOK)? != 0x22 {
+        return Ok(None);
+    }
+    Ok(Some(rom.read_ptr(OVERWORLD_HOOK.add(1))?))
+}
+
+/// The overworld's ExAnimation; `None` where the ROM has none installed.
+pub fn read_overworld(rom: &Rom) -> Result<Option<OverworldAnimation>, AnimationError> {
+    let Some(target) = overworld_target(rom)? else {
+        return Ok(None);
+    };
+    let mut animation = OverworldAnimation::default();
+    let settings = rom.read_ptr(target.add(OVERWORLD_SETTINGS_OFFSET))?;
+    animation
+        .settings
+        .copy_from_slice(rom.read(settings, OVERWORLD_SUBMAPS)?);
+    let bank = rom.read_u16(target.add(OVERWORLD_GLOBAL_BANK_OFFSET))?;
+    if bank != 0 {
+        let low = rom.read_u16(target.add(OVERWORLD_GLOBAL_LOW_OFFSET))?;
+        let at = SnesAddr::new((bank as u32) << 8 | low as u32);
+        animation.global = Some(List::parse_on(rom.read_tail(at)?, true)?.0);
+    }
+    let table = rom.read_ptr(target.add(OVERWORLD_TABLE_OFFSET))?;
+    for (i, slot) in animation.submaps.iter_mut().enumerate() {
+        let pointer = rom.read_u24(table.add(3 * i as u32))?;
+        if pointer >> 8 & 0xFF == 0 || pointer & 0xFFFF == 0xFFFF {
+            continue;
+        }
+        *slot = Some(List::parse_on(rom.read_tail(SnesAddr::new(pointer))?, true)?.0);
+    }
+    Ok(Some(animation))
+}
+
 /// A level's settings byte, where the ROM has Lunar Magic's ExAnimation
 /// (or any table there: Lunar Magic's first save writes it); `None` for
 /// the vanilla ROM's `$FF`.
@@ -515,7 +607,17 @@ pub fn spans(rom: &Rom) -> Vec<(SnesAddr, usize)> {
 /// Why a build refuses a list, or `None`: triggers past `4F`, the precision
 /// timer (`0F`) on a type that uploads frames (which Lunar Magic's code makes
 /// upload its own work RAM), and frame counts past what the format holds.
+/// [`refusal`] for an overworld's list, whose triggers `01`-`08` have a
+/// second set.
+pub fn overworld_refusal(list: &List) -> Option<String> {
+    refusal_on(list, true)
+}
+
 pub fn refusal(list: &List) -> Option<String> {
+    refusal_on(list, false)
+}
+
+fn refusal_on(list: &List, overworld: bool) -> Option<String> {
     if list.alt_file > 3 {
         return Some(format!("alternative file {} is not 0-3", list.alt_file));
     }
@@ -546,14 +648,14 @@ pub fn refusal(list: &List) -> Option<String> {
                 s.kind
             ));
         }
-        let n_words = Slot::frame_words(s.kind, s.trigger, s.frames_less_one);
+        let n_words = Slot::frame_words_on(s.kind, s.trigger, s.frames_less_one, overworld);
         if s.frames.len() != n_words {
             return Some(format!(
                 "{at}: {} frames where its type and trigger take {n_words}",
                 s.frames.len()
             ));
         }
-        if second_set(s.trigger) && s.frames_less_one > 0x7F {
+        if second_set_on(s.trigger, overworld) && s.frames_less_one > 0x7F {
             return Some(format!("{at}: more than 128 frames with a second set"));
         }
     }
@@ -563,6 +665,33 @@ pub fn refusal(list: &List) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_overworld_list_s_events_have_second_sets() {
+        let mut list = List {
+            count: 1,
+            ..Default::default()
+        };
+        list.slots.insert(
+            0,
+            Slot {
+                kind: 0x14,
+                trigger: 0x06,
+                frames_less_one: 0,
+                dest: 0x007A,
+                frames: vec![0x001F, 0x03E0],
+            },
+        );
+        let bytes = list.to_bytes();
+        assert_eq!(
+            List::parse_on(&bytes, true).unwrap(),
+            (list.clone(), bytes.len())
+        );
+        // In a level, 06 has none: the second word is past the list.
+        assert_eq!(List::parse(&bytes).unwrap().1, bytes.len() - 2);
+        assert!(overworld_refusal(&list).is_none());
+        assert!(refusal(&list).is_some());
+    }
 
     #[test]
     fn a_slot_refits_its_frames_to_its_type_and_trigger() {

@@ -2080,6 +2080,20 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   reveal_speed`) takes the fade's frame and adds the speed; riff2's build plays every
   level's events step for step as riff2 does (2026-10-09). The fade's own `CMP #$0900`
   (`$04EAD8`) gets the event tile data's split as well.
+  Another, "Merge FG1 and FG2 into SP3 and SP4", is not carried yet. What is known
+  (2026-10-09): a merged overworld's load leaves layers 1 and 2's characters at
+  `$E000` (bytes; `$0000` otherwise) and sends the game's animated tiles to `$7750`;
+  the six merged hacks of the corpus (riff2, Akogare2, Luminescent, Valuable and
+  Beautiful, OEO6, codfish) share against the unmerged ones (KK, akogare 1.2, Grand Poo
+  World 2) the overworld's sprite files by submap (`DATA_00A96F`, SP3-4 = FG1-2) and
+  one byte in Lunar Magic's own area, `$0FF9F0`: `$D0` in every merged ROM, `$F0` in
+  the unmerged ones that have Lunar Magic's graphics code. Lunar Magic's transfer of
+  riff2's overworld into a clean ROM carries the option (run with the ROMs' full
+  paths; earlier runs through the wrapper with relative ones stalled), and in that
+  transfer the unmerged transfer's byte at `$0FF9F0` alone puts the load back to
+  `$0000`, the sprite table changing nothing: the option is that byte, which Lunar
+  Magic's code reads. Carrying it needs Kobo's own code for the merged layout and the
+  byte written for Lunar Magic.
 - Beating each level of the vanilla overworld, by either exit (`expand::beat_level`),
   plays the same steps to the same RAM and VRAM in the game, its transfer, and Kobo's
   build (2026-10-09). In hacks, events play faster where Lunar Magic's Extra Options
@@ -2103,15 +2117,21 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   Map16 code, in place of the uploads' bank choice, takes the bank for tilesets `$10`
   on from `$04DCC1`. `tests/lunar_magic_overworld.rs` transfers a build with tiles past
   `$C0` with `$058B22` and without. Kaizo Kindergarten's import builds to the hack's
-  layer 1 and layer 2 tilemaps in VRAM on every submap; what differs is its animated
-  characters and colours (Lunar Magic's overworld ExAnimation, not carried).
+  layer 1 and layer 2 tilemaps in VRAM on every submap.
 - Each submap's graphics: lists `200`-`206` of the ExGFX block (above), one a submap.
   Kobo's code for the `JSL` at `$00A140` (over the overworld load's `STA $20 : SEP #$20`
   in `CODE_00A11B`, before its `UploadSpriteGFX`) leaves the player's submap's list's
   address at `$7FC006`, as a Lunar Magic-saved ROM's overworld load leaves it on each
   submap, and Kobo's graphics loader takes a list in game mode `$0C` as in `$12`,
   whatever its bits. `[graphics]` in the overworld file; an import carries the hack's
-  lists (2026-10-09; Kaizo Kindergarten's submaps load its files).
+  lists (2026-10-09; Kaizo Kindergarten's submaps load its files). A list's AN2 slot is
+  the source of the overworld's animated tiles: where the load asks
+  `PrepareGraphicsFile` for file `$14` (`CODE_00A11B`), it gets the AN2 slot's file
+  (`7F`: the game's), an ExGFX file as it is and a file the game keeps as 3bpp in the
+  game's layout, as Kaizo Kindergarten's `$7EAD00` shows (submaps 1 and 2 name ExGFX
+  `A1`, and turn the game's animated tiles off, which read it as 3bpp). Kobo's
+  `prepare_file` does the same in game mode `$0C`. What a submap change reloads is not
+  known yet (below).
 - The overworld's palettes: a `JSL` at `$00AD32` (`CODE_00AD25`'s `STY $00`, where the
   game picks the overworld's colours by the submap and Special World) leads to code with
   the pointer to a block of 14 palettes of 256 colours (`$1C00` bytes: each map's, 0 the
@@ -2124,6 +2144,76 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   colour in `$0701`. Kobo's code (`asm/lunar-magic/overworld-palettes.asm`, the overworld
   file's `[palettes.0xNN]`) copies it so; Kaizo Kindergarten's build leaves the hack's
   CGRAM but for its animated colours.
+- The overworld's ExAnimation (Lunar Magic 2.40 on: "Edit Submap ExAnimated Frames",
+  "Edit Global ExAnimated Frames", "Edit Animation Settings" in its help). Found
+  2026-10-09 from Kaizo Kindergarten's overworld transferred into a clean ROM (`dest`
+  below), whose game-area changes over the vanilla overworld's transfer were three
+  `JSL`s besides the data: `$048086` (`REP #$30 : STZ $03 : STZ $05`, the start of
+  `CODE_048086`, which sets the game's animated tiles up, run by the overworld's load,
+  a submap change through `CODE_049648`, and a player switch), `$0480E0` (`LDA $13 : AND
+  #$07 : BNE`, the start of `OW_Tile_Animation`, each frame), and `$00A4E3` (`REP #$10 :
+  LDA #$80 : STA $2115`, the start of the NMI's upload of the animated tiles), and the
+  operand of `OW_Tile_Animation`'s other three `LDA $13` (`$048102`, `$04810D`,
+  `$04813B`) made `$14` (the help's waterfall fix; Super Diagonal Mario 2, an older
+  version, keeps `$13`).
+  - Tables, at offsets from the target of the `JSL` at `$048086` (each found by its
+    block's address in the block that target is in, and held in all 9 corpus hacks
+    with the `JSL`): `+$4A` the 24-bit address of 7 settings bytes, one a submap
+    (main map 0); `+$E1` the 24-bit address of 7 3-byte pointers to the submaps' lists
+    (`$0000FF` none, as a level's); `+$57` the global list's bank times `$100` (0:
+    none) and `+$61` its low word (Akogare2 and Luminescent have one; Lunar Magic's
+    RAM at `$7FC016`-`$7FC018` holds its address plus 8, as `$7FC000`-`$7FC002` the
+    submap's). Lists are a level's format.
+  - The settings bits, from KK's transfer with each set on submap 1: `$80` the level
+    dots' flashing colours (`6D`, `7D`) off, `$40` the game's animated tiles off (then
+    `CODE_048086`'s set up is skipped too, `GfxDecompOWAni` left 0, and the NMI does not
+    upload it), `$20` the submap's list off, `$10` the global list off. Which low bit
+    turns the lightning colour (`47`, `CODE_04F708`) off is not known: no corpus hack
+    sets one, and no map tried flashed in 1000 frames.
+  - In play the lists run as a level's (ExAnimation, above) with the overworld's global
+    list for the level global and the submap's for the level's: counters `$7FC0A0` and
+    `$7FC080`, the same RAM for triggers. The load runs them for `$14` = 0 to 7 and
+    leaves `$14` at 8, whatever it was (from `$14` set before game mode `$0C`), so every
+    slot shows its first frame; then the game's own call runs `k` = 0 again. Colours
+    go to `MainPalette` only (no fade copy at `$0905`), and colour uploads are made
+    from it. The game's animated tiles go to VRAM where they always do, or, with Lunar
+    Magic's option to merge FG1-2 into SP3-4 (an Extra Option, not carried, which
+    moves layers 1 and 2's characters to `$E000`), to `$7750`. `$7FC004` is not kept
+    (the help says so).
+  - What Lunar Magic checks to read it: the `JSL` (`$22`) at `$00A4E3`, whatever
+    follows; with a `JML`, `JSR`, `NOP`, or the game's bytes there its transfer leaves
+    no overworld ExAnimation (bisected over a Kobo build). Without the `JSL` at
+    `$048086` it reads the tables from wherever the game's bytes lead.
+  - Kobo's code (`asm/lunar-magic/overworld-exanimation.asm`, with the level code's
+    engine, `exanimation-engine.asm`) does the above, its tables at the same offsets.
+    Swapped into every corpus hack with Lunar Magic's (`tests/overworld.rs`,
+    `common::swap`, 64 frames on each submap), it leaves the same VRAM, CGRAM, and RAM
+    but for the stack, the direct page scratch `$00`-`$0F` (and `$8A` on one frame in
+    two hacks), each one's own `$7FC000`-`$7FC01F`, and the upload queue; Super
+    Diagonal Mario 2's older version differs in sprite tiles. Lunar Magic's transfer
+    of a Kobo build gives its lists and settings back, and none without the `JSL` at
+    `$00A4E3` (`tests/lunar_magic_overworld.rs`).
+  - A submap change (`CODE_049648` calls `CODE_048086`, then the swap process runs):
+    Lunar Magic's hook there waits for vertical blanks, which Kobo's machine raises
+    only when a probe asks it to (`$4210`, `$4212` bit 7 on alternate reads, in a
+    scratch harness, 2026-10-09). With them, both implementations start the new
+    submap's list over and step its counters alike, and leave the same VRAM and CGRAM
+    from about 40 frames after the change on (KK's transfer, submap 0 to 1). Before
+    that, the list's tiles differ for about 12 frames, as Lunar Magic uploads the eight
+    first frames as it makes them and Kobo leaves them to the NMI and the slots' next
+    turns. Lunar Magic's upload also makes the level dots' colours (`6D`, `7D`) during
+    the change, which the game's code skips (`CMP #$0A : BEQ` at `$00A50D`); Kobo's goes
+    on past that check too, and the colours match. Neither reloads the submap's
+    graphics in that flow.
+  - The events as triggers ("Event Manual 8-F" in the help, which take the place of
+    level ones), from lists written into KK's transfer and played with events held
+    passed (2026-10-09): trigger `01`-`08` holds once the event in manual frame 8-F
+    (`01` the eighth's) is passed, and shows its second set; `06` and `08` are no
+    different from the rest there, and have a second set too, as Lunar Magic's
+    transfer sizes such an entry (a manual trigger's extra words it cuts). Kobo's
+    engine does the same; over every type of slot, rotations included, it plays such
+    lists as Lunar Magic's with no event, the named one, and all passed. Every corpus
+    list uses trigger `00` alone.
 - A transfer also changes the byte at `$0FF092` (0 in the vanilla ROM, `$AC` after the
   vanilla overworld's transfer, `$A7` after one with that list entry changed), outside
   any RATS block; not looked into yet.

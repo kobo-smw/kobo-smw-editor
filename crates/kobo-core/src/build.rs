@@ -659,14 +659,24 @@ impl Stage {
                 let layer3 = (layout && project.lunar_magic_layer3()).then_some(&install::LAYER3);
                 let overworld =
                     (layout && project.overworld.is_some()).then_some(&install::OVERWORLD);
+                let overworld_animation = (layout
+                    && project
+                        .overworld
+                        .as_ref()
+                        .is_some_and(|o| o.animation.is_some()))
+                .then_some(&install::OVERWORLD_EXANIMATION);
+                let engine = (animation.is_some() || overworld_animation.is_some())
+                    .then_some(&install::EXANIMATION_ENGINE);
                 let choc = choc.then_some(&install::CHOC_ISLAND);
                 for (name, text) in std::iter::once(&install::MEMORY)
                     .chain(lunar_magic)
                     .chain(entrances)
                     .chain(graphics)
+                    .chain(engine)
                     .chain(animation)
                     .chain(layer3)
                     .chain(overworld)
+                    .chain(overworld_animation)
                     .chain(choc)
                 {
                     hash.update(name.as_bytes());
@@ -968,6 +978,10 @@ impl Stage {
                         }
                         if overworld.palettes.is_some() {
                             *rom = install::apply_overworld_palettes(&asar, rom)
+                                .map_err(|e| BuildError::Asar(Box::new(e)))?;
+                        }
+                        if overworld.animation.is_some() {
+                            *rom = install::apply_overworld_exanimation(&asar, rom)
                                 .map_err(|e| BuildError::Asar(Box::new(e)))?;
                         }
                     }

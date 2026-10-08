@@ -41,10 +41,12 @@ pub enum Piece {
     ExLevel,
     /// Screen exits and entrances (`exits.asm`, `entrance.asm`).
     Entrances,
+    /// The overworld's ExAnimation (`overworld-exanimation.asm`).
+    OverworldAnimation,
 }
 
 impl Piece {
-    pub const ALL: [Piece; 8] = [
+    pub const ALL: [Piece; 9] = [
         Piece::Bank06,
         Piece::Vram,
         Piece::Graphics,
@@ -53,6 +55,7 @@ impl Piece {
         Piece::ExAnimation,
         Piece::ExLevel,
         Piece::Entrances,
+        Piece::OverworldAnimation,
     ];
 
     pub fn name(self) -> &'static str {
@@ -65,6 +68,7 @@ impl Piece {
             Piece::ExAnimation => "exanim",
             Piece::ExLevel => "exlevel",
             Piece::Entrances => "entrances",
+            Piece::OverworldAnimation => "owanim",
         }
     }
 
@@ -286,7 +290,12 @@ fn clear(rom: &mut Rom, at: u32, len: usize) {
 fn apply(asar: &Asar, rom: &Rom, file: &str) -> Result<Rom, AsarError> {
     let piece = [
         install::LUNAR_MAGIC,
-        &[install::GRAPHICS, install::EXANIMATION, install::LAYER3],
+        &[
+            install::GRAPHICS,
+            install::EXANIMATION,
+            install::LAYER3,
+            install::OVERWORLD_EXANIMATION,
+        ],
     ]
     .concat()
     .into_iter()
@@ -396,6 +405,23 @@ pub fn swap(asar: &Asar, piece: Piece, lm: &Rom, base: &Rom) -> Result<Rom, Swap
             }
             rom = apply(asar, &rom, "exits.asm")?;
             rom = apply(asar, &rom, "entrance.asm")?;
+        }
+        Piece::OverworldAnimation => {
+            if byte(lm, 0x048086) != 0x22 {
+                return Err(SwapError::NotInstalled(
+                    "no overworld ExAnimation installed (no JSL at $048086)",
+                ));
+            }
+            clear(&mut rom, 0x048087, 3);
+            rom = apply(asar, &rom, "overworld-exanimation.asm")?;
+            // The pointers at offsets of the hook's target: the settings',
+            // the global list's bank and low word, and the submaps' table's.
+            let target = |rom: &Rom| rom.read_u24(SnesAddr::new(0x048087)).unwrap();
+            let (from, to) = (target(lm), target(&rom));
+            for (offset, len) in [(0x4A, 3), (0x57, 2), (0x61, 2), (0xE1, 3)] {
+                let bytes = lm.read(SnesAddr::new(from + offset), len).unwrap().to_vec();
+                rom.write(SnesAddr::new(to + offset), &bytes).unwrap();
+            }
         }
     }
     Ok(rom)

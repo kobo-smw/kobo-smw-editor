@@ -254,6 +254,10 @@ pub enum OverworldError {
     Decode(&'static str),
     #[error("the overworld has more {0} than the game's code can reach")]
     Full(&'static str),
+    #[error("the overworld's ExAnimation: {0}")]
+    Animation(#[from] crate::exanimation::AnimationError),
+    #[error("the overworld's ExAnimation has what this build cannot write yet: {0}")]
+    AnimationRefused(String),
 }
 
 /// Which layout a ROM keeps its overworld in.
@@ -570,6 +574,8 @@ pub struct Overworld {
     /// colours for each map, then each again once Special World is
     /// passed), if the ROM has them.
     pub palettes: Option<Vec<u8>>,
+    /// Lunar Magic's overworld ExAnimation, if the ROM has it installed.
+    pub animation: Option<crate::exanimation::OverworldAnimation>,
 }
 
 /// Lunar Magic's overworld palettes: 14 of 256 colours.
@@ -743,6 +749,7 @@ impl Overworld {
         }
         let palettes = read_palettes(rom)?;
         let tiles = read_tiles(rom)?;
+        let animation = crate::exanimation::read_overworld(rom)?;
         Ok(Self {
             layout,
             layer1,
@@ -757,6 +764,7 @@ impl Overworld {
             tiles,
             tables,
             palettes,
+            animation,
         })
     }
 }
@@ -1510,6 +1518,53 @@ impl Overworld {
                 ],
             ));
         }
+        // Lunar Magic's ExAnimation, whose tables Kobo's code for it keeps.
+        if let Some(animation) = &self.animation {
+            use crate::exanimation::{
+                NONE, OVERWORLD_GLOBAL_BANK_OFFSET, OVERWORLD_GLOBAL_LOW_OFFSET,
+                OVERWORLD_SETTINGS_OFFSET, OVERWORLD_TABLE_OFFSET, overworld_target,
+            };
+            let Some(target) = overworld_target(rom)? else {
+                return Err(OverworldError::Decode(
+                    "overworld ExAnimation, whose code is not installed",
+                ));
+            };
+            for list in animation
+                .submaps
+                .iter()
+                .chain([&animation.global])
+                .flatten()
+            {
+                if let Some(why) = crate::exanimation::overworld_refusal(list) {
+                    return Err(OverworldError::AnimationRefused(why));
+                }
+            }
+            let settings = rom.read_ptr(target.add(OVERWORLD_SETTINGS_OFFSET))?;
+            plan.fixed.push((settings, animation.settings.to_vec()));
+            let table = rom.read_ptr(target.add(OVERWORLD_TABLE_OFFSET))?;
+            for (i, list) in animation.submaps.iter().enumerate() {
+                let at = table.add(3 * i as u32);
+                match list {
+                    Some(list) => plan.blocks.push((
+                        "a submap's ExAnimation",
+                        list.to_bytes(),
+                        vec![Pointer::new(at, Form::Long)],
+                    )),
+                    None => plan.fixed.push((at, NONE.to_le_bytes()[..3].to_vec())),
+                }
+            }
+            if let Some(list) = &animation.global {
+                // The bank times $100: its high byte, the low one 0.
+                plan.blocks.push((
+                    "the overworld's global ExAnimation",
+                    list.to_bytes(),
+                    vec![
+                        Pointer::new(target.add(OVERWORLD_GLOBAL_LOW_OFFSET), Form::Word),
+                        Pointer::new(target.add(OVERWORLD_GLOBAL_BANK_OFFSET + 1), Form::Bank),
+                    ],
+                ));
+            }
+        }
         let (from, to): (Vec<u8>, Vec<u8>) = events.reveal.iter().copied().unzip();
         plan.fixed.push((REVEAL_FROM, from));
         plan.fixed.push((REVEAL_TO, to));
@@ -1674,6 +1729,10 @@ pub struct Changes {
     /// Lunar Magic's overworld palettes ([`PALETTES_LEN`] bytes), when they
     /// differ from the clean ROM's (which has none).
     pub palettes: Option<Vec<u8>>,
+    /// Lunar Magic's overworld ExAnimation, when there is any (the clean
+    /// ROM has none): installed as Kobo's code, which the lists and
+    /// settings are written behind.
+    pub animation: Option<crate::exanimation::OverworldAnimation>,
     /// Lunar Magic's option to turn the event path fade off, with how much
     /// each frame adds to a step's timer (a step every `$40`): installed as
     /// Kobo's code, not read from the ROM's tables (an import finds it with
@@ -1810,6 +1869,9 @@ impl Overworld {
         if self.palettes != clean.palettes {
             changes.palettes = self.palettes.clone();
         }
+        if self.animation != clean.animation {
+            changes.animation = self.animation.clone().filter(|a| !a.is_empty());
+        }
         for (n, ours) in self.tiles.iter().enumerate() {
             if clean.tiles.get(n) != Some(ours) {
                 changes.tiles.insert(n as u16, *ours);
@@ -1878,6 +1940,9 @@ impl Overworld {
                 ));
             }
             self.palettes = Some(palettes.clone());
+        }
+        if let Some(animation) = &changes.animation {
+            self.animation = Some(animation.clone());
         }
         for (&n, words) in &changes.tiles {
             let n = usize::from(n);

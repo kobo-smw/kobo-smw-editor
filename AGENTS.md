@@ -180,8 +180,10 @@ Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-
   build that writes anything only Lunar Magic's layout holds installs Kobo's code for it
   first (`build::Stage::Install`, `kobo_core::install`).
 - `kobo_core::exanimation` is the one place that knows Lunar Magic's ExAnimation (the
-  list format, where its tables are, what builds refuse); `source::animation` is its text
-  format, and `asm/lunar-magic/exanimation.asm` Kobo's code for it.
+  list format, where its tables are, a level's and the overworld's, what builds
+  refuse); `source::animation` is its text format, and `asm/lunar-magic/exanimation.asm`
+  and `overworld-exanimation.asm` Kobo's code for it, over one engine
+  (`exanimation-engine.asm`).
 - `kobo_core::edit` is how anything changes a project: `LevelDocument` is an open level
   file (its `Level` and `Comments`), `Edit` a change to it as a value (the editor's and a
   script's alike), applied whole or not at all, and one undo step with the comments

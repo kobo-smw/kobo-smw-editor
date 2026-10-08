@@ -31,6 +31,12 @@
 //! [palettes.0x00]                # Lunar Magic's overworld palettes, 0-6 each map's, 7-13 each
 //! 0x0 = "#000000 #F8F8F8 ..."    # once Special World is passed: rows of 16 colours
 //!
+//! [animation.0x01]               # a submap's ExAnimation: its settings and list, as a
+//! game_tiles = false             # level's [animation] (source::animation), the level
+//! slots = [ ... ]                # list's setting `submap_list`; and [animation.global].
+//!                                # Triggers 01-08 are events (manual frames 8-F name them),
+//!                                # each with a second set.
+//!
 //! [options]                      # Lunar Magic's: the event path fade off, a speed to reveal at
 //! reveal_speed = 0x06
 //!
@@ -245,6 +251,36 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
                     .collect();
                 text += &format!("{} = \"{}\"\n", hex(row as u32, 1), line.join(" "));
             }
+            sections.push(text);
+        }
+    }
+    if let Some(animation) = &changes.animation {
+        let comments = super::Comments::default();
+        let mut out = super::Writer::new(&comments);
+        for (n, (byte, list)) in animation
+            .settings
+            .iter()
+            .zip(&animation.submaps)
+            .enumerate()
+        {
+            if *byte != 0 || list.is_some() {
+                let table = format!("animation.{}", hex(n as u32, 2));
+                let settings = (*byte != 0).then_some(*byte);
+                super::animation::write_as(
+                    &mut out,
+                    &table,
+                    "submap_list",
+                    true,
+                    settings,
+                    list.as_ref(),
+                );
+            }
+        }
+        if let Some(list) = &animation.global {
+            super::animation::write_as(&mut out, "animation.global", "", true, None, Some(list));
+        }
+        let text = out.finish();
+        if !text.is_empty() {
             sections.push(text);
         }
     }
@@ -570,6 +606,40 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                 }
                 changes.palettes = Some(bytes);
             }
+            "animation" => {
+                let table = item
+                    .as_table()
+                    .ok_or_else(|| invalid(key, "must be a table of lists"))?;
+                let mut animation = crate::exanimation::OverworldAnimation::default();
+                let mut comments = super::Comments::default();
+                for (name, list) in table.iter() {
+                    let at = format!("animation.{name}");
+                    let list = list
+                        .as_table()
+                        .ok_or_else(|| invalid(&at, "must be a table"))?;
+                    if name == "global" {
+                        let (_, list) =
+                            super::animation::read_as(list, &at, None, true, &mut comments)?;
+                        animation.global = Some(list.ok_or_else(|| invalid(&at, "has no slots"))?);
+                        continue;
+                    }
+                    let n = name
+                        .strip_prefix("0x")
+                        .and_then(|h| usize::from_str_radix(h, 16).ok())
+                        .filter(|&n| n < crate::exanimation::OVERWORLD_SUBMAPS)
+                        .ok_or_else(|| invalid(&at, "a submap is 0x00 to 0x06, or `global`"))?;
+                    let (byte, list) = super::animation::read_as(
+                        list,
+                        &at,
+                        Some("submap_list"),
+                        true,
+                        &mut comments,
+                    )?;
+                    animation.settings[n] = byte.unwrap_or(0);
+                    animation.submaps[n] = list;
+                }
+                changes.animation = Some(animation);
+            }
             "options" => {
                 let table = item
                     .as_table()
@@ -820,6 +890,37 @@ mod tests {
         changes
             .tiles
             .insert(0x1C1, [0x0CA0, 0x0CB0, 0x4CA0, 0x4CB0]);
+        let mut list = crate::exanimation::List {
+            count: 1,
+            ..Default::default()
+        };
+        list.slots.insert(
+            0,
+            crate::exanimation::Slot {
+                kind: 0x02,
+                trigger: 0x00,
+                frames_less_one: 1,
+                dest: 0x0400,
+                frames: vec![0xAD00, 0xAD40],
+            },
+        );
+        // An event's trigger, which on the overworld has a second set.
+        list.slots.insert(
+            1,
+            crate::exanimation::Slot {
+                kind: 0x14,
+                trigger: 0x06,
+                frames_less_one: 0,
+                dest: 0x007A,
+                frames: vec![0x001F, 0x03E0],
+            },
+        );
+        list.count = 2;
+        let mut animation = crate::exanimation::OverworldAnimation::default();
+        animation.settings[1] = 0x40;
+        animation.submaps[2] = Some(list.clone());
+        animation.global = Some(list);
+        changes.animation = Some(animation);
         changes.palettes = Some(
             (0..crate::overworld::PALETTES_LEN / 2)
                 .flat_map(|i| ((i as u16).wrapping_mul(37) & 0x7FFF).to_le_bytes())

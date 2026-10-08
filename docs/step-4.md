@@ -84,8 +84,14 @@ from the editor where the user is working.
   (`[palettes.0xNN]`, Kobo's code for the `JSL` at `$00AD32`), and layer 1's 16x16
   tiles moved where Lunar Magic's layout keeps them, up to `$1FF` (`[tiles]`), all
   carried by import (lunar-magic-install.md, "The overworld"). Kaizo Kindergarten's
-  import builds to the hack's tilemaps and graphics on every submap but for its
-  animation: Lunar Magic's overworld ExAnimation is not carried yet.
+  import builds to the hack's tilemaps and graphics on every submap.
+- The overworld's ExAnimation (2026-10-09): each submap's list and settings and the
+  global list (`exanimation::OverworldAnimation`, `[animation.0xNN]` and
+  `[animation.global]` in the overworld file), with Kobo's code for its three hooks and
+  the level code's engine shared (`exanimation-engine.asm`); a list's AN2 file is the
+  overworld's animated tiles' source. Kaizo Kindergarten's import animates as the hack
+  on every submap, and events as triggers play as Lunar Magic's. Still left: the
+  first frames after a submap change, and Lunar Magic's FG1-2 merge.
 - The events' further tiles (2026-10-08): the game's list of 44 and Lunar Magic's
   tables of them, read (`Events::extras`), carried in the overworld file (an event's
   `extras`), and Kobo's code for the layout's two hooks of them (`$04E9F7`, `$04DCA5`),
