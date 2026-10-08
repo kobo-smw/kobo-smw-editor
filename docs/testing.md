@@ -736,6 +736,9 @@ overworld's and the event process's steps frame by frame.
   and with every event passed loads as the hack itself does. Locked hacks, older Lunar
   Magic's one-page overworlds, and hacks whose own code changes the overworld are known
   failures.
+- Lunar Magic's overworld transfer from a Kobo build into a clean ROM gives the build's
+  overworld back (`tests/lunar_magic_overworld.rs`, the Lunar Magic tier), and loses
+  layer 1's pages without the byte it checks for them.
 - `examples/ow_probe.rs` compares loads by hand: two ROMs with every event passed or
   each alone (`pair`, `each`), each event's end (`end`, `ends`), or a hack against
   Kobo's build of its overworld (`build`, `passed`, `write`).

@@ -1903,7 +1903,8 @@ Initialised for all 512 levels; a save rewrites the saved level's entry (observe
 
 Being found (roadmap step 4, from 2026-10-08), and built as it is: Kobo's code for the
 pieces below is `asm/lunar-magic/overworld.asm`, and `overworld::Overworld::plan` writes
-the tables. The method:
+the tables. Lunar Magic's overworld transfer reads a Kobo build's overworld as Kobo
+wrote it (`tests/lunar_magic_overworld.rs`). The method:
 
 - `-TransferOverworld` is the only command that makes Lunar Magic write its overworld
   layout: transferring the vanilla ROM's own overworld into a copy of the vanilla ROM
@@ -1973,6 +1974,14 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   change matched the move; the translevel pointer holds in every Lunar Magic 3 hack of the
   corpus, the page table's not in hacks of older versions (Kaizo Mario 1 and 2, Smb2dx),
   which have one page.
+- What Lunar Magic checks to read the layout (bisected 2026-10-09 by copying a hack's
+  bytes into Kobo's build of its overworld and having Lunar Magic transfer the result
+  into a clean ROM, printing addresses only): `$A2` at `$04D7F9`, without which it takes
+  the translevels and directions from a scan of its own, and `$A2` at `$04D818` too,
+  without which it takes layer 1 for one page (the high bytes all 0). Of the 57 bytes of
+  the scan's place that differ between Lunar Magic's layout and Kobo's, nothing else is
+  needed. `tests/lunar_magic_overworld.rs` transfers a build with and without the
+  second.
 - The events' further tiles (smw.md, "The overworld": the game's list of 44, which
   Lunar Magic leaves in place unread) are four tables, each a RATS block, whose 24-bit
   pointers are at fixed offsets from the target of the `JSL` at `$04E9F7` (5 bytes, to

@@ -43,13 +43,20 @@ incsrc "memory.asm"
 !events_passed = $1F02|!addr
 !event_process = $1B86|!addr
 
+; Lunar Magic reads the translevels through the pointer below only when
+; the scan's place starts with $A2 (LDX #), and layer 1's pages only when
+; $04D818 holds $A2 as well (docs/lunar-magic-install.md, "The
+; overworld"): the LDX here is Kobo's, giving load_tables the first
+; table's destination.
 org $04D7F9
+    LDX.w #(!map16_low+$800)&$FFFF
     JML load_tables
 
 ; The pointers, among bytes nothing runs: the JML above leaves the rest of
 ; the scan's place unused.
 org $04D803 : dw $FFFF          ; the translevels' low word
 org $04D808 : db $FF            ; their bank
+org $04D818 : db $A2            ; Lunar Magic's check, for layer 1's pages
 org $04D822 : dw $FFFF          ; layer 1's pages' low word
 org $04D827 : db $FF            ; their bank
 
@@ -106,8 +113,9 @@ org $04DCA5
     NOP
 
 freecode
-; Entered as CODE_04D7F2 left the scan: A 8-bit, X and Y 16-bit. Leaves
-; the same for the game's loop through the events at $04D84F.
+; Entered as CODE_04D7F2 left the scan, A 8-bit, X and Y 16-bit, with
+; the translevels' destination's low word in X. Leaves A 8-bit and X and Y
+; 16-bit for the game's loop through the events at $04D84F.
 load_tables:
     PHB
     PHK
@@ -115,8 +123,7 @@ load_tables:
     REP #$20
     LDA.l $04D803
     STA $8A
-    LDA.w #(!map16_low+$800)&$FFFF
-    STA $00
+    STX $00
     SEP #$20
     LDA.l $04D808
     STA $8C

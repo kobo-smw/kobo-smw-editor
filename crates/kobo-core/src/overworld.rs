@@ -1415,6 +1415,17 @@ impl Overworld {
     /// them).
     pub fn in_lunar_magic_shape(mut self) -> Self {
         let events = &mut self.events;
+        // The game's crushed tiles past its 16, which its loop reads from
+        // the tables after its own, mostly have places past layer 1's
+        // tiles; Lunar Magic's conversion puts those at 0, which, as they
+        // were, makes nothing differently in play.
+        if self.layout == Layout::Game {
+            for crush in events.crush.iter_mut() {
+                if usize::from(crush.place) >= LAYER1_TILES {
+                    crush.place = 0;
+                }
+            }
+        }
         let last = events.ranges.last().copied().unwrap_or(0);
         while events.layer1.len() < LUNAR_MAGIC_EVENTS {
             events.layer1.push((0, 0));

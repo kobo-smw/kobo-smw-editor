@@ -544,6 +544,63 @@ fn main() {
             let img = kobo_core::render::render_overworld(&rom, submap).unwrap();
             img.write_png(&args[3]).unwrap();
         }
+        Some("same") if args.len() == 3 => {
+            // `same a.smc b.smc`: the two ROMs' overworlds, as the reader
+            // reads them, table by table.
+            use kobo_core::overworld::Overworld;
+            let read = |p: &str| {
+                Overworld::read(&Rom::load(p).unwrap())
+                    .unwrap()
+                    .in_lunar_magic_shape()
+            };
+            let (a, b) = (read(&args[1]), read(&args[2]));
+            let mut differ = Vec::new();
+            for (what, same) in [
+                ("layer 1", a.layer1 == b.layer1),
+                ("translevels", a.translevels == b.translevels),
+                ("directions", a.directions == b.directions),
+                ("layer 2", a.layer2 == b.layer2),
+                ("names", a.names == b.names),
+                ("events", a.event_list() == b.event_list()),
+                ("crush", a.events.crush == b.events.crush),
+                ("reveal", a.events.reveal == b.events.reveal),
+                ("start", a.start == b.start),
+                ("opened", a.opened == b.opened),
+                ("level events", a.level_events == b.level_events),
+            ] {
+                if !same {
+                    differ.push(what);
+                }
+            }
+            if std::env::var_os("SHOW").is_some() {
+                for (i, (x, y)) in a.layer1.iter().zip(&b.layer1).enumerate() {
+                    if x != y {
+                        println!(
+                            "  layer 1 {:?}: {x:03X} {y:03X}",
+                            kobo_core::overworld::layer1_place(i)
+                        );
+                    }
+                }
+                for (i, (x, y)) in a.translevels.iter().zip(&b.translevels).enumerate() {
+                    if x != y {
+                        println!(
+                            "  translevel {:?}: {x:02X} {y:02X}",
+                            kobo_core::overworld::layer1_place(i)
+                        );
+                    }
+                }
+                for (i, (x, y)) in a.events.crush.iter().zip(&b.events.crush).enumerate() {
+                    if x != y {
+                        println!("  crush {i}: {x:?} {y:?}");
+                    }
+                }
+            }
+            if differ.is_empty() {
+                println!("the same overworld");
+            } else {
+                println!("differ: {}", differ.join(", "));
+            }
+        }
         Some("pair") if args.len() == 3 => {
             let a = Rom::load(&args[1]).unwrap();
             let b = Rom::load(&args[2]).unwrap();
