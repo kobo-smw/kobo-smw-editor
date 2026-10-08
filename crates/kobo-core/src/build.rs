@@ -629,8 +629,9 @@ impl Stage {
     fn version(self) -> u32 {
         match self {
             // 2026-10-09: the 16x16 tiles moved, the event properties' run,
-            // the palettes, ExAnimation, the FG1-2 merge, and the border.
-            Stage::Overworld => 2,
+            // the palettes, ExAnimation, the FG1-2 merge, and the border (2),
+            // and the title screen's layer 3 (3).
+            Stage::Overworld => 3,
             _ => 1,
         }
     }
