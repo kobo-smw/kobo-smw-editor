@@ -105,6 +105,17 @@ What a rendered level does not reproduce, and what the tooling does not handle.
   current format, and an import from the MWL files keeps them. Doing it again would need
   the table found by an allowed method (a byte diff of a list Lunar Magic 2.41 writes, or
   documentation) and the older format learnt from Lunar Magic's own conversions.
+- The overworld is drawn as its load leaves it (`render::render_overworld`): layers 1 and
+  2 of the map, without the sprites, the player, or layer 3, and the animated tiles and
+  colours at their first frames. An import's overworld, built, matches the hack's load
+  frame by frame (layers, characters, colours, ExAnimation, the border and the title
+  screen's layer 3) across the corpus's `.smc` hacks but where a hack's own code or
+  patches draw (level names in other places, the lives counter), in the player's tile
+  words for the first frame or two after the load, which come from direct page left by
+  whatever ran before (as in a level), in a hack whose own code leaves the direct page
+  otherwise each frame, and in older Lunar Magic versions' overworld formats (Kaizo Mario
+  1 to 3, Smb2dx). For about 12 frames after a submap change, a submap's ExAnimation
+  tiles lag behind Lunar Magic's, which uploads the eight first frames at once.
 
 ## Full hack render sweep: 2026-09-22
 
