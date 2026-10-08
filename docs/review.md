@@ -14,12 +14,6 @@ settle it.
 
 ## Open
 
-- **kobo-core optimised in dev builds (2026-10-05).** `[profile.dev.package.kobo-core]
-  opt-level = 2` makes a plain `cargo test` run the ROM-backed tests as fast as release
-  (render_levels: 20 s to 3 s) while keeping debug assertions and overflow checks, which a
-  release run drops; `cargo xtask verify` uses it. The cost is a less faithful debugger in
-  kobo-core (`CARGO_PROFILE_DEV_PACKAGE_KOBO_CORE_OPT_LEVEL=0` undoes it) and a little
-  more compile time. The first full run this way found no overflow.
 - **Test tiers in the config file (2026-10-05).** The tiers' data is set in the config
   file's `[tests]` table as well as by environment variable (`kobo_core::tiers`), so that
   shells that skip `~/.bashrc` (agents' among them) run them; `~/.config/kobo/env.sh`
