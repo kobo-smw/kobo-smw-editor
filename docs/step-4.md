@@ -47,7 +47,8 @@ from the editor where the user is working.
 6. **The overworld**: read, a source format, built in Lunar Magic's layout, and edited
    (layers 1 and 2, the level tiles and their translevels, paths, events, sprites). The
    level list then groups and names levels by the project's own overworld (editor.md,
-   "The level list by overworld level"). Not started; waiting on review (review.md).
+   "The level list by overworld level"). Started 2026-10-08 at the maintainer's word,
+   after review: a research phase as step 2's was, then the build and the editor.
    The game's own format numbers translevels by the order of the level tiles and fixes
    its events' places (smw.md, "The overworld"), so editing it in place would renumber
    levels with every level tile moved: a project's overworld has to be built in Lunar
