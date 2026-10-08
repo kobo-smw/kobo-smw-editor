@@ -67,12 +67,6 @@ settle it.
   while Kobo carries none of a project's. For a project imported from a hack they are the
   game's names, not the hack's, though true of what the build makes. To settle once the
   overworld is a project's (step 4): the project's names then.
-- **The game's unused levels hidden (2026-10-07).** A level whose objects are those of
-  the layer 1 data most of the clean ROM's levels point at (the "TEST" level at
-  `$068000`, 277 of the 512) is left out of the level list until asked for
-  (`reach::Placeholder`), whether or not the project lists it; a level with any object of
-  its own shows. To settle: whether a project's level that was never changed from the
-  game's (but is a real level) should be hidden too.
 - **Play from here without the title screen (2026-10-07).** The play build now hooks the
   title screen's load (game mode `$03`) instead of the title screen, so play starts about
   four seconds sooner; "Nintendo Presents" runs a frame, dark, since its game modes set

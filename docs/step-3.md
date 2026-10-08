@@ -101,6 +101,12 @@ file by hand; when they do, the editor follows.
 - In step 4, once the overworld is a project's, the overworld's own tiles decide which
   levels are overworld levels, so that a hack that leaves translevels unused groups by
   what the player can enter.
+- A level whose objects are those of the layer 1 data most of the clean ROM's levels
+  point at (the "TEST" level at `$068000`, 277 of the 512) is left out until asked for
+  (`reach::Placeholder`), whether or not the project lists it; a level with any object of
+  its own shows. A real level the project never changed shows like any other. In step 4,
+  with the overworld, what is hidden becomes what nothing reaches, from the overworld or
+  from any level, rather than what holds the placeholder.
 
 ### Clean room in the editor
 
