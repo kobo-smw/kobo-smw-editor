@@ -2073,3 +2073,36 @@ fn a_graphics_file_goes_out_as_a_png_and_comes_back_drawn_on() {
         Some(format!("Import {file}").as_str())
     );
 }
+
+#[test]
+fn a_tilemap_given_and_taken_back_is_not_saved() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "layer3-undone");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().layer3_editor.open = true;
+    harness.run_steps(3);
+    harness
+        .get_by_label("Give the level a layer 3 tilemap")
+        .click();
+    harness.run_steps(2);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    assert!(
+        harness
+            .state()
+            .current()
+            .unwrap()
+            .document
+            .level()
+            .graphics
+            .is_none()
+    );
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    harness.step();
+    assert!(!project.0.join("graphics/ExGFX80.bin").exists());
+    let manifest = std::fs::read_to_string(project.0.join("kobo.toml")).unwrap();
+    assert!(!manifest.contains("ExGFX80"), "{manifest}");
+}

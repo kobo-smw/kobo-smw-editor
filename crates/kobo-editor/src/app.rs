@@ -1524,7 +1524,12 @@ impl App {
                     Err(e) => failed.push(e.to_string()),
                 }
             }
-            for tilemap in self.tilemaps.values_mut().filter(|t| t.is_modified()) {
+            let named = self.named_tilemaps();
+            let pending = self
+                .tilemaps
+                .values_mut()
+                .filter(|t| t.is_modified() && (t.in_project() || named.contains(&t.file())));
+            for tilemap in pending {
                 match tilemap.save(&root) {
                     Ok(_) => saved.push(format!("ExGFX{:X}", tilemap.file())),
                     Err(e) => failed.push(e.to_string()),
@@ -1564,13 +1569,25 @@ impl App {
         if matches!(&self.global_animation, Some(Ok(g)) if g.is_modified()) {
             names.push("the global ExAnimation".into());
         }
+        let named = self.named_tilemaps();
         names.extend(
             self.tilemaps
                 .values()
-                .filter(|t| t.is_modified())
+                .filter(|t| t.is_modified() && (t.in_project() || named.contains(&t.file())))
                 .map(|t| format!("ExGFX{:X}", t.file())),
         );
         names
+    }
+
+    /// The layer 3 tilemap files the open levels' graphics lists load: a
+    /// new one no level names any more (its level's step undone) is not
+    /// saved.
+    fn named_tilemaps(&self) -> Vec<u16> {
+        self.open
+            .values()
+            .filter_map(|o| edit::layer3::Tilemap::of(o.document.level()))
+            .map(|t| t.file)
+            .collect()
     }
 
     /// Follows the files that changed outside the editor.
