@@ -1,13 +1,14 @@
 //! The game's stripe images: lists of runs of VRAM words, which
-//! `LoadScrnImage` uploads (each found through `StripeImages`, `$0084D0`), for layer 3's tilemaps above all (the overworld's border, the
-//! title screen). Each run is a 4-byte header, the VRAM word address high
-//! byte first, then the direction (bit 7: down, else across), a repeat bit
-//! (bit 6: the one word that follows, repeated), and the length in bytes
-//! less one in 14 bits; then the run's bytes. `$FF` ends the image. A
-//! repeated run writes its bytes' count halved, rounded up, of words.
+//! `LoadScrnImage` uploads (each found through `StripeImages`, `$0084D0`),
+//! for layer 3's tilemaps above all (the overworld's border, the title
+//! screen). Each run is a 4-byte header, the VRAM word address high byte
+//! first, then the direction (bit 7: down, else across), a repeat bit (bit
+//! 6: the one word that follows, repeated), and the length in bytes less
+//! one in 14 bits; then the run's bytes. `$FF` ends the image. A repeated
+//! run writes its bytes' count halved, rounded up, of words.
 //!
 //! [`Tilemap`] is what an image leaves: a word for each cell of a 32-wide
-//! tilemap it writes, `None` where it writes none.
+//! tilemap it writes, `None` where it writes none, within the rows kept.
 
 use thiserror::Error;
 
@@ -15,8 +16,6 @@ use thiserror::Error;
 pub enum StripeError {
     #[error("the stripe image runs past its data")]
     Truncated,
-    #[error("a run leaves the tilemap")]
-    OutOfMap,
 }
 
 /// A tilemap's cells, 32 to a row, from a VRAM word address on.
@@ -60,8 +59,12 @@ impl Tilemap {
                     u16::from_le_bytes([get(at + 2 * i)?, get(at + 2 * i + 1)?])
                 };
                 let step = if down { 32 * i } else { i };
+                // A write past the rows kept (a whole layer cleared, say)
+                // is left out.
                 let cell = usize::from(vram.wrapping_sub(base)) + step;
-                *map.cells.get_mut(cell).ok_or(StripeError::OutOfMap)? = Some(word);
+                if let Some(slot) = map.cells.get_mut(cell) {
+                    *slot = Some(word);
+                }
             }
             at += if repeat { 2 } else { len };
         }

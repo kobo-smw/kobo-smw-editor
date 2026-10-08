@@ -94,7 +94,8 @@ from the editor where the user is working.
   merge followed, and submaps' layer 3 tilemaps without the game's border: riff2's
   import builds to its overworld but for its own name code. The border on layer 3
   (`[border]`, `kobo_core::stripe`) and the animated tiles from an ExGFX source
-  followed; across the corpus's `.smc` hacks, an import's overworld now differs from
+  followed, and the title screen's layer 3 (`[title]`), which Lunar Magic edits in its
+  overworld editor; across the corpus's `.smc` hacks, an import's overworld now differs from
   the hack's only where the hack's own code or patches draw (names, lives), in the
   player's tiles for a frame or two after the load, and in older Lunar Magic versions'
   formats. Still left: the first

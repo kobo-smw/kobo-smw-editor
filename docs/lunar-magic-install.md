@@ -2163,6 +2163,14 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   low bytes and then the high, and with an even count the first also writes the high
   byte of the word after it. Lunar Magic's overworld transfer does not carry the
   border (the destination keeps its own).
+- The title screen's layer 3 (`TitleScreenStripe`, stripe image `$03`, `$05B375`), which
+  Lunar Magic's overworld editor edits ("Load Title Screen"), is the same: in 46 of the
+  corpus's 49 `.smc` hacks a stripe image of its own, entry 3 of `StripeImages`
+  (`$0084D3`) pointing at it. Kobo carries it as the border (`[title]` in the overworld
+  file, the overworld stage writing it); Kaizo Kindergarten's and QW2's imports show
+  the hacks' title screens (`expand::load_title`, 2026-10-09). The title's level (`C7`),
+  its graphics, and its colours are a level's and the shared palettes'; the title's
+  demo moves are not carried.
 - The overworld's palettes: a `JSL` at `$00AD32` (`CODE_00AD25`'s `STY $00`, where the
   game picks the overworld's colours by the submap and Special World) leads to code with
   the pointer to a block of 14 palettes of 256 colours (`$1C00` bytes: each map's, 0 the

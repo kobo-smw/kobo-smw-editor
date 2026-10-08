@@ -582,7 +582,15 @@ pub struct Overworld {
     /// The border on layer 3: what its stripe image ([`BORDER_IMAGE`])
     /// writes of the tilemap from [`BORDER_BASE`].
     pub border: crate::stripe::Tilemap,
+    /// The title screen's layer 3, which Lunar Magic's overworld editor
+    /// edits too: what its stripe image ([`TITLE_IMAGE`]) writes, likewise.
+    pub title: crate::stripe::Tilemap,
 }
+
+/// The title screen's stripe image's pointer: `StripeImages` entry 3
+/// (`TitleScreenStripe`, `$05B375`, in the game), which Lunar Magic points
+/// at a block of its own in nearly every hack. Its 28 rows of 32 show.
+pub const TITLE_IMAGE: SnesAddr = SnesAddr::new(0x00_84D3);
 
 /// The overworld border's stripe image's pointer: `StripeImages` entry 6
 /// (`OWBorderStripe`, `$04A400`, in the game), which Lunar Magic points at
@@ -783,6 +791,11 @@ impl Overworld {
             crate::stripe::Tilemap::read(BORDER_BASE, BORDER_ROWS, rom.read_tail(border_at)?)
                 .map_err(|_| OverworldError::Decode("border's stripe image"))?
                 .0;
+        let title_at = rom.read_ptr(TITLE_IMAGE)?;
+        let title =
+            crate::stripe::Tilemap::read(BORDER_BASE, BORDER_ROWS, rom.read_tail(title_at)?)
+                .map_err(|_| OverworldError::Decode("title screen's stripe image"))?
+                .0;
         Ok(Self {
             layout,
             layer1,
@@ -800,6 +813,7 @@ impl Overworld {
             animation,
             merge_fg,
             border,
+            title,
         })
     }
 }
@@ -1560,6 +1574,11 @@ impl Overworld {
             self.border.to_stripe(),
             vec![Pointer::new(BORDER_IMAGE, Form::Long)],
         ));
+        plan.blocks.push((
+            "the title screen's layer 3",
+            self.title.to_stripe(),
+            vec![Pointer::new(TITLE_IMAGE, Form::Long)],
+        ));
         // Lunar Magic's FG1-2 merge: its byte, and the game's animated tiles
         // where the merged layout has them.
         if self.merge_fg {
@@ -1786,6 +1805,8 @@ pub struct Changes {
     pub merge_fg: bool,
     /// By row: the border's 32 cells, `None` where its image writes none.
     pub border: std::collections::BTreeMap<u8, Vec<Option<u16>>>,
+    /// By row: the title screen's layer 3, likewise.
+    pub title: std::collections::BTreeMap<u8, Vec<Option<u16>>>,
     /// Lunar Magic's option to turn the event path fade off, with how much
     /// each frame adds to a step's timer (a step every `$40`): installed as
     /// Kobo's code, not read from the ROM's tables (an import finds it with
@@ -1926,15 +1947,19 @@ impl Overworld {
             changes.animation = self.animation.clone();
         }
         changes.merge_fg = self.merge_fg && !clean.merge_fg;
-        for (r, (ours, theirs)) in self
-            .border
-            .cells
-            .chunks(32)
-            .zip(clean.border.cells.chunks(32))
-            .enumerate()
-        {
-            if ours != theirs {
-                changes.border.insert(r as u8, ours.to_vec());
+        for (ours, theirs, rows) in [
+            (&self.border, &clean.border, &mut changes.border),
+            (&self.title, &clean.title, &mut changes.title),
+        ] {
+            for (r, (a, b)) in ours
+                .cells
+                .chunks(32)
+                .zip(theirs.cells.chunks(32))
+                .enumerate()
+            {
+                if a != b {
+                    rows.insert(r as u8, a.to_vec());
+                }
             }
         }
         for (n, ours) in self.tiles.iter().enumerate() {
@@ -2010,11 +2035,16 @@ impl Overworld {
             self.animation = Some(animation.clone());
         }
         self.merge_fg |= changes.merge_fg;
-        for (&r, row) in &changes.border {
-            let at = 32 * usize::from(r);
-            if let Some(cells) = self.border.cells.get_mut(at..at + 32) {
-                for (cell, &value) in cells.iter_mut().zip(row) {
-                    *cell = value;
+        for (map, rows) in [
+            (&mut self.border, &changes.border),
+            (&mut self.title, &changes.title),
+        ] {
+            for (&r, row) in rows {
+                let at = 32 * usize::from(r);
+                if let Some(cells) = map.cells.get_mut(at..at + 32) {
+                    for (cell, &value) in cells.iter_mut().zip(row) {
+                        *cell = value;
+                    }
                 }
             }
         }

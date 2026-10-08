@@ -173,6 +173,34 @@ fn the_vanilla_overworld_built_draws_as_the_games_own() {
 
 /// Every star and pipe tile of the clean ROM's overworld warps to the same
 /// place in Kobo's build of it as in the game.
+/// The title screen's layer 3, rewritten as a stripe image of Kobo's in a
+/// build, shows as the game's.
+#[test]
+fn the_vanilla_title_screen_built_shows_as_the_games_own() {
+    use kobo_core::build::{self, Project};
+
+    if common::asar().is_none() {
+        return;
+    }
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let base = Overworld::read(&clean).unwrap().in_lunar_magic_shape();
+    let project = Project {
+        root: std::path::PathBuf::from("."),
+        overworld: Some(base.changes_from(&base)),
+        ..Default::default()
+    };
+    let built = build::build(&clean, &project).unwrap();
+    let ours = expand::load_title(&built).unwrap();
+    let theirs = expand::load_title(&clean).unwrap();
+    let layer3 = 0xA000..0xA800;
+    assert!(
+        ours.vram[layer3.clone()] == theirs.vram[layer3],
+        "the title's layer 3"
+    );
+}
+
 #[test]
 fn the_vanilla_overworld_built_warps_as_the_games_own() {
     use kobo_core::build::{self, Project};
@@ -480,6 +508,8 @@ fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
             // clean ROM's after its own.
             && ours.tiles.get(..theirs.tiles.len()) == Some(&theirs.tiles[..])
             && ours.palettes == theirs.palettes
+            && ours.border == theirs.border
+            && ours.title == theirs.title
             // An install with no list and no setting is none.
             && ours.animation.as_ref().filter(|a| !a.is_empty())
                 == theirs.animation.as_ref().filter(|a| !a.is_empty());

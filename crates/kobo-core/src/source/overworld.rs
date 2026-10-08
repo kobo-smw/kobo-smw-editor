@@ -23,7 +23,8 @@
 //! split = 0x0900
 //!
 //! [border]                       # a row of the border on layer 3: 32 tilemap words, ----
-//! 0x00 = "38FE 38FE ---- ..."    # where its stripe image writes nothing
+//! 0x00 = "38FE 38FE ---- ..."    # where its stripe image writes nothing; [title] likewise,
+//!                                # the title screen's layer 3, which Lunar Magic edits there
 //!
 //! [tiles]                        # a layer 1 16x16 tile's four 8x8 tiles, as tilemap words:
 //! 0x0C1 = "0CA0 0CB0 0CA1 0CB1"  # top left, bottom left, top right, bottom right
@@ -226,9 +227,12 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
         }
         sections.push(text);
     }
-    if !changes.border.is_empty() {
-        let mut text = String::from("[border]\n");
-        for (&r, row) in &changes.border {
+    for (name, rows) in [("border", &changes.border), ("title", &changes.title)] {
+        if rows.is_empty() {
+            continue;
+        }
+        let mut text = format!("[{name}]\n");
+        for (&r, row) in rows {
             let cells: Vec<String> = row
                 .iter()
                 .map(|c| c.map_or("----".to_string(), |w| format!("{w:04X}")))
@@ -551,12 +555,12 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                     changes.names.insert(t, parse_name(&at, text)?);
                 }
             }
-            "border" => {
+            "border" | "title" => {
                 let table = item
                     .as_table()
                     .ok_or_else(|| invalid(key, "must be a table of rows"))?;
                 for (r, value) in table.iter() {
-                    let at = format!("border.{r}");
+                    let at = format!("{key}.{r}");
                     let r = r
                         .strip_prefix("0x")
                         .and_then(|h| u8::from_str_radix(h, 16).ok())
@@ -580,7 +584,11 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                     if cells.len() != 32 {
                         return Err(invalid(&at, "must be 32 words or ----"));
                     }
-                    changes.border.insert(r, cells);
+                    if key == "border" {
+                        changes.border.insert(r, cells);
+                    } else {
+                        changes.title.insert(r, cells);
+                    }
                 }
             }
             "tiles" => {
@@ -952,7 +960,8 @@ mod tests {
         let mut row = vec![Some(0x38FE); 32];
         row[3] = None;
         row[4] = Some(0x7895);
-        changes.border.insert(0x1C, row);
+        changes.border.insert(0x1C, row.clone());
+        changes.title.insert(0x05, row);
         changes
             .tiles
             .insert(0x1C1, [0x0CA0, 0x0CB0, 0x4CA0, 0x4CB0]);

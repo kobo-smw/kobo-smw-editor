@@ -108,6 +108,27 @@ pub fn play_overworld_on(
     Ok(out)
 }
 
+/// The title screen as a new game's power-on reaches it: what the machine
+/// leaves at the first frame of game mode `$07`, its layer 3 the title's
+/// stripe image.
+pub fn load_title(rom: &Rom) -> Result<LoadedOverworld, ExpandError> {
+    let mut machine = Machine::new(rom, 0);
+    machine.run_from_reset(routines::GAME_LOOP, RESET_STEP_LIMIT)?;
+    for frame in 0..FRAME_LIMIT {
+        if machine.bus.ram.u8(ram::GAME_MODE) == 0x07 {
+            return Ok(loaded(&machine, frame));
+        }
+        run_game_mode(&mut machine, 0)?;
+        machine.bus.pad = 0;
+        machine.bus.ram.set_u8(ram::LAG_FLAG, 0);
+        vertical_blank(&mut machine, 0)?;
+    }
+    Err(ExpandError::Overworld {
+        mode: machine.bus.ram.u8(ram::GAME_MODE),
+        frames: FRAME_LIMIT,
+    })
+}
+
 /// Each player's submap (`OWPlayerSubmap`).
 const PLAYER_SUBMAPS: RamAddr = RamAddr::new(0x7E_1F11);
 const PLAYER_SUBMAPS_2: RamAddr = RamAddr::new(0x7E_1F12);

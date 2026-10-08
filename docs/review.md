@@ -20,7 +20,8 @@ settle it.
   imported, and edited, with its graphics, palettes, ExAnimation, border, and lists),
   and the emulator (Play, symbols, and watching RAM in Mesen with pauses on writes and
   the player on the canvas). Left, as step-4.md's entries say: the first frames after a
-  submap change, Lunar Magic's other overworld Extra Options, the title screen, older
+  submap change, Lunar Magic's other overworld Extra Options, the title screen's demo
+  moves and an editor for its layer 3, older
   Lunar Magic versions' overworld formats, and breakpoints on code rather than RAM.
   Settled by closing step 4 (folding step-4.md into the other docs) or naming what
   else it needs.

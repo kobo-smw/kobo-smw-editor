@@ -9,8 +9,8 @@ A project directory builds into a ROM from a clean SMW ROM. Levels, Map16, palet
 ExGFX, ExAnimation, and the overworld are written natively in Lunar Magic's layout;
 existing work is imported from ROMs, MWL files, Lunar Magic's Map16 exports, and Callisto
 projects; Asar, PIXI, GPS, UberASM Tool, and AddmusicK run in a fixed order. What Kobo
-does not cover yet (most of Lunar Magic's overworld Extra Options, the title screen,
-credits, messages) is finished in Lunar Magic on the built ROM.
+does not cover yet (most of Lunar Magic's overworld Extra Options, the title screen's
+demo moves, credits, messages) is finished in Lunar Magic on the built ROM.
 
 ## Lunar Magic and Kobo builds
 
@@ -220,10 +220,11 @@ and what each hack still has refused, are in [testing.md](testing.md).
 
 ## What is left to Lunar Magic
 
-- The title screen, the credits, and messages: builds keep them as the game has them,
-  and Lunar Magic edits them on the built ROM. A project's overworld (`[overworld] file`,
-  its layers and 16x16 tiles, level tiles, names, events, start, settings, graphics
-  lists, palettes, ExAnimation, and the tables the game keeps in place) is built in
+- The title screen's demo moves, the credits, and messages: builds keep them as the
+  game has them, and Lunar Magic edits them on the built ROM. A project's overworld
+  (`[overworld] file`, its layers and 16x16 tiles, level tiles, names, events, start,
+  settings, graphics lists, palettes, ExAnimation, border, the title screen's layer 3,
+  and the tables the game keeps in place) is built in
   Lunar Magic's layout (lunar-magic-install.md, "The overworld"), and an import carries
   a hack's; Lunar Magic's Extra Options but the path reveal speed are left to Lunar
   Magic.

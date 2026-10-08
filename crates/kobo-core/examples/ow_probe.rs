@@ -903,6 +903,24 @@ fn main() {
                 Err(e) => println!("{e}"),
             }
         }
+        Some("title") if args.len() == 3 => {
+            // `title a.smc b.smc`: the title screen's layer 3 tilemap (VRAM
+            // $5000-$53FF) in both, as power-on reaches it.
+            let load = |p: &str| kobo_core::expand::load_title(&Rom::load(p).unwrap()).unwrap();
+            let (a, b) = (load(&args[1]), load(&args[2]));
+            let words = |l: &kobo_core::expand::LoadedOverworld| l.vram[0xA000..0xA800].to_vec();
+            let (x, y) = (words(&a), words(&b));
+            let cells: Vec<usize> = (0..0x400)
+                .filter(|&i| x[2 * i..2 * i + 2] != y[2 * i..2 * i + 2])
+                .collect();
+            println!(
+                "{} of 1024 cells differ{}",
+                cells.len(),
+                cells
+                    .first()
+                    .map_or(String::new(), |c| format!(", the first {c:#x}"))
+            );
+        }
         Some("vram") if args.len() == 4 => {
             // `vram a.smc b.smc submap`: where in VRAM the two ROMs' loads
             // on a submap differ, by $400 words, with the layers' tilemap
