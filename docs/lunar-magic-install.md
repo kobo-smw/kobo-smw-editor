@@ -1197,9 +1197,8 @@ leaves `$7FC006`), and the documented decompression entry `$0FF900`; objects `24
 `25`'s dispatch entries point at an `RTS`. It leaves Lunar Magic's other 4bpp and ExGFX
 sites (the overworld, cutscenes, credits, switch palace blocks) as the game has them:
 builds keep the overworld's own files, and write lists `200`-`206` as Lunar Magic 3.70
-writes them (the overworld's own files) so its editor and save find them. Overworld
-graphics are left to the overworld work (roadmap step 4; review, 2026-10-04); an import
-notes the submaps whose lists name other files (Kaizo Kindergarten's 0-4 and 6).
+writes them (the overworld's own files) so its editor and save find them, or as a
+project's overworld sets them ("The overworld", below).
 
 Against Lunar Magic's (examples/swap.rs graphics, gfx_probe `loads`, 2026-09-28):
 - vanilla+LM with 4bpp files: the same VRAM after every level's load, and the same
@@ -2087,6 +2086,44 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   turn off the event path fade effect and set the path reveal speed (QW2, 2 frames a
   step, not 5); those options are bytes of code at fixed places ("Each of these options
   make a very minor ASM modification to the ROM", its help says), not found yet.
+- Layer 1's 16x16 tiles (`OWL1CharData`, 8 bytes a tile number, `$C1` of them at
+  `$05D000` in the game) move to a RATS block sized to the tiles in use (`$620` to `$1000`
+  bytes across the corpus, in steps of 8; numbers reach `$1FF`, two pages), through the
+  game's operands: the low word at `$04DC3B` (the load's `LDA #`, from which it points
+  `Map16Pointers` at each tile) and `$04DCBC` (the tilemap build's `LDX #`), the bank at
+  `$04DCC1` (its `LDA #`) and at `$058B22` (the second scroll upload's `LDY #$05`, the
+  bank the game's uploads take for tilesets `$10` on). Every corpus hack has the same
+  values in both pairs, `$05D000` or a block. Lunar Magic's transfer reads the low word
+  from `$04DC3B` and the bank from `$058B22` alone (bisected 2026-10-09: changing each
+  of the four in a Kobo build, only those two moved where the transfer read).
+  The game needs all three readers moved: with the tilemap build's pair alone, or with
+  the load's word too, the VRAM the load leaves differs; with the scroll uploads' bank
+  as well, it is the game's (2026-10-09, a copy of the vanilla table in bank `$10`).
+  Kobo writes all four (`Overworld::tiles`, `[tiles]` in the overworld file), and its
+  Map16 code, in place of the uploads' bank choice, takes the bank for tilesets `$10`
+  on from `$04DCC1`. `tests/lunar_magic_overworld.rs` transfers a build with tiles past
+  `$C0` with `$058B22` and without. Kaizo Kindergarten's import builds to the hack's
+  layer 1 and layer 2 tilemaps in VRAM on every submap; what differs is its animated
+  characters and colours (Lunar Magic's overworld ExAnimation, not carried).
+- Each submap's graphics: lists `200`-`206` of the ExGFX block (above), one a submap.
+  Kobo's code for the `JSL` at `$00A140` (over the overworld load's `STA $20 : SEP #$20`
+  in `CODE_00A11B`, before its `UploadSpriteGFX`) leaves the player's submap's list's
+  address at `$7FC006`, as a Lunar Magic-saved ROM's overworld load leaves it on each
+  submap, and Kobo's graphics loader takes a list in game mode `$0C` as in `$12`,
+  whatever its bits. `[graphics]` in the overworld file; an import carries the hack's
+  lists (2026-10-09; Kaizo Kindergarten's submaps load its files).
+- The overworld's palettes: a `JSL` at `$00AD32` (`CODE_00AD25`'s `STY $00`, where the
+  game picks the overworld's colours by the submap and Special World) leads to code with
+  the pointer to a block of 14 palettes of 256 colours (`$1C00` bytes: each map's, 0 the
+  main map and 1-6 the submaps, then each again once Special World is passed) at fixed
+  offsets from its start, the low word at `+$12` and the bank at `+$1E`. Found from a
+  KK transfer: the block whose colours were the load's CGRAM had its address in a small
+  block just before it, which the `JSL`'s target led to; across the corpus, all 35 hacks
+  with the `JSL` lead to a block of `$1C00` bytes. The load then holds the player's
+  submap's palette (`+7` with translevel `$48` passed) in `MainPalette` and its first
+  colour in `$0701`. Kobo's code (`asm/lunar-magic/overworld-palettes.asm`, the overworld
+  file's `[palettes.0xNN]`) copies it so; Kaizo Kindergarten's build leaves the hack's
+  CGRAM but for its animated colours.
 - A transfer also changes the byte at `$0FF092` (0 in the vanilla ROM, `$AC` after the
   vanilla overworld's transfer, `$A7` after one with that list entry changed), outside
   any RATS block; not looked into yet.

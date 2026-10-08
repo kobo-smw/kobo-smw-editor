@@ -202,7 +202,21 @@ mod operands {
     /// tiles as sprites by the same split.
     pub const EVENT_SPLIT: SnesAddr = SnesAddr::new(0x04_E4C0);
     pub const FADE_SPLIT: SnesAddr = SnesAddr::new(0x04_EAD8);
+    /// Layer 1's 16x16 tiles (`OWL1CharData`): the tilemap build's `LDX
+    /// #` and its bank's `LDA #` (`CODE_04DCB6`), and the load's `LDA #`,
+    /// from which it points `Map16Pointers` at each tile (`CODE_04DC09`).
+    /// The scroll uploads take the bank for the overworld's tilesets from
+    /// Kobo's Map16 code, which reads it from `TILES_BANK`.
+    pub const TILES: SnesAddr = SnesAddr::new(0x04_DCBC);
+    pub const TILES_BANK: SnesAddr = SnesAddr::new(0x04_DCC1);
+    pub const TILES_POINTERS: SnesAddr = SnesAddr::new(0x04_DC3B);
 }
+
+/// The game's layer 1 16x16 tiles, `00`-`C0`; Lunar Magic's layout holds as
+/// many as its block, up to [`MAX_TILES`].
+pub const GAME_TILES: usize = 0xC1;
+/// The tiles the two pages of layer 1's tile numbers reach.
+pub const MAX_TILES: usize = 0x200;
 
 /// Where Lunar Magic's layout keeps the pointers only its code reads.
 mod lunar_magic {
@@ -221,6 +235,11 @@ mod lunar_magic {
     pub const EXTRA_DATA: u32 = 0x22;
     pub const EXTRA_PLACES: u32 = 0x28;
     pub const EXTRA_KINDS: u32 = 0x34;
+    /// The bank of layer 1's 16x16 tiles, as Lunar Magic reads it with the
+    /// low word at `operands::TILES_POINTERS`: the second scroll upload's
+    /// `LDY #$05` (`$058B21`), which its layout sets to the tiles' bank
+    /// as it does the tilemap build's (found by bisecting its transfer).
+    pub const TILES_BANK: SnesAddr = SnesAddr::new(0x05_8B22);
     /// The first byte of the game's translevel scan, `LDA #` (`$A9`) in the
     /// game; Lunar Magic's layout and Kobo's code for it replace the scan,
     /// which tells the layouts apart.
@@ -541,8 +560,42 @@ pub struct Overworld {
     pub level_flags: Vec<u8>,
     /// Each translevel's event.
     pub level_events: Vec<u8>,
+    /// Layer 1's 16x16 tiles, by number: each one's four 8x8 tiles'
+    /// tilemap words, in the game's order (top left, bottom left, top
+    /// right, bottom right).
+    pub tiles: Vec<[u16; 4]>,
     /// The tables kept in place, as [`TABLES`] lists them.
     pub tables: Vec<Vec<u8>>,
+    /// Lunar Magic's overworld palettes ([`PALETTES_LEN`] bytes: 256
+    /// colours for each map, then each again once Special World is
+    /// passed), if the ROM has them.
+    pub palettes: Option<Vec<u8>>,
+}
+
+/// Lunar Magic's overworld palettes: 14 of 256 colours.
+pub const PALETTES_LEN: usize = 14 * 0x200;
+/// The `JSL` of its palette load, at `CODE_00AD25`'s `STY $00`; the
+/// palettes' pointer is in the code it leads to, the low word at `+$12` and
+/// the bank at `+$1E`.
+pub const PALETTE_HOOK: SnesAddr = SnesAddr::new(0x00_AD32);
+
+/// Where the pointer to Lunar Magic's overworld palettes is: its low word's
+/// place and its bank's, `None` without the hook's `JSL`.
+pub fn palette_pointer(rom: &Rom) -> Result<Option<(SnesAddr, SnesAddr)>, RomError> {
+    if rom.read_u8(PALETTE_HOOK)? != 0x22 {
+        return Ok(None);
+    }
+    let code = SnesAddr::new(rom.read_u24(PALETTE_HOOK.add(1))?);
+    Ok(Some((code.add(0x12), code.add(0x1E))))
+}
+
+fn read_palettes(rom: &Rom) -> Result<Option<Vec<u8>>, RomError> {
+    let Some((low, bank)) = palette_pointer(rom)? else {
+        return Ok(None);
+    };
+    let at = SnesAddr::from_bank_offset(rom.read_u8(bank)?, rom.read_u16(low)?);
+    // A pointer that leads nowhere readable is no palettes.
+    Ok(rom.read(at, PALETTES_LEN).ok().map(<[u8]>::to_vec))
 }
 
 fn read_word_ptr(rom: &Rom, low: SnesAddr, bank: SnesAddr) -> Result<SnesAddr, RomError> {
@@ -688,6 +741,8 @@ impl Overworld {
         for table in &TABLES {
             tables.push(rom.read(table.at, table.len)?.to_vec());
         }
+        let palettes = read_palettes(rom)?;
+        let tiles = read_tiles(rom)?;
         Ok(Self {
             layout,
             layer1,
@@ -699,9 +754,23 @@ impl Overworld {
             start,
             level_flags,
             level_events,
+            tiles,
             tables,
+            palettes,
         })
     }
+}
+
+/// Layer 1's 16x16 tiles, where the tilemap build reads them: the game's
+/// [`GAME_TILES`], or as many as the RATS block there holds.
+fn read_tiles(rom: &Rom) -> Result<Vec<[u16; 4]>, OverworldError> {
+    let at = read_word_ptr(rom, operands::TILES, operands::TILES_BANK)?;
+    let count = crate::level::block_len(rom, at).map_or(GAME_TILES, |len| (len / 8).min(MAX_TILES));
+    let bytes = rom.read(at, 8 * count)?;
+    Ok(bytes
+        .chunks(8)
+        .map(|t| std::array::from_fn(|i| u16::from_le_bytes([t[2 * i], t[2 * i + 1]])))
+        .collect())
 }
 
 /// The game's numbering of translevels: each level tile (`56` to `80`),
@@ -1310,7 +1379,16 @@ impl Overworld {
                 Pointer::new(EVENT_NUMBERS_WORD, Form::Word),
             ],
         ));
-        let mut props = encode_run_length(&events.properties);
+        // The game's decoder (CODE_04DD57) takes a run before it looks for
+        // the $FFFF that ends them, so a stream with none would be read on
+        // into whatever follows it: an overworld without event tiles has
+        // one byte.
+        let properties: &[u8] = if events.properties.is_empty() {
+            &[0]
+        } else {
+            &events.properties
+        };
+        let mut props = encode_run_length(properties);
         props.extend([0xFF, 0xFF]);
         plan.blocks.push((
             "event tile properties",
@@ -1381,6 +1459,24 @@ impl Overworld {
         for (table, bytes) in TABLES.iter().zip(&self.tables) {
             plan.fixed.push((table.at, bytes.clone()));
         }
+        // Layer 1's 16x16 tiles, as many as there are, where the game's
+        // three instructions that find them point, with the bank Lunar
+        // Magic reads besides.
+        if self.tiles.len() > MAX_TILES {
+            return Err(OverworldError::Full("16x16 tiles"));
+        }
+        let mut tiles = word_and_bank(operands::TILES, operands::TILES_BANK);
+        tiles.push(Pointer::new(operands::TILES_POINTERS, Form::Word));
+        tiles.push(Pointer::new(lunar_magic::TILES_BANK, Form::Bank));
+        plan.blocks.push((
+            "layer 1's 16x16 tiles",
+            self.tiles
+                .iter()
+                .flatten()
+                .flat_map(|w| w.to_le_bytes())
+                .collect(),
+            tiles,
+        ));
         plan.fixed
             .push((operands::EVENT_SPLIT, events.split.to_le_bytes().to_vec()));
         plan.fixed
@@ -1398,6 +1494,22 @@ impl Overworld {
             .push((START_PLAYERS.add(6), positions(&|p| [p.x, p.y])));
         plan.fixed
             .push((START_PLAYERS.add(14), positions(&|p| [p.x >> 4, p.y >> 4])));
+        // Lunar Magic's palettes, whose pointer is in Kobo's code for them.
+        if let Some(palettes) = &self.palettes {
+            let Some((low, bank)) = palette_pointer(rom)? else {
+                return Err(OverworldError::Decode(
+                    "overworld palettes, whose code is not installed",
+                ));
+            };
+            plan.blocks.push((
+                "overworld palettes",
+                palettes.clone(),
+                vec![
+                    Pointer::new(low, Form::Word),
+                    Pointer::new(bank, Form::Bank),
+                ],
+            ));
+        }
         let (from, to): (Vec<u8>, Vec<u8>) = events.reveal.iter().copied().unzip();
         plan.fixed.push((REVEAL_FROM, from));
         plan.fixed.push((REVEAL_TO, to));
@@ -1549,8 +1661,19 @@ pub struct Changes {
     pub level_events: std::collections::BTreeMap<u8, u8>,
     /// Where the event tile data's 2x2 blocks start.
     pub event_split: Option<u16>,
+    /// Layer 1's 16x16 tiles, by number: those that differ, or that the
+    /// clean ROM has none for.
+    pub tiles: std::collections::BTreeMap<u16, [u16; 4]>,
     /// The tables kept in place, by name ([`TABLES`]): those that differ.
     pub tables: std::collections::BTreeMap<String, Vec<u8>>,
+    /// The submaps' graphics lists (lists `200`-`206` of Lunar Magic's
+    /// ExGFX block), by submap, where they differ from what Lunar Magic
+    /// writes with nothing set: written with the ExGFX block, not read
+    /// from the overworld's tables.
+    pub graphics: std::collections::BTreeMap<u8, crate::exgfx::GraphicsList>,
+    /// Lunar Magic's overworld palettes ([`PALETTES_LEN`] bytes), when they
+    /// differ from the clean ROM's (which has none).
+    pub palettes: Option<Vec<u8>>,
     /// Lunar Magic's option to turn the event path fade off, with how much
     /// each frame adds to a step's timer (a step every `$40`): installed as
     /// Kobo's code, not read from the ROM's tables (an import finds it with
@@ -1684,6 +1807,14 @@ impl Overworld {
         if self.events.split != clean.events.split {
             changes.event_split = Some(self.events.split);
         }
+        if self.palettes != clean.palettes {
+            changes.palettes = self.palettes.clone();
+        }
+        for (n, ours) in self.tiles.iter().enumerate() {
+            if clean.tiles.get(n) != Some(ours) {
+                changes.tiles.insert(n as u16, *ours);
+            }
+        }
         for ((table, ours), theirs) in TABLES.iter().zip(&self.tables).zip(&clean.tables) {
             if ours != theirs {
                 changes.tables.insert(table.name.to_string(), ours.clone());
@@ -1739,6 +1870,24 @@ impl Overworld {
             if let Some(slot) = self.level_flags.get_mut(usize::from(t)) {
                 *slot = flags;
             }
+        }
+        if let Some(palettes) = &changes.palettes {
+            if palettes.len() != PALETTES_LEN {
+                return Err(OverworldError::Decode(
+                    "overworld palettes of another length",
+                ));
+            }
+            self.palettes = Some(palettes.clone());
+        }
+        for (&n, words) in &changes.tiles {
+            let n = usize::from(n);
+            if n >= MAX_TILES {
+                return Err(OverworldError::Full("16x16 tiles"));
+            }
+            if self.tiles.len() <= n {
+                self.tiles.resize(n + 1, [0; 4]);
+            }
+            self.tiles[n] = *words;
         }
         for (name, bytes) in &changes.tables {
             let Some(i) = TABLES.iter().position(|t| t.name == name) else {

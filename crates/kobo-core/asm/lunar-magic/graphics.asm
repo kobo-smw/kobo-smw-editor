@@ -73,6 +73,12 @@ org $0583B8
     autoclean JSL header_level_mode
     NOP
 
+; The overworld's load, before its UploadSpriteGFX: the submap's list
+; (200 + the player's submap) where a level's would be, in place of the
+; game's STA $20 : SEP #$20, which it does.
+org $00A140
+    JSL submap_list
+
 ; UploadSpriteGFX, entered with JSR; Kobo's returns through its RTS at $00AA6A.
 org $00A9DA
     JML load_graphics
@@ -156,6 +162,43 @@ header_level_mode:
 +   PLP
     LDA.l $001925|!addr
     CMP #$09
+    RTL
+
+; The overworld's load (CODE_00A11B): A (16-bit) is layer 2's y, which the
+; game's STA $20 takes, and the game's SEP #$20 follows. Leaves where the
+; player's submap's list is at $7FC006, as a Lunar Magic-saved ROM's
+; overworld load leaves it for each submap, when the ROM has lists.
+submap_list:
+    STA $20
+    PHP
+    REP #$30
+    PHX
+    LDA.l !List+1
+    CMP #$FFFF
+    BEQ +
+    LDA $0DB3|!addr             ; the player whose turn it is
+    AND #$00FF
+    TAX
+    LDA $1F11|!addr,x           ; their submap
+    AND #$00FF
+    CLC
+    ADC #$0200
+    ASL A
+    ASL A
+    ASL A
+    ASL A
+    ASL A
+    CLC
+    ADC.l !List
+    STA.l $7FC006
+    SEP #$20
+    LDA.l !List+2
+    ADC #$00
+    STA.l $7FC008
++   REP #$30
+    PLX
+    PLP
+    SEP #$20
     RTL
 
 ; ---------------------------------------------------------------------------
@@ -440,8 +483,11 @@ load_graphics:
     STZ !Flags
     LDA $0100|!addr
     AND #$00FF
-    CMP #$0012
+    CMP #$0012                  ; a level's preparation
+    BEQ +
+    CMP #$000C                  ; the overworld's load (submap_list)
     BNE .standard
++
     LDA.l !List+1
     CMP #$FFFF
     BEQ .standard
@@ -454,6 +500,16 @@ load_graphics:
     AND #$00F0
     ORA #$0001                  ; bit 0: the list is there
     STA !Flags
+    ; A submap's list is loaded whatever its bits, as a Lunar Magic-saved
+    ; ROM's overworld loads it.
+    LDA $0100|!addr
+    AND #$00FF
+    CMP #$000C
+    BNE +
+    LDA !Flags
+    ORA #$0080
+    STA !Flags
++   LDA !Flags
     ; $7FC01A bit 7 set with T, clear without, as a Lunar Magic-saved
     ; ROM's load leaves it (layer3.asm keeps the low nibble there).
     SEP #$20

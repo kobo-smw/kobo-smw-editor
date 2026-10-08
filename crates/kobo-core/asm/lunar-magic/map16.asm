@@ -68,7 +68,9 @@ freecode
 ; A (16-bit) = tile * 2, index registers 16-bit. Returns the address of the
 ; tile's 8-byte definition, the low word in A and the bank in $0C. X kept.
 ; For pages 0 and 1 the bank is the one these uploads chose in the game:
-; $0D, or $05 from object tileset $10 on, which is the overworld's layer 1.
+; $0D, or from object tileset $10 on, which is the overworld's layer 1, the
+; bank of its 16x16 tiles, which the tilemap build's LDA # holds ($05 in the
+; game; a build that moves them changes it).
 map16_level:
     CMP #$0400
     BCS .custom
@@ -79,7 +81,7 @@ map16_level:
     LDA.l $001931|!addr
     CMP #$10
     BMI .bank_0d
-    LDA #$05
+    LDA.l $04DCC1
     BRA .bank
 .bank_0d:
     LDA #$0D

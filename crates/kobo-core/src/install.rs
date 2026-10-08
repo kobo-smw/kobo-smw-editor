@@ -113,6 +113,13 @@ pub const OVERWORLD_REVEAL: (&str, &str) = (
     include_str!("../asm/lunar-magic/overworld-reveal.asm"),
 );
 
+/// Lunar Magic's overworld palettes, for a project whose overworld has
+/// them.
+pub const OVERWORLD_PALETTES: (&str, &str) = (
+    "overworld-palettes.asm",
+    include_str!("../asm/lunar-magic/overworld-palettes.asm"),
+);
+
 /// The banks of Choc Island 2's rooms, applied by a build that writes one
 /// of levels `0CD`-`0CF`, whose banks those rooms would otherwise take
 /// (docs/lunar-magic-install.md, "Choc Island 2's rooms").
@@ -207,6 +214,10 @@ pub fn apply_overworld(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
 pub fn apply_overworld_reveal(asar: &Asar, rom: &Rom, speed: u8) -> Result<Rom, AsarError> {
     let patch = patch(OVERWORLD_REVEAL).define("speed", format!("${speed:02X}"));
     Ok(asar.patch(rom, &patch)?.rom)
+}
+
+pub fn apply_overworld_palettes(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
+    Ok(asar.patch(rom, &patch(OVERWORLD_PALETTES))?.rom)
 }
 
 pub fn apply_layer3(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {

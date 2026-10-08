@@ -88,6 +88,26 @@ pub fn load_overworld_on_passed(
     Ok(loaded(&machine, frames))
 }
 
+/// The overworld [`load_overworld_on`] loads, played on for `frames`
+/// frames with nothing pressed: what each frame leaves, the load's first.
+pub fn play_overworld_on(
+    rom: &Rom,
+    submap: u8,
+    frames: u32,
+) -> Result<Vec<LoadedOverworld>, ExpandError> {
+    let pins = vec![(PLAYER_SUBMAPS, submap), (PLAYER_SUBMAPS_2, submap)];
+    let (mut machine, loaded_at) = load_pinned(rom, &pins)?;
+    let mut out = vec![loaded(&machine, loaded_at)];
+    for frame in 1..=frames {
+        run_game_mode(&mut machine, 0)?;
+        machine.bus.pad = 0;
+        machine.bus.ram.set_u8(ram::LAG_FLAG, 0);
+        vertical_blank(&mut machine, 0)?;
+        out.push(loaded(&machine, loaded_at + frame));
+    }
+    Ok(out)
+}
+
 /// Each player's submap (`OWPlayerSubmap`).
 const PLAYER_SUBMAPS: RamAddr = RamAddr::new(0x7E_1F11);
 const PLAYER_SUBMAPS_2: RamAddr = RamAddr::new(0x7E_1F12);

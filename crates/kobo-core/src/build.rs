@@ -393,6 +393,10 @@ impl Project {
     pub fn lunar_magic_graphics(&self) -> bool {
         self.manifest.four_bpp
             || !self.exgfx.is_empty()
+            || self
+                .overworld
+                .as_ref()
+                .is_some_and(|o| !o.graphics.is_empty())
             || !self.manifest.bypass_lists.is_empty()
             || self.levels.iter().any(|(_, level)| {
                 level.graphics.is_some() || level.layer1.iter().any(graphics_object)
@@ -672,6 +676,17 @@ impl Stage {
                 if entrances.is_some() {
                     hash.update(project.entrance_count().to_le_bytes());
                 }
+                if project
+                    .overworld
+                    .as_ref()
+                    .is_some_and(|o| o.palettes.is_some())
+                    && layout
+                {
+                    let (name, text) = install::OVERWORLD_PALETTES;
+                    hash.update(name.as_bytes());
+                    hash.update([0]);
+                    hash.update(text.as_bytes());
+                }
                 if let Some(speed) = project.overworld.as_ref().and_then(|o| o.reveal_speed)
                     && layout
                 {
@@ -703,6 +718,12 @@ impl Stage {
                 for (n, files) in &project.manifest.bypass_lists {
                     bytes.push(*n);
                     bytes.extend(files);
+                }
+                if let Some(overworld) = &project.overworld {
+                    for (submap, list) in &overworld.graphics {
+                        bytes.push(*submap);
+                        bytes.extend(list.to_bytes());
+                    }
                 }
                 for (n, colour) in &project.shared_palettes.colours {
                     bytes.extend(n.to_le_bytes());
@@ -943,6 +964,10 @@ impl Stage {
                             .map_err(|e| BuildError::Asar(Box::new(e)))?;
                         if let Some(speed) = overworld.reveal_speed {
                             *rom = install::apply_overworld_reveal(&asar, rom, speed)
+                                .map_err(|e| BuildError::Asar(Box::new(e)))?;
+                        }
+                        if overworld.palettes.is_some() {
+                            *rom = install::apply_overworld_palettes(&asar, rom)
                                 .map_err(|e| BuildError::Asar(Box::new(e)))?;
                         }
                     }
@@ -1938,10 +1963,15 @@ fn write_exgfx(rom: &mut Rom, project: &Project) -> Result<(), BuildError> {
     let mut block = vec![0xFF; exgfx::POINTERS_LEN];
     for n in 0..exgfx::LIST_COUNT {
         let submap = (exgfx::SUBMAP_LISTS..exgfx::SUBMAP_LISTS + 7).contains(&n);
-        let list = if submap {
-            GraphicsList::SUBMAP_DEFAULT
-        } else {
-            GraphicsList::DEFAULT
+        let own = project.overworld.as_ref().and_then(|o| {
+            o.graphics
+                .get(&((n.wrapping_sub(exgfx::SUBMAP_LISTS)) as u8))
+                .filter(|_| submap)
+        });
+        let list = match own {
+            Some(list) => *list,
+            None if submap => GraphicsList::SUBMAP_DEFAULT,
+            None => GraphicsList::DEFAULT,
         };
         block.extend(list.to_bytes());
     }

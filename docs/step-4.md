@@ -77,8 +77,15 @@ from the editor where the user is working.
   hack's does (tests/overworld.rs).
 - Import carries a hack's overworld (2026-10-09): `overworld.toml`, what it changes of
   the clean ROM's, with its path reveal speed; riff2's import builds to the same
-  overworld and plays every level's events as riff2 does. Still left: the submaps'
-  graphics lists, and Lunar Magic's other Extra Options.
+  overworld and plays every level's events as riff2 does. Still left: Lunar Magic's
+  other Extra Options.
+- The overworld's graphics (2026-10-09): each submap's graphics list (`[graphics]`,
+  Kobo's code for the `JSL` at `$00A140`), Lunar Magic's 14 overworld palettes
+  (`[palettes.0xNN]`, Kobo's code for the `JSL` at `$00AD32`), and layer 1's 16x16
+  tiles moved where Lunar Magic's layout keeps them, up to `$1FF` (`[tiles]`), all
+  carried by import (lunar-magic-install.md, "The overworld"). Kaizo Kindergarten's
+  import builds to the hack's tilemaps and graphics on every submap but for its
+  animation: Lunar Magic's overworld ExAnimation is not carried yet.
 - The events' further tiles (2026-10-08): the game's list of 44 and Lunar Magic's
   tables of them, read (`Events::extras`), carried in the overworld file (an event's
   `extras`), and Kobo's code for the layout's two hooks of them (`$04E9F7`, `$04DCA5`),

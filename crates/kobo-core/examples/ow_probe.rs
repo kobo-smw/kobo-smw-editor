@@ -571,6 +571,7 @@ fn main() {
                 ("level flags", a.level_flags == b.level_flags),
                 ("level events", a.level_events == b.level_events),
                 ("tables", a.tables == b.tables),
+                ("16x16 tiles", a.tiles == b.tiles),
             ] {
                 if !same {
                     differ.push(what);
@@ -686,6 +687,138 @@ fn main() {
                     kobo_core::expand::reveal_speed(&rom, &clean)
                 );
             }
+        }
+        Some("lists") if args.len() == 2 => {
+            // `lists rom.smc`: for each submap, where $7FC006 points after
+            // the overworld's load, as a list number from read3($0FF7FF).
+            use kobo_core::ram::RamAddr;
+            let rom = Rom::load(&args[1]).unwrap();
+            let base = rom.read_u24(kobo_core::SnesAddr::new(0x0F_F7FF)).unwrap();
+            for submap in 0..=6u8 {
+                let l = kobo_core::expand::load_overworld_on(&rom, submap).unwrap();
+                let p = u32::from(l.ram.u8(RamAddr::new(0x7F_C006)))
+                    | u32::from(l.ram.u8(RamAddr::new(0x7F_C007))) << 8
+                    | u32::from(l.ram.u8(RamAddr::new(0x7F_C008))) << 16;
+                let list = p.wrapping_sub(base) as i64 / 32;
+                println!("submap {submap}: $7FC006 = {p:06X} (list {list:X}, base {base:06X})");
+            }
+        }
+        Some("sublists") if args.len() == 2 => {
+            let rom = Rom::load(&args[1]).unwrap();
+            println!("has exgfx {}", kobo_core::exgfx::has_exgfx(&rom));
+            for n in 0x200..0x207 {
+                println!("{n:X}: {:x?}", kobo_core::exgfx::read_list(&rom, n));
+            }
+        }
+        Some("cgram") if args.len() == 4 => {
+            // `cgram rom.smc submap out.bin`: CGRAM after the load on a submap.
+            let rom = Rom::load(&args[1]).unwrap();
+            let l = kobo_core::expand::load_overworld_on(&rom, args[2].parse().unwrap()).unwrap();
+            std::fs::write(&args[3], &l.cgram).unwrap();
+        }
+        Some("anims") if args.len() == 3 => {
+            // `anims base.smc rom.smc`: the RATS blocks `rom` has that
+            // `base` has not which read as an ExAnimation list exactly their
+            // length: slots and types only, never the bytes, since a block
+            // may be Lunar Magic's code.
+            let base = Rom::load(&args[1]).unwrap();
+            let rom = Rom::load(&args[2]).unwrap();
+            let theirs: std::collections::HashSet<Vec<u8>> = rats::blocks(&base)
+                .iter()
+                .map(|b| base.read(b.start, b.len).unwrap().to_vec())
+                .collect();
+            for block in rats::blocks(&rom) {
+                let bytes = rom.read(block.start, block.len).unwrap();
+                if theirs.contains(bytes) {
+                    continue;
+                }
+                if let Ok((list, len)) = kobo_core::exanimation::List::parse(bytes)
+                    && len == block.len
+                {
+                    let kinds: Vec<String> = list
+                        .slots
+                        .iter()
+                        .map(|(n, s)| format!("{n}:{:02X}/{:02X}", s.kind, s.trigger))
+                        .collect();
+                    println!(
+                        "{} {:#x} bytes: {} slots, alt file {}, {}",
+                        block.start,
+                        block.len,
+                        list.count,
+                        list.alt_file,
+                        kinds.join(" ")
+                    );
+                }
+            }
+        }
+        Some("frames") if args.len() >= 5 => {
+            // `frames a.smc b.smc submap frames [ram]`: the overworld on a
+            // submap played on in both ROMs, frame by frame: where VRAM
+            // (by $400 words) and CGRAM differ, and with `ram`, RAM.
+            let submap: u8 = args[3].parse().unwrap();
+            let frames: u32 = args[4].parse().unwrap();
+            let play = |p: &str| {
+                kobo_core::expand::play_overworld_on(&Rom::load(p).unwrap(), submap, frames)
+                    .unwrap()
+            };
+            let (a, b) = (play(&args[1]), play(&args[2]));
+            for (n, (x, y)) in a.iter().zip(&b).enumerate() {
+                let mut line = Vec::new();
+                for (k, (p, q)) in x.vram.chunks(0x800).zip(y.vram.chunks(0x800)).enumerate() {
+                    let differ = p.iter().zip(q).filter(|(c, d)| c != d).count();
+                    if differ > 0 {
+                        line.push(format!("VRAM ${:04X} {differ}", k * 0x400));
+                    }
+                }
+                let cg: Vec<usize> = (0..x.cgram.len() / 2)
+                    .filter(|&i| x.cgram[2 * i..2 * i + 2] != y.cgram[2 * i..2 * i + 2])
+                    .collect();
+                if !cg.is_empty() {
+                    line.push(format!("colours {cg:02X?}"));
+                }
+                if args.get(5).is_some_and(|s| s == "ram") {
+                    let (p, q) = (
+                        x.ram
+                            .bytes(kobo_core::ram::RamAddr::new(0x7E_0000), 0x2_0000),
+                        y.ram
+                            .bytes(kobo_core::ram::RamAddr::new(0x7E_0000), 0x2_0000),
+                    );
+                    // The stack left out: on a ROM Lunar Magic saved it
+                    // holds where its code is.
+                    let at: Vec<String> = (0..p.len())
+                        .filter(|&i| p[i] != q[i] && !(0x100..0x200).contains(&i))
+                        .map(|i| format!("{:06X}", 0x7E_0000 + i))
+                        .collect();
+                    if !at.is_empty() {
+                        line.push(format!("RAM {} {:?}", at.len(), &at[..at.len().min(64)]));
+                    }
+                }
+                if !line.is_empty() {
+                    println!("frame {n}: {}", line.join("; "));
+                }
+            }
+        }
+        Some("vram") if args.len() == 4 => {
+            // `vram a.smc b.smc submap`: where in VRAM the two ROMs' loads
+            // on a submap differ, by $400 words, with the layers' tilemap
+            // and character bases, and CGRAM.
+            let submap: u8 = args[3].parse().unwrap();
+            let load = |p: &str| {
+                kobo_core::expand::load_overworld_on(&Rom::load(p).unwrap(), submap).unwrap()
+            };
+            let (a, b) = (load(&args[1]), load(&args[2]));
+            println!(
+                "BGnSC {:02X?} {:02X?}, characters {:04X?} {:04X?}",
+                a.bg_sc, b.bg_sc, a.bg_character_base, b.bg_character_base
+            );
+            for (n, (x, y)) in a.vram.chunks(0x800).zip(b.vram.chunks(0x800)).enumerate() {
+                let differ = x.iter().zip(y).filter(|(p, q)| p != q).count();
+                if differ > 0 {
+                    println!("  VRAM word ${:04X}: {differ} bytes differ", n * 0x400);
+                }
+            }
+            let differ = a.cgram.iter().zip(&b.cgram).filter(|(p, q)| p != q).count();
+            println!("  CGRAM: {differ} bytes differ");
         }
         Some("pair") if args.len() == 3 => {
             let a = Rom::load(&args[1]).unwrap();

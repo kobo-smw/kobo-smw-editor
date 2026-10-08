@@ -22,6 +22,15 @@
 //! [event_tiles]                  # where the event tile data's 2x2 blocks start
 //! split = 0x0900
 //!
+//! [tiles]                        # a layer 1 16x16 tile's four 8x8 tiles, as tilemap words:
+//! 0x0C1 = "0CA0 0CB0 0CA1 0CB1"  # top left, bottom left, top right, bottom right
+//!
+//! [graphics]                     # a submap's graphics list (Lunar Magic's 200-206): 16 words
+//! 0x01 = "8014 007F ..."        # in its slot order, AN2 first
+//!
+//! [palettes.0x00]                # Lunar Magic's overworld palettes, 0-6 each map's, 7-13 each
+//! 0x0 = "#000000 #F8F8F8 ..."    # once Special World is passed: rows of 16 colours
+//!
 //! [options]                      # Lunar Magic's: the event path fade off, a speed to reveal at
 //! reveal_speed = 0x06
 //!
@@ -206,6 +215,38 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
             text += &format!("{} = {}\n", hex(u32::from(t), 2), quoted.trim());
         }
         sections.push(text);
+    }
+    if !changes.tiles.is_empty() {
+        let mut text = String::from("[tiles]\n");
+        for (&n, tile) in &changes.tiles {
+            text += &format!("{} = \"{}\"\n", hex(u32::from(n), 3), words(tile, 4));
+        }
+        sections.push(text);
+    }
+    if !changes.graphics.is_empty() {
+        let mut text = String::from("[graphics]\n");
+        for (&submap, list) in &changes.graphics {
+            let words: Vec<String> = list.0.iter().map(|w| format!("{w:04X}")).collect();
+            text += &format!("{} = \"{}\"\n", hex(u32::from(submap), 2), words.join(" "));
+        }
+        sections.push(text);
+    }
+    if let Some(palettes) = &changes.palettes {
+        for (n, palette) in palettes.chunks(0x200).enumerate() {
+            let mut text = format!("[palettes.{}]\n", hex(n as u32, 2));
+            for (row, colours) in palette.chunks(32).enumerate() {
+                let line: Vec<String> = colours
+                    .chunks(2)
+                    .map(|c| {
+                        crate::source::level::color_text(crate::palette::Color15(
+                            u16::from_le_bytes([c[0], c[1]]),
+                        ))
+                    })
+                    .collect();
+                text += &format!("{} = \"{}\"\n", hex(row as u32, 1), line.join(" "));
+            }
+            sections.push(text);
+        }
     }
     if let Some(speed) = changes.reveal_speed {
         sections.push(format!(
@@ -451,6 +492,83 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                         .ok_or_else(|| invalid(&at, "must be a name"))?;
                     changes.names.insert(t, parse_name(&at, text)?);
                 }
+            }
+            "tiles" => {
+                let table = item
+                    .as_table()
+                    .ok_or_else(|| invalid(key, "must be a table of tiles"))?;
+                for (n, value) in table.iter() {
+                    let at = format!("tiles.{n}");
+                    let n = n
+                        .strip_prefix("0x")
+                        .and_then(|h| u16::from_str_radix(h, 16).ok())
+                        .filter(|&n| usize::from(n) < crate::overworld::MAX_TILES)
+                        .ok_or_else(|| invalid(&at, "a tile is 0x000 to 0x1FF"))?;
+                    let text = value
+                        .as_str()
+                        .ok_or_else(|| invalid(&at, "must be 4 hex words"))?;
+                    let words = parse_words(&at, text, 4, 0xFFFF)?;
+                    changes.tiles.insert(n, words.try_into().expect("4 words"));
+                }
+            }
+            "graphics" => {
+                let table = item
+                    .as_table()
+                    .ok_or_else(|| invalid(key, "must be a table of lists"))?;
+                for (submap, value) in table.iter() {
+                    let at = format!("graphics.{submap}");
+                    let submap = submap
+                        .strip_prefix("0x")
+                        .and_then(|h| u8::from_str_radix(h, 16).ok())
+                        .filter(|&s| s <= 6)
+                        .ok_or_else(|| invalid(&at, "a submap is 0x00 to 0x06"))?;
+                    let text = value
+                        .as_str()
+                        .ok_or_else(|| invalid(&at, "must be 16 hex words"))?;
+                    let words = parse_words(&at, text, 16, 0xFFFF)?;
+                    let list: [u16; 16] = words.try_into().expect("16 words");
+                    changes
+                        .graphics
+                        .insert(submap, crate::exgfx::GraphicsList(list));
+                }
+            }
+            "palettes" => {
+                let table = item
+                    .as_table()
+                    .ok_or_else(|| invalid(key, "must be a table of palettes"))?;
+                let mut bytes = vec![0u8; crate::overworld::PALETTES_LEN];
+                for (n, palette) in table.iter() {
+                    let at = format!("palettes.{n}");
+                    let n = n
+                        .strip_prefix("0x")
+                        .and_then(|h| usize::from_str_radix(h, 16).ok())
+                        .filter(|&n| n < 14)
+                        .ok_or_else(|| invalid(&at, "a palette is 0x00 to 0x0D"))?;
+                    let rows = palette
+                        .as_table()
+                        .ok_or_else(|| invalid(&at, "must be a table of rows"))?;
+                    for (row, value) in rows.iter() {
+                        let at = format!("{at}.{row}");
+                        let row = row
+                            .strip_prefix("0x")
+                            .and_then(|h| usize::from_str_radix(h, 16).ok())
+                            .filter(|&r| r < 16)
+                            .ok_or_else(|| invalid(&at, "a row is 0x0 to 0xF"))?;
+                        let text = value
+                            .as_str()
+                            .ok_or_else(|| invalid(&at, "must be 16 colours"))?;
+                        let colours: Vec<&str> = text.split_whitespace().collect();
+                        if colours.len() != 16 {
+                            return Err(invalid(&at, "must be 16 colours"));
+                        }
+                        for (i, c) in colours.iter().enumerate() {
+                            let colour = crate::source::level::parse_color(&at, c)?;
+                            let o = n * 0x200 + row * 32 + i * 2;
+                            bytes[o..o + 2].copy_from_slice(&colour.0.to_le_bytes());
+                        }
+                    }
+                }
+                changes.palettes = Some(bytes);
             }
             "options" => {
                 let table = item
@@ -699,6 +817,17 @@ mod tests {
         changes.level_events.insert(0x13, 0x0A);
         changes.event_split = Some(0x0A00);
         changes.reveal_speed = Some(6);
+        changes
+            .tiles
+            .insert(0x1C1, [0x0CA0, 0x0CB0, 0x4CA0, 0x4CB0]);
+        changes.palettes = Some(
+            (0..crate::overworld::PALETTES_LEN / 2)
+                .flat_map(|i| ((i as u16).wrapping_mul(37) & 0x7FFF).to_le_bytes())
+                .collect(),
+        );
+        changes
+            .graphics
+            .insert(1, crate::exgfx::GraphicsList([0x8014; 16]));
         changes
             .tables
             .insert("music".into(), vec![2, 3, 4, 6, 7, 9, 5]);

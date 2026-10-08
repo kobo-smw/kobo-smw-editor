@@ -1003,24 +1003,23 @@ pub fn read_exgfx_files(rom: &Rom) -> Result<ExGfxFiles, ImportError> {
             uses.entry(f as u16).or_default().insert(4);
         }
     }
-    // The submaps' lists: a build writes the overworld's own files there,
-    // as it carries no overworld graphics yet (roadmap step 4).
-    let mut submaps = Vec::new();
+    // The submaps' lists, which an import carries with the overworld.
+    // A submap's list is loaded whatever its bits.
     for n in exgfx::SUBMAP_LISTS..exgfx::SUBMAP_LISTS + 7 {
-        let files = |l: &exgfx::GraphicsList| l.0.map(|w| w & 0xFFF);
-        if exgfx::read_list(rom, n)?
-            .is_some_and(|l| files(&l) != files(&exgfx::GraphicsList::SUBMAP_DEFAULT))
-        {
-            submaps.push(n - exgfx::SUBMAP_LISTS);
+        let Some(list) = exgfx::read_list(rom, n)? else {
+            continue;
+        };
+        let files = list.0.iter().enumerate().filter_map(|(s, &w)| {
+            (w != exgfx::EMPTY && w & 0x0FFF != exgfx::NO_FILE).then_some((s, w & 0x0FFF))
+        });
+        for (s, file) in files {
+            let depth = match s {
+                exgfx::slot::AN2 | exgfx::slot::LT3 => 0,
+                exgfx::slot::LG1 | exgfx::slot::LG2 | exgfx::slot::LG3 | exgfx::slot::LG4 => 2,
+                _ => 4,
+            };
+            uses.entry(file).or_default().insert(depth);
         }
-    }
-    if !submaps.is_empty() {
-        let list: Vec<String> = submaps.iter().map(|n| n.to_string()).collect();
-        notes.push(format!(
-            "the graphics lists of submaps {} name other files than the overworld's own, \
-             which builds write there: overworld graphics are not carried yet",
-            list.join(", ")
-        ));
     }
     for file in exgfx::EXGFX_FIRST..=exgfx::EXGFX_LAST {
         let data = match exgfx::read_exgfx(rom, file, compression) {
@@ -1294,6 +1293,14 @@ fn import_overworld(
         return Ok(());
     };
     let mut changes = theirs.changes_from(&clean.in_lunar_magic_shape());
+    for submap in 0..7u8 {
+        let n = exgfx::SUBMAP_LISTS + u16::from(submap);
+        if let Some(list) = exgfx::read_list(rom, n)?
+            && list != exgfx::GraphicsList::SUBMAP_DEFAULT
+        {
+            changes.graphics.insert(submap, list);
+        }
+    }
     match crate::expand::reveal_speed(rom, base) {
         Ok(speed) => changes.reveal_speed = speed,
         Err(e) => report.notes.push(format!(
@@ -1306,7 +1313,7 @@ fn import_overworld(
     let file = PathBuf::from("overworld.toml");
     let top = [
         "# The hack's overworld, as what it changes of the clean ROM's.".to_string(),
-        "# Not carried yet: Lunar Magic's other Extra Options, and the submaps' graphics.".into(),
+        "# Not carried yet: its ExAnimation, and Lunar Magic's other Extra Options.".into(),
     ];
     write_text(
         &dir.join(&file),
@@ -1314,8 +1321,8 @@ fn import_overworld(
     )?;
     manifest.overworld = Some(file);
     report.notes.push(
-        "its overworld is carried (overworld.toml), but for Lunar Magic's Extra Options other \
-         than the path reveal speed, and the submaps' graphics"
+        "its overworld is carried (overworld.toml), but for its ExAnimation and Lunar Magic's \
+         Extra Options other than the path reveal speed"
             .into(),
     );
     Ok(())
