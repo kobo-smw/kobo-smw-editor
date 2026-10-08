@@ -203,6 +203,10 @@ pub struct Startup {
     /// Save a picture of the window here once the level's picture is in,
     /// then quit: for documentation and checks without a display.
     pub screenshot: Option<PathBuf>,
+    /// Keep frames at least `FRAME` apart, for a window drawn without
+    /// vsync (`main.rs`), which would otherwise draw as fast as it can
+    /// while something animates.
+    pub pace: bool,
 }
 
 pub struct App {
@@ -280,6 +284,8 @@ pub struct App {
     /// The levels shown last, newest first: only these keep their
     /// pictures, which are large.
     viewed: std::collections::VecDeque<u16>,
+    /// When the last frame began, for `Startup::pace`.
+    last_frame: Option<Instant>,
 }
 
 impl App {
@@ -357,6 +363,7 @@ impl App {
             screenshot_frames: None,
             shown_title: String::new(),
             viewed: Default::default(),
+            last_frame: None,
         };
         if let Clean::Loaded(rom) = &app.clean {
             app.entrance_tables = kobo_core::entrance::MainEntranceTables::read(rom).ok();
@@ -1791,6 +1798,10 @@ fn same_file(a: &Path, b: &Path) -> bool {
         }
 }
 
+/// The shortest time between frames when the editor paces them: 60 a
+/// second.
+const FRAME: Duration = Duration::from_micros(16_667);
+
 /// How many levels keep their pictures while others are shown.
 const KEPT_PICTURES: usize = 4;
 /// Levels the Back command remembers.
@@ -1806,6 +1817,16 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // Once a frame, not again for another pass of the same one.
+        if self.startup.pace && ctx.current_pass_index() == 0 {
+            if let Some(wait) = self
+                .last_frame
+                .and_then(|at| FRAME.checked_sub(at.elapsed()))
+            {
+                std::thread::sleep(wait);
+            }
+            self.last_frame = Some(Instant::now());
+        }
         self.take_preview(&ctx);
         crate::start::poll(self, &ctx);
         crate::dialogs::poll(self);

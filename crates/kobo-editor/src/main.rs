@@ -123,6 +123,10 @@ fn icon() -> egui::IconData {
     }
 }
 
+/// Whether the window draws without vsync and paces its own frames: on
+/// Linux, where a compositor shows every frame whole anyway.
+const PACE: bool = cfg!(target_os = "linux");
+
 fn parse_hex(text: &str) -> Result<u16, String> {
     u16::from_str_radix(text.trim_start_matches("0x"), 16).map_err(|e| e.to_string())
 }
@@ -140,6 +144,15 @@ fn main() -> eframe::Result {
             .with_icon(icon())
             .with_inner_size([width, height])
             .with_min_inner_size([800.0, 500.0]),
+        // With vsync, a frame drawn while the window is covered (by the
+        // emulator Play opens) waits on Wayland until it is shown again,
+        // as the compositor sends no frame callbacks to a hidden window,
+        // and the desktop calls the editor not responding meanwhile. The
+        // editor paces its frames itself instead (`Startup::pace`).
+        glow_options: eframe::egui_glow::GlowConfiguration {
+            vsync: !PACE,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let startup = app::Startup {
@@ -151,6 +164,7 @@ fn main() -> eframe::Result {
         tab: args.tab,
         build: args.build,
         screenshot: args.screenshot,
+        pace: PACE,
     };
     eframe::run_native(
         "Kobo",

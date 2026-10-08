@@ -25,6 +25,14 @@ file by hand; when they do, the editor follows.
   so there is no second copy of that state to keep in step. Its licence is MIT or
   Apache-2.0; it builds from Rust alone on all three platforms, and a level picture is a
   texture it draws like any other image.
+- On Linux the window draws without vsync and the editor keeps its frames 1/60 s apart
+  itself (`Startup::pace`). With vsync, Mesa's EGL on Wayland waits for the
+  compositor's frame callback before a swap returns, with no time limit, and a
+  compositor sends none to a window that is covered; winit reports no occlusion on
+  Wayland, so eframe draws anyway. A frame drawn while the emulator Play opens covers
+  the editor (the pointer leaving is enough) then held the window's thread until the
+  editor was uncovered, and the desktop called it not responding (2026-10-08). A
+  compositor shows each frame whole, so nothing tears without vsync there.
 - `rfd` for file dialogs, through the XDG portal on Linux (no GTK to build against), and
   `notify` for watching the project's files. Both are MPL-compatible (MIT, CC0).
 - `egui_kittest` tests the interface without a display, through AccessKit.
