@@ -104,6 +104,10 @@ file by hand; when they do, the editor follows.
 - In step 4, once the overworld is a project's, the overworld's own tiles decide which
   levels are overworld levels, so that a hack that leaves translevels unused groups by
   what the player can enter.
+- Levels are named as the overworld names them (`level::level_name`), from the clean
+  ROM, whose overworld a build keeps while Kobo carries none of a project's: for a
+  project imported from a hack, the game's names, not the hack's, though true of what
+  the build makes. In step 4 the project's overworld names them.
 - A level whose objects are those of the layer 1 data most of the clean ROM's levels
   point at (the "TEST" level at `$068000`, 277 of the 512) is left out until asked for
   (`reach::Placeholder`), whether or not the project lists it; a level with any object of

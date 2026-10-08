@@ -13,9 +13,3 @@ doc it belongs to). Each says what was decided, why, where it is recorded, and w
 settle it.
 
 ## Open
-
-- **Level names from the clean ROM (2026-10-06).** The editor names levels as the
-  overworld does (`level::level_name`), from the clean ROM, whose overworld a build keeps
-  while Kobo carries none of a project's. For a project imported from a hack they are the
-  game's names, not the hack's, though true of what the build makes. To settle once the
-  overworld is a project's (step 4): the project's names then.
