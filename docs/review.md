@@ -14,10 +14,6 @@ settle it.
 
 ## Open
 
-- **Lunar Magic's "Auto-Set Number of Screens" (2026-10-06).** The editor does not set a
-  level's screen count by itself, as Lunar Magic does when it saves; the flag is shown as
-  what it is ("Lunar Magic sets screens"), and *Fit* beside the screen count sets it from
-  the objects and sprites when the user asks (`edit::screens_used`).
 - **Level names from the clean ROM (2026-10-06).** The editor names levels as the
   overworld does (`level::level_name`), from the clean ROM, whose overworld a build keeps
   while Kobo carries none of a project's. For a project imported from a hack they are the

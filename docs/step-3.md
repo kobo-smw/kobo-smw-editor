@@ -139,6 +139,14 @@ file by hand; when they do, the editor follows.
   objects that overlap. Screen exits sort at their screen's start; what has no place is
   last.
 
+### Screen counts are set by hand
+
+- Reviewed 2026-10-08. The editor never sets a level's screen count by itself, as Lunar
+  Magic does when it saves with "Auto-Set Number of Screens" on: the level file is what
+  builds, and an edit changes only what it says. The flag is shown as what it is ("Lunar
+  Magic sets screens"), and *Fit* beside the count sets it from the objects and sprites
+  when the user asks (`edit::screens_used`), as one undo step.
+
 ### Clean room in the editor
 
 - The editor shows no CPU trace, read trace, RAM view, or routine address. A debugging
