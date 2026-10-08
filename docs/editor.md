@@ -211,7 +211,9 @@ Dragging draws the chosen layer's tiles with its brush: layer 1's 16x16 tiles (a
 number, its page in the high digit), or layer 2's 8x8 ones (the properties, then the
 number). A right click takes the tile under it as the brush and chooses the layer 1 tile
 there, whose translevel (the level it enters, 0 for none) and direction byte are set
-below, the event passing its level makes (the secret exit the next one), and its
+below, the event passing its level makes (the secret exit the next one), its
+settings at a new game (the directions open, and Lunar Magic's save prompt and no-entry
+flags), and its
 level's name (19 tiles at most, `\xNN` for a tile that is not a letter; Enter sets
 it). *Mario starts here* and *Luigi starts here* put a new game's player on the chosen
 tile of the map shown, in its middle, as the game's and Lunar Magic's starts are.

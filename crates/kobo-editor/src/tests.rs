@@ -2009,6 +2009,16 @@ fn the_overworld_map_is_drawn_on_with_the_pointer() {
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     harness.step();
     assert_eq!(overworld(harness.state()).start, before.start);
+    // Its level's settings: the save prompt's flag.
+    harness.get_by_label("save prompt").click();
+    harness.run_steps(2);
+    let flags = overworld(harness.state()).level_flags[1];
+    assert_eq!(
+        flags,
+        before.level_flags[1] | kobo_core::overworld::FLAG_SAVE
+    );
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
     // A drag across three tiles draws them, as one step.
     harness.state_mut().overworld_editor.brush = 0x58;
     harness.event(egui::Event::PointerMoved(tile(2.0, 2.0)));

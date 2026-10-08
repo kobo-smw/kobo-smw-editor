@@ -183,6 +183,8 @@ enum Change {
     },
     /// The event passing a translevel makes.
     Event { translevel: u8, event: u8 },
+    /// A translevel's settings at a new game.
+    Flags { translevel: u8, flags: u8 },
     /// Where a new game puts Mario (0) or Luigi (1).
     Start { player: usize, start: Start },
     /// Event `event` as `to`.
@@ -228,6 +230,13 @@ impl Change {
                 app.change_overworld("Change a level's event", false, |ow| {
                     if let Some(slot) = ow.level_events.get_mut(usize::from(translevel)) {
                         *slot = event;
+                    }
+                })
+            }
+            Change::Flags { translevel, flags } => {
+                app.change_overworld("Change a level's settings", false, |ow| {
+                    if let Some(slot) = ow.level_flags.get_mut(usize::from(translevel)) {
+                        *slot = flags;
                     }
                 })
             }
@@ -695,6 +704,46 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
                     change = Some(Change::Event {
                         translevel: t,
                         event,
+                    });
+                }
+            });
+            ui.horizontal(|ui| {
+                let was = overworld.level_flags[usize::from(t)];
+                let mut flags = was;
+                ui.label("At a new game: directions");
+                let mut directions = flags & 0x0F;
+                ui.add(
+                    egui::DragValue::new(&mut directions)
+                        .range(0..=0x0F)
+                        .hexadecimal(1, false, true),
+                )
+                .on_hover_text("The directions open from the tile at a new game (bits 0 to 3)");
+                flags = flags & !0x0F | directions;
+                let mut save = flags & kobo_core::overworld::FLAG_SAVE != 0;
+                ui.checkbox(&mut save, "save prompt").on_hover_text(
+                    "The save prompt comes up when the level is passed (Lunar Magic's flag)",
+                );
+                let mut no_entry = flags & kobo_core::overworld::FLAG_NO_ENTRY != 0;
+                ui.checkbox(&mut no_entry, "no entry once passed")
+                    .on_hover_text(
+                        "The level cannot be entered once it is passed (Lunar Magic's flag)",
+                    );
+                flags = flags
+                    & !(kobo_core::overworld::FLAG_SAVE | kobo_core::overworld::FLAG_NO_ENTRY)
+                    | if save {
+                        kobo_core::overworld::FLAG_SAVE
+                    } else {
+                        0
+                    }
+                    | if no_entry {
+                        kobo_core::overworld::FLAG_NO_ENTRY
+                    } else {
+                        0
+                    };
+                if flags != was {
+                    change = Some(Change::Flags {
+                        translevel: t,
+                        flags,
                     });
                 }
             });
