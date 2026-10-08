@@ -47,7 +47,7 @@ load_tables:
     REP #$20
     LDA.l $04D803
     STA $8A
-    LDA.w #!map16_low+$800
+    LDA.w #(!map16_low+$800)&$FFFF
     STA $00
     SEP #$20
     LDA.l $04D808
@@ -58,7 +58,7 @@ load_tables:
     REP #$20
     LDA.l $04D822
     STA $8A
-    LDA.w #!map16_high
+    LDA.w #!map16_high&$FFFF
     STA $00
     SEP #$20
     LDA.l $04D827
@@ -83,7 +83,7 @@ unpack:
     PLB
     PHK
     PER .back-1
-    PEA !rtl_00-1
+    PEA.w (!rtl_00-1)&$FFFF
     JML !decompress
 .back:
     PLP

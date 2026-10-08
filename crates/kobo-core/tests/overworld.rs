@@ -80,3 +80,65 @@ fn lunar_magic_overworlds_read_as_their_loads_leave_them() {
     }
     failures.finish();
 }
+
+/// Each hack's overworld, as changes against the clean ROM's, built by Kobo
+/// in Lunar Magic's layout: the build reads back as the hack's, and Kobo's
+/// code for the load leaves what it reads.
+#[test]
+fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
+    use kobo_core::build::{self, Project};
+
+    if common::asar().is_none() {
+        return;
+    }
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let base = Overworld::read(&clean).unwrap().in_lunar_magic_shape();
+    let failures = common::failures::Failures::new(
+        "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them",
+    );
+    for (path, rom) in common::lunar_magic_roms() {
+        failures.checked(&path, &rom);
+        let theirs = match Overworld::read(&rom) {
+            Ok(read) => read.in_lunar_magic_shape(),
+            Err(e) => {
+                failures.fail(&rom, None, format!("read: {e}"));
+                continue;
+            }
+        };
+        let project = Project {
+            root: std::path::PathBuf::from("."),
+            overworld: Some(theirs.changes_from(&base)),
+            ..Default::default()
+        };
+        let built = match build::build(&clean, &project) {
+            Ok(built) => built,
+            Err(e) => {
+                failures.fail(&rom, None, format!("build: {e}"));
+                continue;
+            }
+        };
+        let ours = Overworld::read(&built).unwrap();
+        let same = ours.layer1 == theirs.layer1
+            && ours.translevels == theirs.translevels
+            && ours.directions == theirs.directions
+            && ours.layer2 == theirs.layer2
+            && ours.names == theirs.names
+            && ours.event_list() == theirs.event_list()
+            && ours.events.crush == theirs.events.crush
+            && ours.events.reveal == theirs.events.reveal;
+        if !same {
+            failures.fail(&rom, None, "the build reads back otherwise");
+        }
+        match expand::load_overworld(&built) {
+            Ok(loaded) => {
+                for d in overworld::differences(&ours, &loaded) {
+                    failures.fail(&rom, None, format!("the build's load: {d}"));
+                }
+            }
+            Err(e) => failures.fail(&rom, None, format!("the build's load: {e}")),
+        }
+    }
+    failures.finish();
+}

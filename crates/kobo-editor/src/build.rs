@@ -352,6 +352,7 @@ fn stage_name(stage: Stage) -> &'static str {
         Stage::Music => "Music (AddmusicK)",
         Stage::Graphics => "Graphics",
         Stage::Map16 => "Map16",
+        Stage::Overworld => "Overworld",
         Stage::Sprites => "Sprites (PIXI)",
         Stage::Blocks => "Blocks (GPS)",
         Stage::UberAsm => "UberASM",

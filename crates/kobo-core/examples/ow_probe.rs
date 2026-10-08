@@ -123,6 +123,57 @@ fn check(rom: &Rom) -> String {
     out
 }
 
+/// A hack's overworld built by Kobo onto the clean ROM: read back against
+/// the hack's, and the build's own load against the hack's tables.
+fn build_check(clean: &Rom, hack: &Rom) -> String {
+    use kobo_core::build::{self, Project};
+    use kobo_core::overworld::Overworld;
+    let theirs = match Overworld::read(hack) {
+        Ok(o) => o.in_lunar_magic_shape(),
+        Err(e) => return format!("read: {e}"),
+    };
+    let base = Overworld::read(clean).unwrap().in_lunar_magic_shape();
+    let project = Project {
+        root: std::path::PathBuf::from("."),
+        overworld: Some(theirs.changes_from(&base)),
+        ..Default::default()
+    };
+    let built = match build::build(clean, &project) {
+        Ok(rom) => rom,
+        Err(e) => return format!("build: {e}"),
+    };
+    let ours = match Overworld::read(&built) {
+        Ok(o) => o,
+        Err(e) => return format!("read back: {e}"),
+    };
+    let mut out = String::new();
+    for (what, same) in [
+        ("layer 1", ours.layer1 == theirs.layer1),
+        ("translevels", ours.translevels == theirs.translevels),
+        ("directions", ours.directions == theirs.directions),
+        ("layer 2", ours.layer2 == theirs.layer2),
+        ("names", ours.names == theirs.names),
+        ("events", ours.event_list() == theirs.event_list()),
+        ("crush", ours.events.crush == theirs.events.crush),
+    ] {
+        if !same {
+            out += &format!(" {what} differs;");
+        }
+    }
+    match kobo_core::expand::load_overworld(&built) {
+        Ok(loaded) => {
+            let d = kobo_core::overworld::differences(&ours, &loaded);
+            if d.is_empty() {
+                out += " the build loads as read";
+            } else {
+                out += &format!(" load: {}", d.join(", "));
+            }
+        }
+        Err(e) => out += &format!(" load: {e}"),
+    }
+    out
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
@@ -158,6 +209,19 @@ fn main() {
                     .unwrap()
                     .to_string_lossy();
                 println!("{name}: {}", check(&rom));
+            }
+        }
+        Some("build") if args.len() >= 3 => {
+            // `build clean.smc hack.smc...`: each hack's overworld built
+            // onto the clean ROM by Kobo, read back, and loaded.
+            let clean = Rom::load(&args[1]).unwrap();
+            for path in &args[2..] {
+                let rom = Rom::load(path).unwrap();
+                let name = std::path::Path::new(path)
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy();
+                println!("{name}: {}", build_check(&clean, &rom));
             }
         }
         _ => eprintln!(

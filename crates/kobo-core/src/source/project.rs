@@ -96,6 +96,9 @@ pub struct Manifest {
     /// What the project changes of the game's shared colour tables
     /// (`[palettes] shared`, `source::palettes`).
     pub shared_palettes: Option<PathBuf>,
+    /// What the project changes of the clean ROM's overworld
+    /// (`[overworld] file`, `source::overworld`).
+    pub overworld: Option<PathBuf>,
     /// Level number to file, relative to the project directory.
     pub levels: BTreeMap<u16, PathBuf>,
     /// Lunar Magic's global ExAnimation list's file (`source::animation`).
@@ -252,6 +255,10 @@ impl Manifest {
             out.table("palettes");
             out.key("palettes", "shared", quoted(shared));
         }
+        if let Some(overworld) = &self.overworld {
+            out.table("overworld");
+            out.key("overworld", "file", quoted(overworld));
+        }
         if !self.exgfx.is_empty() {
             out.table("exgfx");
             for (file, entry) in &self.exgfx {
@@ -319,6 +326,7 @@ impl Manifest {
                 "map16_tileset",
                 "map16_pipes",
                 "palettes",
+                "overworld",
                 "animation",
                 "levels",
             ]
@@ -547,6 +555,22 @@ impl Manifest {
                         manifest.map16_pipes = Some(PathBuf::from(file));
                     }
                     _ => return Err(invalid("map16_pipes", format!("unknown key `{key}`"))),
+                }
+            }
+        }
+        if let Some(overworld) = doc.get("overworld") {
+            let overworld = overworld
+                .as_table()
+                .ok_or_else(|| invalid("overworld", "must be a table"))?;
+            for (key, item) in overworld.iter() {
+                match key {
+                    "file" => {
+                        let file = item
+                            .as_str()
+                            .ok_or_else(|| invalid("overworld.file", "must be a file path"))?;
+                        manifest.overworld = Some(PathBuf::from(file));
+                    }
+                    _ => return Err(invalid("overworld", format!("unknown key `{key}`"))),
                 }
             }
         }
@@ -796,6 +820,7 @@ mod tests {
             map16_tileset: BTreeMap::from([(0x05, PathBuf::from("map16/tileset-05.toml"))]),
             map16_pipes: Some(PathBuf::from("map16/pipes.toml")),
             shared_palettes: Some(PathBuf::from("palettes/shared.toml")),
+            overworld: Some(PathBuf::from("overworld/overworld.toml")),
             levels: BTreeMap::from([
                 (0x105, PathBuf::from("world1/yoshis-island-1.toml")),
                 (0x0C7, PathBuf::from("title.toml")),
@@ -812,6 +837,7 @@ mod tests {
              [map16_tileset]\n0x05 = \"map16/tileset-05.toml\"  # pages 0 and 1 also tilesets 4, D\n\n\
              [map16_pipes]\nfile = \"map16/pipes.toml\"\n\n\
              [palettes]\nshared = \"palettes/shared.toml\"\n\n\
+             [overworld]\nfile = \"overworld/overworld.toml\"\n\n\
              [exgfx]\n0x080 = \"graphics/ExGFX80.png\"\n\
              0x100 = { file = \"graphics/ExGFX100.png\", bpp = 2 }\n\
              0xFFF = \"graphics/ExGFXFFF.bin\"\n\n\

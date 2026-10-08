@@ -297,6 +297,7 @@ fn project(clean: &Rom) -> Project {
             pipes
         },
         shared_palettes: Default::default(),
+        overworld: None,
         gfx: Vec::new(),
         exgfx: Vec::new(),
         animation_global: Some(animation_list(0x2400)),

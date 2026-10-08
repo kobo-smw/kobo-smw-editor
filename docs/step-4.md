@@ -69,6 +69,14 @@ from the editor where the user is working.
   (layer 1 and its pages, translevels, directions, layer 2, names, events) for the game's
   layout and Lunar Magic's, equal to the load in every corpus hack that reaches an
   overworld but locked and older-version ones.
+- The overworld built (2026-10-08, the load): `overworld::Changes` and its file
+  (`source::overworld`, `[overworld] file`), the clean ROM's overworld in Lunar Magic's
+  shape with a project's changes, written in that layout by `Stage::Overworld`
+  (`Overworld::plan`), and Kobo's code for the load (`asm/lunar-magic/overworld.asm`).
+  Every readable corpus hack's overworld builds, reads back the same, and loads as the
+  hack's does (tests/overworld.rs). Import does not carry a hack's overworld yet: the
+  hooks of play (level names, warps, events past `$6F`, entering levels, the save
+  prompt) are the game's until Kobo's code has them.
 
 - The emulator to play in (2026-10-08, item 7): `play.emulator` in the config file, or
   `KOBO_EMULATOR`, opens Play's and Build and play's ROM in place of what the system

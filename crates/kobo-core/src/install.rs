@@ -98,6 +98,14 @@ pub const EXANIMATION: (&str, &str) = (
 /// `$00A01F`, is met.
 pub const LAYER3: (&str, &str) = ("layer3.asm", include_str!("../asm/lunar-magic/layer3.asm"));
 
+/// Lunar Magic's overworld layout: its load, which unpacks the stored
+/// translevels and layer 1's pages (docs/lunar-magic-install.md, "The
+/// overworld").
+pub const OVERWORLD: (&str, &str) = (
+    "overworld.asm",
+    include_str!("../asm/lunar-magic/overworld.asm"),
+);
+
 /// The banks of Choc Island 2's rooms, applied by a build that writes one
 /// of levels `0CD`-`0CF`, whose banks those rooms would otherwise take
 /// (docs/lunar-magic-install.md, "Choc Island 2's rooms").
@@ -184,6 +192,10 @@ pub fn apply_graphics(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
 }
 
 /// Applies [`LAYER3`], which reads the lists [`GRAPHICS`] finds.
+pub fn apply_overworld(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
+    Ok(asar.patch(rom, &patch(OVERWORLD))?.rom)
+}
+
 pub fn apply_layer3(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
     Ok(asar.patch(rom, &patch(LAYER3))?.rom)
 }

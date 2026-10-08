@@ -76,9 +76,10 @@ mod lunar_magic {
     pub const LAYER1_HIGH: SnesAddr = SnesAddr::new(0x04_D822);
     pub const LAYER1_HIGH_BANK: SnesAddr = SnesAddr::new(0x04_D827);
     pub const NAMES: SnesAddr = SnesAddr::new(0x03_BB57);
-    /// The level name hook's `JSL`, where the game has `ASL A`: what tells
-    /// the layouts apart.
-    pub const NAME_HOOK: SnesAddr = SnesAddr::new(0x04_8E81);
+    /// The first byte of the game's translevel scan, `LDA #` (`$A9`) in the
+    /// game; Lunar Magic's layout and Kobo's code for it replace the scan,
+    /// which tells the layouts apart.
+    pub const SCAN: SnesAddr = SnesAddr::new(0x04_D7F9);
 }
 
 #[derive(Debug, Error)]
@@ -103,7 +104,7 @@ pub enum Layout {
 
 impl Layout {
     pub fn of(rom: &Rom) -> Self {
-        if rom.read_u8(lunar_magic::NAME_HOOK).is_ok_and(|b| b == 0x22) {
+        if rom.read_u8(lunar_magic::SCAN).is_ok_and(|b| b != 0xA9) {
             Layout::LunarMagic
         } else {
             Layout::Game
@@ -892,6 +893,14 @@ impl Overworld {
         let (from, to): (Vec<u8>, Vec<u8>) = events.reveal.iter().copied().unzip();
         plan.fixed.push((REVEAL_FROM, from));
         plan.fixed.push((REVEAL_TO, to));
+        // An overworld whose events change no layer 2 tile has no entries
+        // or tile data; a RATS block holds a byte at least, which nothing
+        // reads then.
+        for (_, bytes, _) in &mut plan.blocks {
+            if bytes.is_empty() {
+                bytes.push(0);
+            }
+        }
         Ok(plan)
     }
 }

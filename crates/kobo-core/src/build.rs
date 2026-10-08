@@ -113,6 +113,8 @@ pub enum BuildError {
     Install { message: String },
     #[error("Map16: {0}")]
     Map16(String),
+    #[error("the overworld: {0}")]
+    Overworld(String),
     #[error("PIXI's compiled insert: {0}")]
     Pixi(String),
     #[error("the build cache at {path}: {source}")]
@@ -151,6 +153,9 @@ pub struct Project {
     pub pipes: Pipes,
     /// What the project changes of the game's shared colour tables.
     pub shared_palettes: SharedPalettes,
+    /// What the project changes of the clean ROM's overworld, which then
+    /// builds in Lunar Magic's layout.
+    pub overworld: Option<crate::overworld::Changes>,
     /// GFX files `00` to `33`, as images of colour indices.
     pub gfx: Vec<(u8, IndexedImage)>,
     /// ExGFX files, as the bytes the ROM holds decompressed.
@@ -338,6 +343,17 @@ impl Project {
             }
             None => SharedPalettes::default(),
         };
+        let overworld = match &manifest.overworld {
+            Some(file) => {
+                let path = dir.join(file);
+                Some(
+                    crate::source::overworld::from_toml(&read(path.clone())?)
+                        .map_err(|source| BuildError::Source { path, source })?
+                        .0,
+                )
+            }
+            None => None,
+        };
         Ok(Self {
             root: dir.to_path_buf(),
             manifest,
@@ -348,6 +364,7 @@ impl Project {
             map16_bg,
             pipes,
             shared_palettes,
+            overworld,
             gfx,
             exgfx,
             animation_global,
@@ -427,7 +444,8 @@ impl Project {
     /// level. A build also installs it for more sprite data than bank `$07`
     /// has room for ([`Project::installs_lunar_magic`]).
     pub fn lunar_magic_layout(&self) -> bool {
-        self.lunar_magic_graphics()
+        self.overworld.is_some()
+            || self.lunar_magic_graphics()
             || self.exanimation()
             || !self.map16.is_empty()
             || !self.map16_bg.is_empty()
@@ -540,6 +558,8 @@ pub enum Stage {
     Graphics,
     /// Map16 pages past 1 and the acts-like tables.
     Map16,
+    /// The overworld, in Lunar Magic's layout, if the project changes it.
+    Overworld,
     /// PIXI, with the project's sprites, or a compiled insert's sites:
     /// its size table sets how long each sprite entry of a level is.
     Sprites,
@@ -555,7 +575,7 @@ pub enum Stage {
 }
 
 impl Stage {
-    pub const ALL: [Stage; 12] = [
+    pub const ALL: [Stage; 13] = [
         Stage::Base,
         Stage::SpriteBlocks,
         Stage::Install,
@@ -563,6 +583,7 @@ impl Stage {
         Stage::Music,
         Stage::Graphics,
         Stage::Map16,
+        Stage::Overworld,
         Stage::Sprites,
         Stage::Blocks,
         Stage::UberAsm,
@@ -581,6 +602,7 @@ impl Stage {
             Stage::Sprites => "sprites",
             Stage::Blocks => "blocks",
             Stage::Map16 => "map16",
+            Stage::Overworld => "overworld",
             Stage::UberAsm => "uberasm",
             Stage::LatePatches => "late patches",
             Stage::Levels => "levels",
@@ -631,6 +653,8 @@ impl Stage {
                     (layout && project.lunar_magic_graphics()).then_some(&install::GRAPHICS);
                 let animation = (layout && project.exanimation()).then_some(&install::EXANIMATION);
                 let layer3 = (layout && project.lunar_magic_layer3()).then_some(&install::LAYER3);
+                let overworld =
+                    (layout && project.overworld.is_some()).then_some(&install::OVERWORLD);
                 let choc = choc.then_some(&install::CHOC_ISLAND);
                 for (name, text) in std::iter::once(&install::MEMORY)
                     .chain(lunar_magic)
@@ -638,6 +662,7 @@ impl Stage {
                     .chain(graphics)
                     .chain(animation)
                     .chain(layer3)
+                    .chain(overworld)
                     .chain(choc)
                 {
                     hash.update(name.as_bytes());
@@ -677,6 +702,12 @@ impl Stage {
                 }
                 bytes
             }
+            // The changes' text: the clean ROM, which the stage reads, is
+            // the build's input already.
+            Stage::Overworld => match &project.overworld {
+                Some(changes) => crate::source::overworld::to_toml(changes, &[]).into_bytes(),
+                None => Vec::new(),
+            },
             Stage::Map16 => {
                 let mut bytes = Vec::new();
                 let mut files = Vec::new();
@@ -899,6 +930,10 @@ impl Stage {
                         *rom = install::apply_layer3(&asar, rom)
                             .map_err(|e| BuildError::Asar(Box::new(e)))?;
                     }
+                    if project.overworld.is_some() {
+                        *rom = install::apply_overworld(&asar, rom)
+                            .map_err(|e| BuildError::Asar(Box::new(e)))?;
+                    }
                 }
                 if project.choc_island_rooms() {
                     let asar = Asar::configured().map_err(|e| BuildError::Asar(Box::new(e)))?;
@@ -911,6 +946,11 @@ impl Stage {
                 write_gfx(rom, clean, project)?;
                 if project.lunar_magic_graphics() {
                     write_exgfx(rom, project)?;
+                }
+            }
+            Stage::Overworld => {
+                if let Some(changes) = &project.overworld {
+                    write_overworld(rom, clean, changes)?;
                 }
             }
             Stage::Map16 => {
@@ -2719,6 +2759,35 @@ fn check_objects(number: u16, list: &[Object], layer1: bool) -> Result<(), Build
         )),
         None => Ok(()),
     }
+}
+
+/// Writes the clean ROM's overworld with the project's changes in Lunar
+/// Magic's layout ([`crate::overworld::Overworld::plan`]).
+fn write_overworld(
+    rom: &mut Rom,
+    clean: &Rom,
+    changes: &crate::overworld::Changes,
+) -> Result<(), BuildError> {
+    use crate::overworld::Overworld;
+    let failed = |e: crate::overworld::OverworldError| BuildError::Overworld(e.to_string());
+    let plan = Overworld::read(clean)
+        .map_err(failed)?
+        .in_lunar_magic_shape()
+        .with(changes)
+        .map_err(failed)?
+        .plan()
+        .map_err(failed)?;
+    for (at, bytes) in &plan.fixed {
+        rom.write(*at, bytes)?;
+    }
+    let mut space = FreeSpace::scan(rom);
+    for (_, bytes, pointers) in &plan.blocks {
+        let at = place(rom, &mut space, bytes)?;
+        for pointer in pointers {
+            rom.write(pointer.at, &pointer.bytes(at))?;
+        }
+    }
+    Ok(())
 }
 
 fn place(rom: &mut Rom, space: &mut FreeSpace, bytes: &[u8]) -> Result<SnesAddr, BuildError> {
