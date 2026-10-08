@@ -214,7 +214,14 @@ there, whose translevel (the level it enters, 0 for none) and direction byte are
 below, the event passing its level makes (the secret exit the next one), and its
 level's name (19 tiles at most, `\xNN` for a tile that is not a letter; Enter sets
 it). *Mario starts here* and *Luigi starts here* put a new game's player on the chosen
-tile of the map shown, in its middle, as the game's and Lunar Magic's starts are. Each change is one undo step, a
+tile of the map shown, in its middle, as the game's and Lunar Magic's starts are.
+With *Event* on, the map is drawn with the event chosen and every one before it passed,
+the event's layer 2 blocks outlined tile by tile and its layer 1 tile (the one the
+reveal list turns into another) outlined more boldly. Drawing on layer 2 then draws in
+the event's blocks, and nowhere else; *Add a 2x2 block* or *Add a 6x6 block* puts a
+block of the event at the chosen 8x8 tile, of the tiles there, *Remove the block*
+takes the one there away, and *Its layer 1 tile here* and *No layer 1 tile* set the
+event's layer 1 tile (its VRAM address worked out from its place). Each change is one undo step, a
 stroke one in all. Saving writes `overworld.toml` (docs/build.md, "Source formats"),
 named in `kobo.toml`'s `[overworld]` the first time; a project with an overworld file
 builds it in Lunar Magic's layout (lunar-magic-install.md, "The overworld").

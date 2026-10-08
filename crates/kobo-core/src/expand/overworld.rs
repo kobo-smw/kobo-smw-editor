@@ -65,7 +65,25 @@ pub fn load_overworld_passed(
 /// that the load puts up its graphics and palette: the overworld as a
 /// player there sees it.
 pub fn load_overworld_on(rom: &Rom, submap: u8) -> Result<LoadedOverworld, ExpandError> {
-    let pins = [(PLAYER_SUBMAPS, submap), (PLAYER_SUBMAPS_2, submap)];
+    load_overworld_on_passed(rom, submap, &[0; EVENT_BYTES])
+}
+
+/// [`load_overworld_on`] with the events `passed` held passed, as
+/// [`load_overworld_passed`] has them.
+pub fn load_overworld_on_passed(
+    rom: &Rom,
+    submap: u8,
+    passed: &[u8; EVENT_BYTES],
+) -> Result<LoadedOverworld, ExpandError> {
+    let mut pins = vec![(PLAYER_SUBMAPS, submap), (PLAYER_SUBMAPS_2, submap)];
+    if passed.iter().any(|&b| b != 0) {
+        pins.extend(
+            passed
+                .iter()
+                .enumerate()
+                .map(|(i, &b)| (RamAddr::new(EVENTS_PASSED.vanilla() + i as u32), b)),
+        );
+    }
     let (machine, frames) = load_pinned(rom, &pins)?;
     Ok(loaded(&machine, frames))
 }

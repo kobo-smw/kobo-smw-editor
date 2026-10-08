@@ -893,6 +893,41 @@ mod tests {
     }
 
     #[test]
+    fn an_event_tile_s_vram_address_is_its_word_in_layer_1_s_tilemap() {
+        // The game's event 3, at 9, 6 of the submaps' map.
+        assert_eq!(event_vram(9, 6), 0x9221);
+        // The second screen across and down: $2000 + $400 + $800, a row of
+        // 16x16 tiles (two of 8x8) down, and two 8x8 tiles across.
+        assert_eq!(event_vram(18, 17), 0x2C44u16.swap_bytes());
+    }
+
+    #[test]
+    fn layer_2_places_and_indices_agree() {
+        for map in 0..MAPS {
+            for y in 0..LAYER2_SIZE {
+                for x in 0..LAYER2_SIZE {
+                    let offset = (layer2_index(map, x, y) * 2) as u16;
+                    assert_eq!(layer2_place(offset), (map, x, y));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_block_steps_into_the_next_screen_across_and_down() {
+        let block = EventBlock {
+            place: (layer2_index(0, 30, 30) * 2) as u16,
+            tiles: vec![0; 36],
+        };
+        let cells: Vec<_> = block.offsets().into_iter().map(layer2_place).collect();
+        assert_eq!(cells[0], (0, 30, 30));
+        assert_eq!(cells[2], (0, 32, 30));
+        assert_eq!(cells[6], (0, 30, 31));
+        assert_eq!(cells[12], (0, 30, 32));
+        assert_eq!(cells[35], (0, 35, 35));
+    }
+
+    #[test]
     fn an_event_tile_is_a_6x6_block_below_900_and_2x2_from_it() {
         assert_eq!(
             EventTile {
@@ -1279,6 +1314,65 @@ pub fn layer2_index(map: u8, x: u8, y: u8) -> usize {
         / 2
 }
 
+/// The VRAM address of layer 1's tilemap word for 16x16 tile (`x`, `y`)
+/// of either map, as the events' table keeps it (`DATA_04D93D`): high byte
+/// first, from `$2000`, the tilemap's 32x32 screens two across and two
+/// down. Every event of the game's has its tile's but `$14`, a row above.
+pub fn event_vram(x: u8, y: u8) -> u16 {
+    let (x, y) = (u16::from(x), u16::from(y));
+    let word = 0x2000
+        + if x >= 16 { 0x400 } else { 0 }
+        + if y >= 16 { 0x800 } else { 0 }
+        + (2 * y % 32) * 32
+        + 2 * x % 32;
+    word.swap_bytes()
+}
+
+/// The map and 8x8 tile of a byte offset into layer 2's tilemap
+/// (`$7F4000`): the inverse of [`layer2_index`], twice.
+pub fn layer2_place(offset: u16) -> (u8, u8, u8) {
+    let at = usize::from(offset) & 0x3FFE;
+    let map = (at / 0x2000) as u8;
+    let at = at % 0x2000;
+    let x = (at / 0x800 % 2) * 32 + at % 0x40 / 2;
+    let y = (at / 0x1000) * 32 + at % 0x800 / 0x40;
+    (map, x as u8, y as u8)
+}
+
+impl EventBlock {
+    /// The side of the block in 8x8 tiles: 6, or 2.
+    pub fn side(&self) -> usize {
+        if self.tiles.len() == 36 { 6 } else { 2 }
+    }
+
+    /// The byte offsets into layer 2's tilemap its tiles go to, in their
+    /// order: rows of [`EventBlock::side`] from its place, a row past a
+    /// screen's last column going on in the next screen across, and a row
+    /// past a screen's last row in the next screen down, as the game steps
+    /// (`CODE_04E520`).
+    pub fn offsets(&self) -> Vec<u16> {
+        let side = self.side();
+        let mut out = Vec::with_capacity(side * side);
+        let mut row = usize::from(self.place);
+        for _ in 0..side {
+            let mut x = row;
+            for _ in 0..side {
+                out.push((x % 0x4000) as u16);
+                x += 2;
+                if x & 0x3F == 0 {
+                    x = ((x - 1) & !0x3F) + 0x800;
+                }
+            }
+            let old = row;
+            row += 0x40;
+            if row & 0x7C0 == 0 {
+                row = (old & 0xF83F) + 0x1000;
+            }
+        }
+        out
+    }
+}
+
 /// One event, as a project holds it: its layer 1 tile's place and VRAM
 /// address, and its layer 2 blocks.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
@@ -1329,6 +1423,25 @@ impl Overworld {
         events.extras.resize(LUNAR_MAGIC_EVENTS, Vec::new());
         self.layout = Layout::LunarMagic;
         self
+    }
+
+    /// Event `n` set as `event`, the event tile data laid out afresh.
+    pub fn set_event(&mut self, n: usize, event: Event) -> Result<(), OverworldError> {
+        let mut events = self.event_list();
+        let Some(slot) = events.get_mut(n) else {
+            return Err(OverworldError::Decode("an event past the last"));
+        };
+        *slot = event;
+        let blocks: Vec<Vec<EventBlock>> = events.iter().map(|e| e.blocks.clone()).collect();
+        let extras: Vec<Vec<ExtraTile>> = events.iter().map(|e| e.extras.clone()).collect();
+        self.events = Events::from_blocks(
+            events.iter().map(|e| e.layer1).collect(),
+            &blocks,
+            &extras,
+            self.events.crush.clone(),
+            self.events.reveal.clone(),
+        )?;
+        Ok(())
     }
 
     /// Every event, as a project holds them.

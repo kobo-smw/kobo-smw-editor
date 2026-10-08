@@ -2041,6 +2041,74 @@ fn the_overworld_map_is_drawn_on_with_the_pointer() {
 }
 
 #[test]
+fn an_event_s_blocks_are_drawn_in_added_and_saved() {
+    use egui_kittest::kittest::Queryable;
+    use kobo_core::overworld::layer2_place;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "overworld-events");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    {
+        let editor = &mut harness.state_mut().overworld_editor;
+        editor.open = true;
+        editor.submap = 1;
+        editor.layer = 2;
+        editor.show_event = true;
+        editor.event = 6;
+        editor.brush2 = 0x1C58;
+    }
+    harness.run_steps(2);
+    wait_for(&mut harness, "the overworld's picture", |app| {
+        app.overworld_editor.drawn()
+    });
+    let event = |app: &App| app.open_overworld().unwrap().overworld().event_list()[6].clone();
+    let before = event(harness.state());
+    assert_eq!(before.blocks.len(), 2);
+    let map = harness.get_by_label("The overworld's map").rect();
+    let cell =
+        |x: u8, y: u8| map.min + egui::vec2(f32::from(x) * 8.0 + 4.0, f32::from(y) * 8.0 + 4.0);
+    let click = |harness: &mut Harness<'static, App>, at: Pos2, button: PointerButton| {
+        harness.event(egui::Event::PointerMoved(at));
+        for pressed in [true, false] {
+            harness.event(egui::Event::PointerButton {
+                pos: at,
+                button,
+                pressed,
+                modifiers: Modifiers::NONE,
+            });
+            harness.step();
+        }
+    };
+    // Drawing on the first tile of the event's first block changes it.
+    let (m, x, y) = layer2_place(before.blocks[0].place);
+    assert_eq!(m, 1);
+    click(&mut harness, cell(x, y), PointerButton::Primary);
+    harness.run_steps(2);
+    assert_eq!(event(harness.state()).blocks[0].tiles[0], 0x1C58);
+    // A right click chooses a tile away from the blocks; a 2x2 block of
+    // the tiles there goes there, and the event's layer 1 tile too.
+    click(&mut harness, cell(10, 10), PointerButton::Secondary);
+    harness.get_by_label("Add a 2x2 block").click();
+    harness.run_steps(2);
+    let after = event(harness.state());
+    assert_eq!(after.blocks.len(), 3);
+    assert_eq!(layer2_place(after.blocks[2].place), (1, 10, 10));
+    harness.get_by_label("Its layer 1 tile here").click();
+    harness.run_steps(2);
+    let after = event(harness.state());
+    assert_eq!(
+        after.layer1.0 as usize,
+        kobo_core::overworld::layer1_index(1, 5, 5)
+    );
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    harness.step();
+    let file = std::fs::read_to_string(project.0.join("overworld.toml")).unwrap();
+    assert!(file.contains("[[event]]\nnumber = 0x06\n"), "{file}");
+}
+
+#[test]
 fn an_animation_list_is_given_and_a_slot_added_from_the_inspector() {
     use egui_kittest::kittest::Queryable;
 

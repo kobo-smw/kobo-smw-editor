@@ -309,7 +309,17 @@ pub fn overworld_layers(loaded: &crate::expand::LoadedOverworld) -> LevelLayers 
 /// layers 1 and 2 of its map in its graphics and palette, as the ROM's
 /// own load puts them up (`expand::load_overworld_on`).
 pub fn render_overworld(rom: &Rom, submap: u8) -> Result<RgbImage, crate::expand::ExpandError> {
-    let loaded = crate::expand::load_overworld_on(rom, submap)?;
+    render_overworld_passed(rom, submap, &[0; 0x0F])
+}
+
+/// [`render_overworld`] with the events `passed` (a bit each, the highest
+/// first in a byte) passed, as a saved game's are.
+pub fn render_overworld_passed(
+    rom: &Rom,
+    submap: u8,
+    passed: &[u8; 0x0F],
+) -> Result<RgbImage, crate::expand::ExpandError> {
+    let loaded = crate::expand::load_overworld_on_passed(rom, submap, passed)?;
     let layers = overworld_layers(&loaded);
     let screen = Screen {
         main: 0x03,

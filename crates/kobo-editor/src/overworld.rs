@@ -11,7 +11,8 @@ use std::thread;
 use eframe::egui::{self, Color32, RichText, Sense, TextureHandle, TextureOptions};
 use kobo_core::edit::Workspace;
 use kobo_core::overworld::{
-    LAYER1_SIZE, LAYER2_SIZE, Overworld, Start, layer1_index, layer2_index,
+    Event, EventBlock, LAYER1_SIZE, LAYER2_SIZE, Overworld, Start, event_vram, layer1_index,
+    layer1_place, layer2_index, layer2_place,
 };
 use kobo_core::render::OVERWORLD_SIDE;
 use kobo_core::source::overworld::{name_text, parse_name};
@@ -24,6 +25,19 @@ use crate::theme;
 pub struct Key {
     pub generation: u64,
     pub submap: u8,
+    /// The last event passed, all those before it passed too.
+    pub passed: Option<u8>,
+}
+
+/// Events `0` to `last` as the game's bits for them.
+fn passed_bits(last: Option<u8>) -> [u8; 0x0F] {
+    let mut bits = [0; 0x0F];
+    if let Some(last) = last {
+        for e in 0..=usize::from(last.min(0x77)) {
+            bits[e / 8] |= 0x80 >> (e % 8);
+        }
+    }
+    bits
 }
 
 /// Draws pictures of builds of the project on a thread of its own, the
@@ -49,7 +63,8 @@ impl Worker {
                         .build()
                         .map_err(|e| e.to_string())
                         .and_then(|rom| {
-                            kobo_core::render::render_overworld(&rom, key.submap)
+                            let passed = passed_bits(key.passed);
+                            kobo_core::render::render_overworld_passed(&rom, key.submap, &passed)
                                 .map_err(|e| e.to_string())
                         })
                         .map(|img| {
@@ -94,6 +109,13 @@ pub struct OverworldEditor {
     /// The tile chosen, by map, x, and y, and its name as being edited.
     chosen: Option<(u8, u8, u8)>,
     name: String,
+    /// The 8x8 tile chosen, by map, x, and y.
+    chosen2: Option<(u8, u8, u8)>,
+    /// Whether an event is shown, and which: the map with it and those
+    /// before it passed, its tiles outlined, and layer 2 drawn in its
+    /// blocks.
+    pub show_event: bool,
+    pub event: u8,
 }
 
 impl OverworldEditor {
@@ -111,6 +133,7 @@ impl OverworldEditor {
         self.requested = None;
         self.stroke = None;
         self.chosen = None;
+        self.chosen2 = None;
     }
 }
 
@@ -162,6 +185,13 @@ enum Change {
     Event { translevel: u8, event: u8 },
     /// Where a new game puts Mario (0) or Luigi (1).
     Start { player: usize, start: Start },
+    /// Event `event` as `to`.
+    Event2 {
+        label: &'static str,
+        event: u8,
+        to: Box<Event>,
+        amend: bool,
+    },
 }
 
 impl Change {
@@ -204,6 +234,16 @@ impl Change {
             Change::Start { player, start } => {
                 app.change_overworld("Move the start", false, |ow| ow.start[player] = start)
             }
+            Change::Event2 {
+                label,
+                event,
+                to,
+                amend,
+            } => app.change_overworld(label, amend, |ow| {
+                // An event that no longer fits the event tile data is left
+                // as it was.
+                let _ = ow.set_event(usize::from(event), *to);
+            }),
         }
     }
 }
@@ -238,6 +278,7 @@ fn show(app: &mut App, ui: &mut egui::Ui) {
     let key = Key {
         generation: app.overworld_generation(),
         submap: state.submap,
+        passed: state.show_event.then_some(state.event),
     };
     if state.requested != Some(key)
         && let Some(workspace) = app.workspace_copy()
@@ -325,6 +366,26 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
         )
     };
     ui.label(RichText::new(note).small().color(theme::MUTED));
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut state.show_event, "Event")
+            .on_hover_text("The map with an event and those before it passed, the event's tiles outlined; layer 2 is then drawn in its blocks");
+        if state.show_event {
+            ui.add(egui::DragValue::new(&mut state.event).range(0..=0x77).hexadecimal(2, false, true));
+            let event = &overworld.event_list()[usize::from(state.event)];
+            ui.label(
+                RichText::new(format!(
+                    "{} layer 2 blocks{}",
+                    event.blocks.len(),
+                    if event.layer1 == (0, 0) { ", no layer 1 tile" } else { ", a layer 1 tile" }
+                ))
+                .small()
+                .color(theme::MUTED),
+            );
+        }
+    });
+    let event = state
+        .show_event
+        .then(|| overworld.event_list().swap_remove(usize::from(state.event)));
     if let Some((failed, e)) = &state.failed
         && *failed == key
     {
@@ -390,6 +451,22 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
         {
             outline(x, y, 16.0 * zoom, egui::Stroke::new(2.0, theme::ACCENT));
         }
+        if let Some(event) = &event {
+            for block in &event.blocks {
+                for offset in block.offsets() {
+                    let (m, x, y) = layer2_place(offset);
+                    if m == map {
+                        outline(x, y, 8.0 * zoom, egui::Stroke::new(1.0, theme::SPRITE));
+                    }
+                }
+            }
+            if event.layer1 != (0, 0) {
+                let (m, x, y) = layer1_place(usize::from(event.layer1.0));
+                if m == map {
+                    outline(x, y, 16.0 * zoom, egui::Stroke::new(2.0, theme::OK));
+                }
+            }
+        }
         let primary = ui.input(|i| i.pointer.primary_down());
         if primary && (response.is_pointer_button_down_on() || response.dragged()) {
             if let Some((x, y)) = response
@@ -398,16 +475,38 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
             {
                 let index = index_of(state.layer, map, x, y);
                 if state.stroke != Some(index) {
-                    change = Some(Change::Draw {
-                        layer: state.layer,
-                        index,
-                        tile: if state.layer == 1 {
-                            state.brush
-                        } else {
-                            state.brush2
-                        },
-                        amend: state.stroke.is_some(),
-                    });
+                    let amend = state.stroke.is_some();
+                    change = match (&event, state.layer) {
+                        // Layer 2 with an event shown: the event's block
+                        // there, if it has one.
+                        (Some(event), 2) => {
+                            let offset = (index * 2) as u16;
+                            let at = event.blocks.iter().enumerate().find_map(|(b, block)| {
+                                let t = block.offsets().iter().position(|&o| o == offset)?;
+                                Some((b, t))
+                            });
+                            at.map(|(b, t)| {
+                                let mut to = event.clone();
+                                to.blocks[b].tiles[t] = state.brush2;
+                                Change::Event2 {
+                                    label: "Draw in an event",
+                                    event: state.event,
+                                    to: Box::new(to),
+                                    amend,
+                                }
+                            })
+                        }
+                        _ => Some(Change::Draw {
+                            layer: state.layer,
+                            index,
+                            tile: if state.layer == 1 {
+                                state.brush
+                            } else {
+                                state.brush2
+                            },
+                            amend,
+                        }),
+                    };
                     state.stroke = Some(index);
                 }
             }
@@ -424,6 +523,9 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
                 } else {
                     state.brush2 = picked;
                 }
+            }
+            if let Some((x, y)) = at(pos, 8.0 * zoom, LAYER2_SIZE) {
+                state.chosen2 = Some((map, x, y));
             }
             if let Some((x, y)) = at(pos, 16.0 * zoom, LAYER1_SIZE) {
                 state.chosen = Some((map, x, y));
@@ -454,6 +556,81 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
             );
         }
         ui.label(RichText::new(line).monospace());
+    }
+    if let Some(event) = &event {
+        ui.horizontal(|ui| {
+            let e = state.event;
+            if let Some((m, x, y)) = state.chosen2 {
+                let place = (layer2_index(m, x, y) * 2) as u16;
+                let inside = event
+                    .blocks
+                    .iter()
+                    .position(|b| b.offsets().contains(&place));
+                for side in [2usize, 6] {
+                    let mut block = EventBlock {
+                        place,
+                        tiles: vec![0; side * side],
+                    };
+                    let offsets = block.offsets();
+                    for (tile, offset) in block.tiles.iter_mut().zip(offsets) {
+                        *tile = overworld.layer2[usize::from(offset) / 2];
+                    }
+                    if ui
+                        .button(format!("Add a {side}x{side} block"))
+                        .on_hover_text(format!("A block of event {e:02X} from the chosen 8x8 tile, of the tiles there now"))
+                        .clicked()
+                    {
+                        let mut to = event.clone();
+                        to.blocks.push(block);
+                        change = Some(Change::Event2 {
+                            label: "Add an event block",
+                            event: e,
+                            to: Box::new(to),
+                            amend: false,
+                        });
+                    }
+                }
+                if let Some(b) = inside
+                    && ui.button("Remove the block").clicked()
+                {
+                    let mut to = event.clone();
+                    to.blocks.remove(b);
+                    change = Some(Change::Event2 {
+                        label: "Remove an event block",
+                        event: e,
+                        to: Box::new(to),
+                        amend: false,
+                    });
+                }
+            }
+            if let Some((m, x, y)) = state.chosen {
+                let here = (layer1_index(m, x, y) as u16, event_vram(x, y));
+                if ui
+                    .add_enabled(event.layer1 != here, egui::Button::new("Its layer 1 tile here"))
+                    .on_hover_text(format!("The layer 1 tile event {e:02X} turns into another, by the reveal list"))
+                    .clicked()
+                {
+                    let mut to = event.clone();
+                    to.layer1 = here;
+                    change = Some(Change::Event2 {
+                        label: "Move an event's layer 1 tile",
+                        event: e,
+                        to: Box::new(to),
+                        amend: false,
+                    });
+                }
+            }
+            if event.layer1 != (0, 0) && ui.button("No layer 1 tile").clicked() {
+                let mut to = event.clone();
+                to.layer1 = (0, 0);
+                change = Some(Change::Event2 {
+                    label: "Take an event's layer 1 tile away",
+                    event: e,
+                    to: Box::new(to),
+                    amend: false,
+                });
+            }
+        });
     }
     if let Some((m, x, y)) = state.chosen {
         let index = layer1_index(m, x, y);
