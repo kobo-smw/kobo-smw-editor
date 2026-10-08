@@ -2347,12 +2347,15 @@ fn the_overworld_window_sets_its_options_and_animation() {
     harness.get_by_label("Reveal paths at a speed").click();
     harness.run_steps(2);
     assert_eq!(
-        harness.state().open_overworld().unwrap().changes().reveal_speed,
+        harness
+            .state()
+            .open_overworld()
+            .unwrap()
+            .changes()
+            .reveal_speed,
         Some(0x10)
     );
-    harness
-        .get_by_label_contains("ExAnimation: ")
-        .click();
+    harness.get_by_label_contains("ExAnimation: ").click();
     harness.run_steps(2);
     harness
         .get_by_label("Install Lunar Magic's overworld ExAnimation")
@@ -2371,5 +2374,8 @@ fn the_overworld_window_sets_its_options_and_animation() {
     let file = std::fs::read_to_string(project.0.join("overworld.toml")).unwrap();
     assert!(file.contains("merge_fg = true"), "{file}");
     assert!(file.contains("reveal_speed = 0x10"), "{file}");
-    assert!(file.contains("[animation.0x00]\ngame_tiles = false"), "{file}");
+    assert!(
+        file.contains("[animation.0x00]\ngame_tiles = false"),
+        "{file}"
+    );
 }
