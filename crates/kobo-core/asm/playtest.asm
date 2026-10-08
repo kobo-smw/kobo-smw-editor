@@ -23,11 +23,27 @@
 ; level sets game mode $10 and ends at Mode04Finish ($0093F7), and the
 ; screen exit path of the entrance code (docs/smw.md).
 ;
-; Defines: !entrance, the secondary entrance (000-1FF); !powerup, the
-; player's power-up (0 small, 1 big, 2 cape, 3 fire); !time, the level's
-; time setting (0-3), which an entry into a sublevel does not load.
+; The overworld sets the translevel the level is entered by ($13BF), which
+; the game keeps the midway point by, and patches more (Dragon Coins
+; collected, checkpoints): this patch sets it to the level's, or its
+; overworld level's for a sublevel.
+;
+; kkevinm's Retry System respawns the player where it was told to on the
+; level's entry from the overworld, which a play build never makes: with
+; it (!retry, its retry_config/ram.asm from the project's UberASM Tool
+; folder as retry_ram.asm), this patch tells it the entrance, and the
+; level's time, as that entry would have told it the level's start. A
+; midway point then moves its respawn point as it does in the game.
+;
+; Defines: !entrance, the secondary entrance (000-1FF); !translevel, the
+; translevel; !powerup, the player's power-up (0 small, 1 big, 2 cape, 3
+; fire); !time, the level's time setting (0-3), which an entry into a
+; sublevel does not load; !retry, 1 with the Retry System's RAM.
 
 incsrc "memory.asm"
+if !retry
+    incsrc "retry_ram.asm"
+endif
 
 ; The title screen's load checks the overworld override first; the
 ; overworld's load begins with a JSR to turn the screen off, then a load
@@ -120,6 +136,21 @@ enter:
     STA $0F31|!addr
     STZ $0F32|!addr
     STZ $0F33|!addr
+    LDA.b #!translevel
+    STA $13BF|!addr
+if defined("retry_ram_respawn") && defined("retry_ram_timer")
+    ; The Retry System's respawn point, in the screen exits' format but
+    ; Lunar Magic's bit (2), which it adds, and its copy of the time.
+    LDA.b #(!entrance&$FF)
+    STA.l !retry_ram_respawn
+    LDA.b #($02|((!entrance>>8)&1))
+    STA.l !retry_ram_respawn+1
+    LDA $0F31|!addr
+    STA.l !retry_ram_timer
+    LDA #$00
+    STA.l !retry_ram_timer+1
+    STA.l !retry_ram_timer+2
+endif
     ; A screen exit to the entrance from every screen, so that whichever
     ; the player is on takes it: the entrance's low byte, and in Lunar
     ; Magic's exit format (bit 2) secondary (bit 1) with its bit 8 ...

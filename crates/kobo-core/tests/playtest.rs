@@ -71,3 +71,83 @@ fn a_play_entrance_into_a_water_level_is_water() {
     let (level, _) = kobo_core::import::read_level(&clean, 0x105).unwrap();
     assert!(!playtest::entrance(&level, &start, 0x50).settings.water);
 }
+
+/// With UberASM Tool: a play build sets the translevel the overworld would
+/// have entered by, a sublevel's its overworld level's, and with the Retry
+/// System in the project's UberASM Tool folder, its respawn point to the
+/// entrance, by the addresses its own `retry_config/ram.asm` gives.
+#[test]
+fn a_play_build_sets_the_translevel_and_the_retry_systems_respawn() {
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let Some(asar) = common::asar() else {
+        return;
+    };
+    if common::tool(kobo_core::tools::Tool::UberAsm).is_none() {
+        return;
+    }
+    let dir = TempDir::new("playtest-retry");
+    fs::write(
+        dir.join("kobo.toml"),
+        "format = 1\n\n[uberasm]\ndir = \"uberasm\"\n",
+    )
+    .unwrap();
+    fs::create_dir_all(dir.join("uberasm/retry_config")).unwrap();
+    fs::create_dir_all(dir.join("uberasm/library")).unwrap();
+    fs::write(
+        dir.join("uberasm/list.txt"),
+        "verbose: off\nlevel:\noverworld:\ngamemode:\n\
+         global: other/global_code.asm\nstatusbar: other/status_code.asm\n\
+         macrolib: other/macro_library.asm\nfreeram: $7FAC80\n",
+    )
+    .unwrap();
+    // As the Retry System's own file has them.
+    fs::write(
+        dir.join("uberasm/retry_config/ram.asm"),
+        "includeonce\n!retry_freeram = $7FB400\nif read1($00FFD5) == $23\n    \
+         !retry_freeram = $40A400\nendif\nmacro retry_ram(name,offset)\n    \
+         !ram_<name> #= !retry_freeram+<offset>\n    \
+         !retry_ram_<name> #= !ram_<name>\nendmacro\n\
+         %retry_ram(timer,$00)\n%retry_ram(respawn,$03)\n",
+    )
+    .unwrap();
+    let mut workspace = Workspace::open(&dir, Arc::new(clean))
+        .unwrap()
+        .without_cache();
+    // 105, translevel $29, and 1CB, the room its pipe leads to.
+    for level in [0x105u16, 0x1CB] {
+        let original = workspace.clean_level(level).unwrap();
+        workspace.add_level(level, &original).unwrap();
+    }
+    let has =
+        |rom: &kobo_core::rom::Rom, code: &[u8]| rom.data().windows(code.len()).any(|w| w == code);
+    for level in [0x105u16, 0x1CB] {
+        let start = Start {
+            level,
+            x: 5,
+            y: 20,
+            powerup: 0,
+        };
+        let rom = playtest::build(&workspace, &start, &asar).unwrap();
+        // LDA #$29 : STA $13BF
+        assert!(has(&rom, &[0xA9, 0x29, 0x8D, 0xBF, 0x13]), "{level:03X}");
+        // LDA #id : STA.l $7FB403 : LDA #$02|bit 8 : STA.l $7FB404
+        let id = workspace.free_entrance(level).unwrap();
+        let respawn = [
+            0xA9,
+            id as u8,
+            0x8F,
+            0x03,
+            0xB4,
+            0x7F,
+            0xA9,
+            0x02 | (id >> 8) as u8,
+            0x8F,
+            0x04,
+            0xB4,
+            0x7F,
+        ];
+        assert!(has(&rom, &respawn), "{level:03X}");
+    }
+}

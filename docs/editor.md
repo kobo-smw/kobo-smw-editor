@@ -150,7 +150,9 @@ straight to that tile, with no title screen (a moment of dark "Nintendo Presents
 game modes set the screen up), through a secondary entrance put there in a copy of the
 level, which is water or slippery when the level is; it plays the level's own music, and
 comes back there after a death, a game over (with four lives again), or the level's end;
-the project is not changed. The pixelated fade on the way in is the game's own, as from
+the project is not changed. A hack with kkevinm's Retry System (the Romhack Races
+baserom's, and many others') retries there too, or at a midway point once the player has
+touched one. The pixelated fade on the way in is the game's own, as from
 the overworld. `kobo play` does the same from the command line.
 
 A level that does not build does not stop the others from drawing: the picture's build

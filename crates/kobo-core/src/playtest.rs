@@ -20,6 +20,11 @@ use crate::source::level::Entrance;
 /// Kobo's patch for it, `asm/playtest.asm`.
 pub const PATCH: (&str, &str) = ("playtest.asm", include_str!("../asm/playtest.asm"));
 
+/// Where kkevinm's Retry System, in a project's UberASM Tool folder, says
+/// where it keeps its RAM: [`PATCH`] sets its respawn point to the
+/// entrance, which it otherwise sets only on an entry from the overworld.
+const RETRY_RAM: &str = "retry_config/ram.asm";
+
 /// The entrance actions of a slippery level and a water level.
 const SLIPPERY_ACTION: u8 = 5;
 const WATER_ACTION: u8 = 7;
@@ -136,11 +141,40 @@ pub fn build(workspace: &Workspace, start: &Start, asar: &Asar) -> Result<Rom, P
     let mut copy = workspace.clone();
     copy.set_level(start.level, &level);
     let (rom, _) = copy.build_leaving_out(Some(start.level))?;
-    let patch = crate::install::patch(PATCH)
+    let mut patch = crate::install::patch(PATCH)
         .define("entrance", format!("${id:03X}"))
+        .define(
+            "translevel",
+            format!("${:02X}", translevel(workspace, start.level)),
+        )
         .define("powerup", format!("{}", start.powerup & 3))
         .define("time", format!("{}", level.header.time & 3));
+    let project = workspace.project();
+    let retry = project
+        .manifest
+        .uberasm
+        .as_ref()
+        .map(|dir| project.root.join(dir).join(RETRY_RAM))
+        .and_then(|path| std::fs::read(path).ok());
+    patch = match retry {
+        Some(text) => patch.file("retry_ram.asm", text).define("retry", "1"),
+        None => patch.define("retry", "0"),
+    };
     let mut rom = asar.patch(&rom, &patch).map_err(Box::new)?.rom;
     rom.fix_checksum()?;
     Ok(rom)
+}
+
+/// The translevel the game would have entered `level` by: its own, or for
+/// a sublevel its overworld level's (`edit::reach`), or 0 for a level no
+/// exit reaches. Midway points, the retry system's checkpoints, and the
+/// Dragon Coins collected are kept by it.
+fn translevel(workspace: &Workspace, level: u16) -> u8 {
+    crate::level::translevel(level)
+        .or_else(|| {
+            let all: Vec<u16> = (0..0x200).collect();
+            let group = crate::edit::reach::Reach::of(workspace, &all).group_of(level)?;
+            crate::level::translevel(group)
+        })
+        .unwrap_or(0)
 }

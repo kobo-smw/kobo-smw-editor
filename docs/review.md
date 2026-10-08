@@ -14,4 +14,13 @@ settle it.
 
 ## Open
 
-None at present.
+- **Play from here reads the Retry System's RAM file** (2026-10-08). kkevinm's Retry
+  System sets where it respawns the player only on an entry from the overworld, which a
+  play build never makes, so its retries went to level `000`. The play build now takes
+  the addresses from the project's own `retry_config/ram.asm` (in its UberASM Tool
+  folder) and sets the respawn point and its copy of the time to the entrance's;
+  without the file, nothing of it is written. The other way, entering through the
+  overworld's path, cannot start in a sublevel or at a tile. Recorded in
+  [step-3.md](step-3.md#play-from-here) and `asm/playtest.asm`. Settled by agreeing that
+  Kobo may know this one community resource, as it knows Callisto, or by another way
+  for a play build to tell a retry system where it started.

@@ -127,7 +127,15 @@ file by hand; when they do, the editor follows.
   hooked, game mode `$03`; "Nintendo Presents" runs a frame, dark, to set the screen up
   and decompress the player's graphics), and a death, a game over, or the level's end
   goes back into it rather than to the overworld. The same hook uploads the level music
-  bank, which an entry by screen exit never does.
+  bank, which an entry by screen exit never does, and sets the translevel (`$13BF`) the
+  overworld would have entered by (a sublevel's is its overworld level's, `edit::reach`),
+  which midway points and patches keep their state by.
+- With kkevinm's Retry System in the project's UberASM Tool folder (its
+  `retry_config/ram.asm`), the play build sets its respawn point to the entrance, as an
+  entry from the overworld would have set it to the level's start: without that it was
+  0, so a retry went to level `000`, and past a midway point to translevel 0's (the
+  Romhack Races baserom's `13B` went to `0C5`). Reading that file is a decision marked
+  in [review.md](review.md).
 - A play starts with four lives and the power-up chosen in the menu (F5 the last one).
 - A click on the ground or a wall starts the player on its top: the first tile of page 1
   (`100`-`1FF`, by what it acts like) above the click with two free tiles over it, within
@@ -219,7 +227,9 @@ Since (2026-10-05 and 06, on master):
   between levels, and finding objects and sprites in every level (`edit::find`).
 - Play from here (`kobo_core::playtest`, `asm/playtest.asm`, `kobo play`): checked in
   Mesen 2 on vanilla, a Lunar Magic hack, and an SA-1 one, from power-on into the
-  level at the tile, and back there after a death and a game over.
+  level at the tile, and back there after a death and a game over; and on the Romhack
+  Races template (2026-10-08), whose Retry System retries at the tile, and at the
+  midway entrance once its midway point is touched.
 - Names from the game's tables where it has them: levels by their overworld names
   (`level::level_name`), entrance actions, layer 2 scroll and layer 3 settings, palette
   settings' colours; what a tile acts like in the status bar; the project window; menus on
