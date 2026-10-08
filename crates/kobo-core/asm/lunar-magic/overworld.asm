@@ -94,6 +94,45 @@ org $049549
 org $05D8B1
     JSL level_bank
 
+; Each translevel's settings at a new game (OWLevelTileSettings): the game
+; opens the directions of 8 level tiles (InitLevelTileMovementData); this
+; layout gives every translevel its whole byte, from a table of $60 at
+; $05DDA0, which the build writes. In place of the game's loop's step,
+; after its first entry, which the table's copy then covers.
+!level_flags = $05DDA0
+!save_buffer = $1F49|!addr
+!level_settings = $1EA2|!addr
+!layer1_tile = $13C1|!addr
+; The player whose turn it is, times 4 (PlayerTurnOW), the players' places
+; in 16x16 tiles (OWPlayerXPosPtr, OWPlayerYPosPtr), and their submaps.
+!player_turn = $0DD6|!addr
+!player_x = $1F1F|!addr
+!player_y = $1F21|!addr
+!player_submaps = $1F11|!addr
+
+org $009F19
+    JSL init_flags
+
+; The save prompt when a level is passed (the overworld's process 2,
+; CODE_048F87): the game's for the 8 level tiles of its list
+; (DATA_048F7F), and this layout's for a translevel whose settings have
+; bit 4 set.
+org $048F94
+save_prompt:
+org $049003
+no_save_prompt:
+org $048F8A
+    JSL save_check
+    BCS save_prompt
+    JMP no_save_prompt
+    NOP
+
+; Whether a level tile can be entered (OWPU_NotOnPipe): the game's tiles
+; from $81 on cannot, nor, in this layout, a passed level whose settings
+; have bit 5 set. Leaves carry set for the game's branch after it.
+org $049199
+    JSL entry_check
+
 ; The game's loop through its list, from its first branch on: Kobo's code
 ; makes the event's tiles, and the game goes on at $04E9FC.
 org $04E9F7
@@ -392,4 +431,101 @@ level_bank:
     CMP #$25
     LDA #$00
     ROL A
+    RTL
+
+; A new game's settings for every translevel, from the table, into the save
+; buffer. A and the index registers 8-bit, as the game's loop leaves them.
+init_flags:
+    LDX #$5F
+-   LDA.l !level_flags,X
+    STA !save_buffer,X
+    DEX
+    BPL -
+    RTL
+
+; Carry set when the level the player has passed (TranslevelNo) brings up
+; the save prompt: its settings' bit 4, or a level tile of the game's
+; list. A and the index registers 8-bit.
+save_check:
+    LDX !translevel
+    LDA !level_settings,X
+    AND #$10
+    BNE .yes
+    LDX #$07
+-   LDA !layer1_tile
+    CMP.l $048F7F,X
+    BEQ .yes
+    DEX
+    BPL -
+    CLC
+    RTL
+.yes:
+    SEC
+    RTL
+
+; Carry set when the level tile in A (8-bit) cannot be entered: from $81
+; on, as the game has it, or a passed level whose settings have bit 5 set,
+; the level by the translevel at the player's place (OW_TilePos_Calc's
+; index, on the submaps' map past $400). A and the index registers 8-bit,
+; A the tile again.
+entry_check:
+    CMP #$81
+    BCS .done
+    PHX
+    PHY
+    REP #$30
+    LDA !player_turn
+    AND #$00FF
+    TAX
+    ; The index: x and y's low nibbles, then their bit 4 as $100 and $200.
+    LDA !player_y,X
+    AND #$000F
+    ASL A
+    ASL A
+    ASL A
+    ASL A
+    PHA
+    LDA !player_y,X
+    AND #$0010
+    ASL A
+    ASL A
+    ASL A
+    ASL A
+    ASL A
+    ORA 1,S
+    STA 1,S
+    LDA !player_x,X
+    AND #$0010
+    ASL A
+    ASL A
+    ASL A
+    ASL A
+    ORA 1,S
+    STA 1,S
+    LDA !player_x,X
+    AND #$000F
+    ORA 1,S
+    STA 1,S
+    TXA
+    LSR A
+    LSR A
+    TAX
+    LDA !player_submaps,X
+    AND #$00FF
+    BEQ +
+    LDA 1,S
+    ORA #$0400
+    STA 1,S
++   PLX
+    SEP #$20
+    LDA.l !map16_low+$800,X
+    SEP #$10
+    TAX
+    LDA !level_settings,X
+    AND #$A0
+    CMP #$A0
+    PLY
+    PLX
+    LDA !layer1_tile
+.done:
     RTL

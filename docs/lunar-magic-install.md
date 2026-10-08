@@ -2052,6 +2052,22 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   game's code (`expand::warp`, `examples/ow_probe.rs warps`, 2026-10-09). Where no entry
   matches, Lunar Magic's lookup leaves index 0 (entry 0's destination) and the game's a
   negative one, which only a warp tile with no entry meets; Kobo keeps the game's.
+- Each translevel's settings at a new game: the game opens 8 level tiles' directions
+  (`InitLevelTileMovementData`, `$009EE0`); the layout's `JSL` at `$009F19` (over the
+  loop's `DEX : DEX : BPL`) copies a table of `$60`, one byte a translevel, at `$05DDA0`
+  (free space in the game) into the save buffer, as a new game's `OWLevelTileSettings`
+  shows in every Lunar Magic ROM tried (the vanilla overworld's transfer, QW2, riff2;
+  the vanilla overworld's conversion folds the game's 8 into it). Besides the game's
+  bits (directions 0-3, midway 6, passed 7), bit 4 brings up the save prompt when the
+  level is passed (riff2: every level beaten that prompts has it, 30 of 30, the hook
+  at `$048F8A` in the overworld's process 2, `CODE_048F87`, over `LDX #$07 : LDA
+  OverworldLayer1Tile`, the save tiles' check), and bit 5 with passed keeps the player
+  out of the level (the hook at `$049199`, over `CMP #$81 : BEQ` before the game's
+  `BCS`; `expand::enters` on the vanilla overworld's transfer: `$A0` refused, `$80`,
+  `$20` and the rest not). Lunar Magic's layout also changes the `BPL` at `$049002`,
+  which Kobo's hook leaves unreachable. Kobo's code for the three hooks does the same
+  (tests/overworld.rs); the table is `level_flags` in the overworld file. Both
+  findings 2026-10-09.
 - Beating each level of the vanilla overworld, by either exit (`expand::beat_level`),
   plays the same steps to the same RAM and VRAM in the game, its transfer, and Kobo's
   build (2026-10-09). In hacks, events play faster where Lunar Magic's Extra Options

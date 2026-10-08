@@ -582,6 +582,12 @@ Magic's layout, lunar-magic-install.md, "The overworld").
   `$68`, `$78`), and that position in tiles (the pixels over 16); and it opens the
   directions of 8 level tiles, by translevel (`InitLevelTileMovementData`, `$009EE0`,
   Yoshi's House and the star warps).
+- Each translevel's settings (`OWLevelTileSettings`, `$1EA2`, saved with the game):
+  the directions open from its tile (bits 0-3), the midway point (bit 6), and passed
+  (bit 7); a new game opens 8 tiles' directions from `InitLevelTileMovementData`. After
+  an event, the overworld's process 2 (`CODE_048F87`) brings up the save prompt for the
+  level tiles of `DATA_048F7F`; a tile from `$81` on cannot be entered
+  (`OWPU_NotOnPipe`).
 - The level a level tile enters (`CODE_05D83E`): the translevel at the player's place
   (or the overworld override, `$0109`, for the intro level), less `$24` from `$25` on,
   and the high byte 1 on any submap, 0 on the main map.

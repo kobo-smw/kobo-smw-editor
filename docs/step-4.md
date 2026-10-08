@@ -90,6 +90,12 @@ from the editor where the user is working.
   code of their own.
 - Entering levels (2026-10-08): Kobo's code for the layout's level number hook
   (`$05D8B1`): a translevel's level by the translevel, on either map.
+- The overworld's tables and settings (2026-10-09): the tables kept in place
+  (`overworld::TABLES`), the event tile data's split, and each translevel's settings
+  (`level_flags`, with Kobo's code for the layout's save prompt and no-entry flags);
+  Lunar Magic's transfer reads a Kobo build's overworld whole (two bytes it checks,
+  found by bisecting), and warps from every star and pipe tile go where the hacks'
+  do.
 - The overworld drawn (2026-10-09): `render::render_overworld`, layers 1 and 2 of the
   map a player on a submap sees, from the ROM's own load; `kobo overworld png`. Kobo's
   build of the vanilla overworld draws as the game's on every map.

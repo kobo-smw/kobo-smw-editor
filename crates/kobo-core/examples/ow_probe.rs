@@ -565,7 +565,7 @@ fn main() {
                 ("crush", a.events.crush == b.events.crush),
                 ("reveal", a.events.reveal == b.events.reveal),
                 ("start", a.start == b.start),
-                ("opened", a.opened == b.opened),
+                ("level flags", a.level_flags == b.level_flags),
                 ("level events", a.level_events == b.level_events),
                 ("tables", a.tables == b.tables),
             ] {
@@ -629,6 +629,49 @@ fn main() {
             }
             let found = x.iter().filter(|w| w.is_some()).count();
             println!("{same} of {} the same ({found} warps)", places.len());
+        }
+        Some("prompts") if args.len() == 2 => {
+            // `prompts rom.smc`: each level beaten by its normal exit, and
+            // whether the overworld then waits in process 5 (a prompt),
+            // with its translevel's byte of the table at $05DDA0 and its
+            // layer 1 tile.
+            let a = Rom::load(&args[1]).unwrap();
+            let read = kobo_core::overworld::Overworld::read(&a).unwrap();
+            let mut seen = std::collections::BTreeSet::new();
+            let mut beaten = Vec::new();
+            for (i, &t) in read.translevels.iter().enumerate() {
+                if t != 0 && seen.insert(t) {
+                    beaten.push((
+                        (kobo_core::overworld::layer1_place(i), 1u8),
+                        t,
+                        read.layer1[i],
+                    ));
+                }
+            }
+            let list: Vec<_> = beaten.iter().map(|b| b.0).collect();
+            let x = kobo_core::expand::beat_levels(&a, &[0; 0x0F], &list, 0x200).unwrap();
+            for ((_, t, tile), (_, steps)) in beaten.iter().zip(&x) {
+                let waits = steps.iter().rev().take(0x40).all(|s| s.0 == 5);
+                let flags = a
+                    .read_u8(kobo_core::SnesAddr::new(0x05_DDA0 + u32::from(*t)))
+                    .unwrap();
+                println!(
+                    "{t:02X} tile {tile:03X} flags {flags:08b} {}",
+                    if waits { "PROMPT" } else { "" }
+                );
+            }
+        }
+        Some("enters") if args.len() >= 5 => {
+            // `enters rom.smc submap x y`: whether the level tile there is
+            // entered with each of several settings bytes.
+            let rom = Rom::load(&args[1]).unwrap();
+            let n = |i: usize| u8::from_str_radix(&args[i], 16).unwrap();
+            let settings = [0x00u8, 0x10, 0x20, 0x40, 0x80, 0xA0, 0xB0, 0x60, 0xE0, 0x30];
+            let got = kobo_core::expand::enters(&rom, (n(2), n(3), n(4)), &settings).unwrap();
+            for (s, e) in settings.iter().zip(got) {
+                print!(" {s:02X}:{}", if e { "in" } else { "no" });
+            }
+            println!();
         }
         Some("pair") if args.len() == 3 => {
             let a = Rom::load(&args[1]).unwrap();

@@ -205,6 +205,48 @@ fn the_vanilla_overworld_built_warps_as_the_games_own() {
     assert!(theirs.iter().filter(|w| w.is_some()).count() >= 18);
 }
 
+/// A translevel's settings in Lunar Magic's layout, in Kobo's build: its
+/// save prompt flag (bit 4) brings up the save prompt once it is passed,
+/// and its no-entry flag (bit 5) with passed keeps the player out, as Lunar
+/// Magic-saved ROMs do; the game's own lets the player in whatever the bits.
+#[test]
+fn a_built_overworld_keeps_a_level_s_settings() {
+    use kobo_core::build::{self, Project};
+
+    if common::asar().is_none() {
+        return;
+    }
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    // Yoshi's Island 1 (translevel 29, at 3, 8 of the submaps' map).
+    let place = (1, 3, 8);
+    let mut changes = overworld::Changes::default();
+    changes.level_flags.insert(0x29, overworld::FLAG_SAVE);
+    let project = Project {
+        root: std::path::PathBuf::from("."),
+        overworld: Some(changes),
+        ..Default::default()
+    };
+    let built = build::build(&clean, &project).unwrap();
+    // The overworld waits in process 5 at the end, for the prompt.
+    let waits = |rom: &kobo_core::Rom| {
+        let (_, steps) = expand::beat_level(rom, &[0; 0x0F], place, 1, 0x200).unwrap();
+        steps.iter().rev().take(0x40).all(|s| s.0 == 5)
+    };
+    assert!(waits(&built));
+    assert!(!waits(&clean));
+    let settings = [0x00, 0x80, 0x20, 0xA0];
+    assert_eq!(
+        expand::enters(&built, place, &settings).unwrap(),
+        [true, true, true, false]
+    );
+    assert_eq!(
+        expand::enters(&clean, place, &settings).unwrap(),
+        [true, true, true, true]
+    );
+}
+
 /// The level a translevel enters, in Kobo's build of the clean ROM's
 /// overworld: in Lunar Magic's layout by the translevel (`$1xx` from `$25`
 /// on), whichever map it is on, as Lunar Magic-saved ROMs' loads take it;
@@ -293,7 +335,7 @@ fn lunar_magic_overworlds_read_as_their_loads_leave_them() {
                         && back.events.crush == ours.events.crush
                         && back.events.reveal == ours.events.reveal
                         && back.start == ours.start
-                        && back.opened == ours.opened
+                        && back.level_flags == ours.level_flags
                         && back.level_events == ours.level_events
                         && back.tables == ours.tables;
                     if !same {
@@ -371,7 +413,7 @@ fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
             && ours.events.crush == theirs.events.crush
             && ours.events.reveal == theirs.events.reveal
             && ours.start == theirs.start
-            && ours.opened == theirs.opened
+            && ours.level_flags == theirs.level_flags
             && ours.level_events == theirs.level_events
             && ours.tables == theirs.tables;
         if !same {

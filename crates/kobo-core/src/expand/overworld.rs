@@ -206,6 +206,64 @@ fn beat(
     Ok(steps)
 }
 
+/// Whether a player on the level tile at `place` (submap, x and y in
+/// 16x16 tiles), its translevel's settings (`OWLevelTileSettings`) each of
+/// `settings`, goes into its level when A is pressed: the game mode leaves
+/// the overworld's within a second.
+pub fn enters(rom: &Rom, place: (u8, u8, u8), settings: &[u8]) -> Result<Vec<bool>, ExpandError> {
+    let (mut loaded, _) = load(rom, &[0; EVENT_BYTES])?;
+    loaded.bus.pinned.clear();
+    // Until the player stands still (the overworld's process 3), past a new
+    // game's march.
+    for _ in 0..600 {
+        if loaded.bus.ram.u8(OVERWORLD_PROCESS) == 3 {
+            break;
+        }
+        run_game_mode(&mut loaded, 0)?;
+        loaded.bus.ram.set_u8(ram::LAG_FLAG, 0);
+        vertical_blank(&mut loaded, 0)?;
+    }
+    let at = |a: u32| RamAddr::new(0x7E_0000 | a);
+    let (submap, x, y) = place;
+    let index = u32::from(submap != 0) * 0x400
+        + u32::from(y >> 4) * 0x200
+        + u32::from(x >> 4) * 0x100
+        + u32::from(y & 15) * 16
+        + u32::from(x & 15);
+    settings
+        .iter()
+        .map(|&value| {
+            let mut machine = loaded.clone();
+            let ram = &mut machine.bus.ram;
+            ram.set_u8(at(0x0DD6), 0);
+            ram.set_u8(at(0x1F11), submap);
+            for (a, v) in [
+                (0x1F17, u16::from(x) * 16),
+                (0x1F19, u16::from(y) * 16),
+                (0x1F1F, u16::from(x)),
+                (0x1F21, u16::from(y)),
+            ] {
+                ram.set_u8(at(a), v as u8);
+                ram.set_u8(at(a + 1), (v >> 8) as u8);
+            }
+            let translevel = ram.u8(RamAddr::new(0x7E_D000 + index));
+            let tile = ram.u8(RamAddr::new(0x7E_C800 + index));
+            ram.set_u8(at(0x13C1), tile);
+            ram.set_u8(RamAddr::new(0x7E_1EA2 + u32::from(translevel)), value);
+            for frame in 0..60 {
+                machine.bus.pad = if frame < 2 { A } else { 0 };
+                run_game_mode(&mut machine, 0)?;
+                machine.bus.ram.set_u8(ram::LAG_FLAG, 0);
+                vertical_blank(&mut machine, 0)?;
+                if machine.bus.ram.u8(ram::GAME_MODE) != 0x0E {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        })
+        .collect()
+}
+
 /// Where a warp puts a player: the submap, and x and y in pixels.
 pub type Warped = (u8, u16, u16);
 

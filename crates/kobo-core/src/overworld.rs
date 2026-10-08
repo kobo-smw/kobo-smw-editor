@@ -40,10 +40,18 @@ pub const EVENT_RANGES: SnesAddr = SnesAddr::new(0x04_E359);
 pub const REVEAL_FROM: SnesAddr = SnesAddr::new(0x04_DA1D);
 pub const REVEAL_TO: SnesAddr = SnesAddr::new(0x04_DA33);
 pub const REVEALS: usize = 0x16;
-/// What a new game opens (`InitLevelTileMovementData`): 8 level tiles'
-/// save bytes, by translevel, and the directions they are left by.
+/// What the game's new game opens (`InitLevelTileMovementData`): 8 level
+/// tiles' save bytes, by translevel, and the directions they are left by.
 pub const START_OPENED: SnesAddr = SnesAddr::new(0x00_9EE0);
 pub const OPENED: usize = 8;
+/// What a new game gives each translevel in Lunar Magic's layout: its
+/// whole byte of settings (`OWLevelTileSettings`), `$60` of them, here.
+pub const LEVEL_FLAGS: SnesAddr = SnesAddr::new(0x05_DDA0);
+/// The flags of a translevel's settings: its directions (bits 0 to 3, as
+/// the game's), a save prompt when it is passed (Lunar Magic's), no entry
+/// once it is passed (Lunar Magic's), the midway point, and passed.
+pub const FLAG_SAVE: u8 = 0x10;
+pub const FLAG_NO_ENTRY: u8 = 0x20;
 /// Where a new game puts the players (`InitPlayerOverworldData`): their
 /// submaps, a byte each, then two words each of their walking animation,
 /// their position in pixels, and that position in tiles.
@@ -526,8 +534,8 @@ pub struct Overworld {
     pub events: Events,
     /// Where a new game puts Mario and Luigi.
     pub start: [Start; 2],
-    /// The level tiles a new game opens, as translevel and directions.
-    pub opened: Vec<(u8, u8)>,
+    /// Each translevel's settings at a new game ([`LEVEL_FLAGS`]).
+    pub level_flags: Vec<u8>,
     /// Each translevel's event.
     pub level_events: Vec<u8>,
     /// The tables kept in place, as [`TABLES`] lists them.
@@ -658,13 +666,20 @@ impl Overworld {
             })
         };
         let start = [player(0)?, player(1)?];
-        let mut opened = Vec::with_capacity(OPENED);
-        for i in 0..OPENED as u32 {
-            opened.push((
-                rom.read_u8(START_OPENED.add(2 * i))?,
-                rom.read_u8(START_OPENED.add(2 * i + 1))?,
-            ));
-        }
+        let level_flags = match layout {
+            Layout::LunarMagic => rom.read(LEVEL_FLAGS, NAMES)?.to_vec(),
+            // The game's 8 pairs, as its new game writes them.
+            Layout::Game => {
+                let mut flags = vec![0; NAMES];
+                for i in 0..OPENED as u32 {
+                    let t = usize::from(rom.read_u8(START_OPENED.add(2 * i))?);
+                    if let Some(slot) = flags.get_mut(t) {
+                        *slot = rom.read_u8(START_OPENED.add(2 * i + 1))?;
+                    }
+                }
+                flags
+            }
+        };
         let level_events = rom.read(LEVEL_EVENTS, NAMES)?.to_vec();
         let mut tables = Vec::with_capacity(TABLES.len());
         for table in &TABLES {
@@ -679,7 +694,7 @@ impl Overworld {
             names,
             events,
             start,
-            opened,
+            level_flags,
             level_events,
             tables,
         })
@@ -1348,11 +1363,12 @@ impl Overworld {
         }
         // Where a new game starts: the submaps, then the positions in
         // pixels and in tiles, the animation words between left as they are.
-        if self.opened.len() != OPENED {
+        if self.level_flags.len() != NAMES {
             return Err(OverworldError::Decode(
-                "level tiles a new game opens, of which there are 8",
+                "level settings, of which there are $60",
             ));
         }
+        plan.fixed.push((LEVEL_FLAGS, self.level_flags.clone()));
         if self.level_events.len() != NAMES {
             return Err(OverworldError::Decode(
                 "level events, of which there are $60",
@@ -1364,10 +1380,6 @@ impl Overworld {
         }
         plan.fixed
             .push((operands::EVENT_SPLIT, events.split.to_le_bytes().to_vec()));
-        plan.fixed.push((
-            START_OPENED,
-            self.opened.iter().flat_map(|&(t, d)| [t, d]).collect(),
-        ));
         plan.fixed
             .push((START_PLAYERS, self.start.iter().map(|p| p.submap).collect()));
         let positions = |f: &dyn Fn(&Start) -> [u16; 2]| -> Vec<u8> {
@@ -1526,7 +1538,8 @@ pub struct Changes {
     pub crush: Option<Vec<Crush>>,
     pub reveal: Option<Vec<(u8, u8)>>,
     pub start: Option<[Start; 2]>,
-    pub opened: Option<Vec<(u8, u8)>>,
+    /// By translevel: its settings at a new game.
+    pub level_flags: std::collections::BTreeMap<u8, u8>,
     /// By translevel: its event.
     pub level_events: std::collections::BTreeMap<u8, u8>,
     /// Where the event tile data's 2x2 blocks start.
@@ -1653,8 +1666,10 @@ impl Overworld {
         if self.start != clean.start {
             changes.start = Some(self.start);
         }
-        if self.opened != clean.opened {
-            changes.opened = Some(self.opened.clone());
+        for (t, (&ours, &theirs)) in self.level_flags.iter().zip(&clean.level_flags).enumerate() {
+            if ours != theirs {
+                changes.level_flags.insert(t as u8, ours);
+            }
         }
         if self.events.split != clean.events.split {
             changes.event_split = Some(self.events.split);
@@ -1710,8 +1725,10 @@ impl Overworld {
         if let Some(start) = changes.start {
             self.start = start;
         }
-        if let Some(opened) = &changes.opened {
-            self.opened = opened.clone();
+        for (&t, &flags) in &changes.level_flags {
+            if let Some(slot) = self.level_flags.get_mut(usize::from(t)) {
+                *slot = flags;
+            }
         }
         for (name, bytes) in &changes.tables {
             let Some(i) = TABLES.iter().position(|t| t.name == name) else {

@@ -34,7 +34,9 @@
 //! [start]                        # where a new game puts Mario and Luigi: submap, x, y
 //! mario = [0x01, 0x0068, 0x0078] # (submap 0 the main map; x and y in pixels)
 //! luigi = [0x01, 0x0068, 0x0078]
-//! opened = [[0x28, 0x03], ...]   # 8 level tiles' translevel and directions it opens
+//!
+//! [level_flags]                  # a translevel's settings at a new game: directions
+//! 0x28 = 0x03                    # (bits 0-3), save prompt (10), no entry once passed (20)
 //!
 //! [[event]]
 //! number = 0x05
@@ -53,7 +55,7 @@
 use toml_edit::{DocumentMut, Item, Table, Value};
 
 use super::{SourceError, hex, invalid};
-use crate::overworld::{Changes, Crush, Event, EventBlock, ExtraTile, NAME_TILES, OPENED, Start};
+use crate::overworld::{Changes, Crush, Event, EventBlock, ExtraTile, NAME_TILES, Start};
 
 const MAP_NAMES: [&str; 2] = ["main", "submaps"];
 
@@ -246,7 +248,14 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
         }
         sections.push(text + "]\n");
     }
-    if changes.start.is_some() || changes.opened.is_some() {
+    if !changes.level_flags.is_empty() {
+        let mut text = String::from("[level_flags]\n");
+        for (&t, &f) in &changes.level_flags {
+            text += &format!("{} = {}\n", hex(u32::from(t), 2), hex(u32::from(f), 2));
+        }
+        sections.push(text);
+    }
+    if changes.start.is_some() {
         let mut text = String::from("[start]\n");
         if let Some(start) = &changes.start {
             for (who, p) in ["mario", "luigi"].iter().zip(start) {
@@ -257,17 +266,6 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
                     hex(u32::from(p.y), 4)
                 );
             }
-        }
-        if let Some(opened) = &changes.opened {
-            text += "opened = [\n";
-            for (t, d) in opened {
-                text += &format!(
-                    "    [{}, {}],\n",
-                    hex(u32::from(*t), 2),
-                    hex(u32::from(*d), 2)
-                );
-            }
-            text += "]\n";
         }
         sections.push(text);
     }
@@ -476,6 +474,25 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                 let split = int("event_tiles.split", table.get("split"), 0xD00)?;
                 changes.event_split = Some(split as u16);
             }
+            "level_flags" => {
+                let table = item
+                    .as_table()
+                    .ok_or_else(|| invalid(key, "must be a table of settings"))?;
+                for (t, value) in table.iter() {
+                    let at = format!("level_flags.{t}");
+                    let t = t
+                        .strip_prefix("0x")
+                        .and_then(|h| u8::from_str_radix(h, 16).ok())
+                        .filter(|&t| t < 0x60)
+                        .ok_or_else(|| invalid(&at, "a translevel is 0x00 to 0x5F"))?;
+                    let flags = value
+                        .as_value()
+                        .map(|v| value_int(&at, v, 0xFF))
+                        .transpose()?
+                        .ok_or_else(|| invalid(&at, "must be a byte"))?;
+                    changes.level_flags.insert(t, flags as u8);
+                }
+            }
             "level_events" => {
                 let table = item
                     .as_table()
@@ -543,20 +560,6 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                     (Some(m), Some(l)) => changes.start = Some([m, l]),
                     (None, None) => {}
                     _ => return Err(invalid(key, "has both mario and luigi or neither")),
-                }
-                if let Some(list) = table.get("opened") {
-                    let list = list
-                        .as_array()
-                        .ok_or_else(|| invalid(key, "opened must be a list"))?;
-                    let mut opened = Vec::new();
-                    for v in list.iter() {
-                        let n = numbers("start.opened", v, 2, 0xFF)?;
-                        opened.push((n[0] as u8, n[1] as u8));
-                    }
-                    if opened.len() != OPENED {
-                        return Err(invalid(key, "opens 8 level tiles"));
-                    }
-                    changes.opened = Some(opened);
                 }
             }
             "event" => {
@@ -668,7 +671,7 @@ mod tests {
                 y: 0x1C8,
             },
         ]);
-        changes.opened = Some(vec![(0x28, 0x03); 8]);
+        changes.level_flags.insert(0x28, 0x13);
         changes.level_events.insert(0x13, 0x0A);
         changes.event_split = Some(0x0A00);
         changes

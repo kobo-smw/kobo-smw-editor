@@ -49,7 +49,7 @@ pub use map16::{FG_PAGES, PAGE_TILES};
 pub use oam::object_sizes;
 pub use object_map::{ObjectMap, ObjectRef};
 pub use overworld::{
-    Beaten, LoadedOverworld, Warped, beat_level, beat_levels, end_event, load_overworld,
+    Beaten, LoadedOverworld, Warped, beat_level, beat_levels, end_event, enters, load_overworld,
     load_overworld_on, load_overworld_on_passed, load_overworld_passed, warp,
 };
 pub(crate) use sprite_capture::capture_controlled;
