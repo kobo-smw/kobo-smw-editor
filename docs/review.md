@@ -55,7 +55,3 @@ settle it.
   while Kobo carries none of a project's. For a project imported from a hack they are the
   game's names, not the hack's, though true of what the build makes. To settle once the
   overworld is a project's (step 4): the project's names then.
-- **The Objects tab along the level (2026-10-07).** The outline lists objects and sprites
-  together by place by default (by column, a vertical level by row from where the player
-  starts), under a heading per screen; drawing order, which Ctrl+[ and Ctrl+] change, is
-  the other choice. Screen exits sort at their screen's start; what has no place is last.

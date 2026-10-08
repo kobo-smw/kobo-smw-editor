@@ -127,6 +127,15 @@ file by hand; when they do, the editor follows.
   16 rows; a click on an empty tile starts there. Checked in Mesen 2 on vanilla, an
   AddmusicK hack, and the SA-1 reference.
 
+### The Objects tab along the level
+
+- Reviewed 2026-10-08. The outline lists objects and sprites together by place by
+  default (by column, a vertical level by row from where the player starts), under a
+  heading per screen, since finding what is where is the common case. *Drawing order*,
+  the level file's order, which Ctrl+[ and Ctrl+] change, is the other choice, for
+  objects that overlap. Screen exits sort at their screen's start; what has no place is
+  last.
+
 ### Clean room in the editor
 
 - The editor shows no CPU trace, read trace, RAM view, or routine address. A debugging
