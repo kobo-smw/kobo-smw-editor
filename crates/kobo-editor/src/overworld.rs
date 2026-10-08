@@ -10,7 +10,7 @@ use std::thread;
 
 use eframe::egui::{self, Color32, RichText, Sense, TextureHandle, TextureOptions};
 use kobo_core::edit::Workspace;
-use kobo_core::overworld::{LAYER1_SIZE, layer1_index};
+use kobo_core::overworld::{LAYER1_SIZE, LAYER2_SIZE, Overworld, layer1_index, layer2_index};
 use kobo_core::render::OVERWORLD_SIDE;
 use kobo_core::source::overworld::{name_text, parse_name};
 
@@ -73,8 +73,13 @@ pub struct OverworldEditor {
     pub open: bool,
     /// The map shown: 0 the main map, 1-6 the submaps.
     pub submap: u8,
+    /// The layer drawn on: 1 (16x16 tiles) or 2 (8x8 tiles).
+    pub layer: u8,
     /// The layer 1 tile drawn with, its page in the high byte.
     pub brush: u16,
+    /// The layer 2 tile drawn with: the number in the low byte, the
+    /// properties in the high.
+    pub brush2: u16,
     /// Pixels a picture pixel takes.
     zoom: u8,
     picture: Option<(Key, TextureHandle)>,
@@ -134,7 +139,9 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
 
 /// What the window asks of the document.
 enum Change {
+    /// A tile of layer 1 or 2, by its index in the layer's tiles.
     Draw {
+        layer: u8,
         index: usize,
         tile: u16,
         amend: bool,
@@ -143,6 +150,46 @@ enum Change {
         translevel: u8,
         name: [u8; kobo_core::overworld::NAME_TILES],
     },
+    /// A layer 1 place's translevel and direction byte.
+    Level {
+        index: usize,
+        translevel: u8,
+        directions: u8,
+    },
+}
+
+impl Change {
+    fn apply(self, app: &mut App) {
+        match self {
+            Change::Draw {
+                layer,
+                index,
+                tile,
+                amend,
+            } => app.change_overworld("Draw on the overworld", amend, |ow| {
+                if layer == 1 {
+                    ow.layer1[index] = tile;
+                } else {
+                    ow.layer2[index] = tile;
+                }
+            }),
+            Change::Rename { translevel, name } => {
+                app.change_overworld("Rename a level", false, |ow| {
+                    if let Some(slot) = ow.names.get_mut(usize::from(translevel)) {
+                        *slot = name;
+                    }
+                })
+            }
+            Change::Level {
+                index,
+                translevel,
+                directions,
+            } => app.change_overworld("Change a level tile", false, |ow| {
+                ow.translevels[index] = translevel;
+                ow.directions[index] = directions;
+            }),
+        }
+    }
 }
 
 fn show(app: &mut App, ui: &mut egui::Ui) {
@@ -153,6 +200,9 @@ fn show(app: &mut App, ui: &mut egui::Ui) {
     let mut state = std::mem::take(&mut app.overworld_editor);
     if state.zoom == 0 {
         state.zoom = 1;
+    }
+    if state.layer == 0 {
+        state.layer = 1;
     }
     let worker = state
         .worker
@@ -181,18 +231,26 @@ fn show(app: &mut App, ui: &mut egui::Ui) {
     }
     let change = contents(app, &mut state, key, ui);
     app.overworld_editor = state;
-    match change {
-        Some(Change::Draw { index, tile, amend }) => {
-            app.change_overworld("Draw on the overworld", amend, |ow| ow.layer1[index] = tile)
-        }
-        Some(Change::Rename { translevel, name }) => {
-            app.change_overworld("Rename a level", false, |ow| {
-                if let Some(slot) = ow.names.get_mut(usize::from(translevel)) {
-                    *slot = name;
-                }
-            })
-        }
-        None => {}
+    if let Some(change) = change {
+        change.apply(app);
+    }
+}
+
+/// The tile at (`x`, `y`) of a layer's grid on `map`, by its index in the
+/// layer's tiles.
+fn index_of(layer: u8, map: u8, x: u8, y: u8) -> usize {
+    if layer == 1 {
+        layer1_index(map, x, y)
+    } else {
+        layer2_index(map, x, y)
+    }
+}
+
+fn tile_of(overworld: &Overworld, layer: u8, index: usize) -> u16 {
+    if layer == 1 {
+        overworld.layer1[index]
+    } else {
+        overworld.layer2[index]
     }
 }
 
@@ -211,25 +269,43 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
                 }
             });
         ui.separator();
+        ui.selectable_value(&mut state.layer, 1, "Layer 1")
+            .on_hover_text("16x16 tiles: paths, level tiles, and what is walked on");
+        ui.selectable_value(&mut state.layer, 2, "Layer 2")
+            .on_hover_text("8x8 tiles: the picture behind");
+        ui.separator();
         ui.label("Brush");
-        ui.add(
-            egui::DragValue::new(&mut state.brush)
-                .range(0..=0x1FF)
-                .hexadecimal(3, false, true),
-        )
-        .on_hover_text("The layer 1 tile drawn with; right-click a tile to pick it");
+        if state.layer == 1 {
+            ui.add(
+                egui::DragValue::new(&mut state.brush)
+                    .range(0..=0x1FF)
+                    .hexadecimal(3, false, true),
+            )
+            .on_hover_text("The layer 1 tile drawn with; right-click a tile to pick it");
+        } else {
+            ui.add(
+                egui::DragValue::new(&mut state.brush2)
+                    .range(0..=0xFFFF)
+                    .hexadecimal(4, false, true),
+            )
+            .on_hover_text(
+                "The layer 2 tile drawn with: properties, then the number; right-click a tile to pick it",
+            );
+        }
         ui.separator();
         ui.selectable_value(&mut state.zoom, 1, "1x");
         ui.selectable_value(&mut state.zoom, 2, "2x");
     });
-    let changed = document.changes().layer1.len() + document.changes().names.len();
-    let note = if changed == 0 {
-        "Left-drag draws layer 1 tiles; right-click picks a tile and chooses its level.".to_owned()
+    let changes = document.changes();
+    let note = if changes.is_empty() {
+        "Left-drag draws tiles; right-click picks a tile and chooses its level tile.".to_owned()
     } else {
         format!(
-            "The project changes the overworld ({} layer 1 rows, {} names).",
-            document.changes().layer1.len(),
-            document.changes().names.len()
+            "The project changes the overworld: {} layer 1 rows, {} layer 2 rows, {} level tiles, {} names.",
+            changes.layer1.len(),
+            changes.layer2.len(),
+            changes.levels.len(),
+            changes.names.len()
         )
     };
     ui.label(RichText::new(note).small().color(theme::MUTED));
@@ -238,17 +314,26 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
     {
         ui.label(RichText::new(e).color(theme::ERROR));
     }
-    let side = OVERWORLD_SIDE as f32 * f32::from(state.zoom);
-    let tile = 16.0 * f32::from(state.zoom);
+    let zoom = f32::from(state.zoom);
+    let side = OVERWORLD_SIDE as f32 * zoom;
+    // A grid cell of the layer drawn on.
+    let (cell, cells) = if state.layer == 1 {
+        (16.0 * zoom, LAYER1_SIZE)
+    } else {
+        (8.0 * zoom, LAYER2_SIZE)
+    };
     let mut hovered = None;
     egui::ScrollArea::both().max_height(560.0).show(ui, |ui| {
         let (rect, response) =
             ui.allocate_exact_size(egui::vec2(side, side), Sense::click_and_drag());
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "The overworld's map")
+        });
         match &state.picture {
-            Some((_, texture)) => {
+            Some((shown, texture)) => {
                 let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                 ui.painter().image(texture.id(), rect, uv, Color32::WHITE);
-                if state.picture.as_ref().is_some_and(|(k, _)| *k != key) {
+                if *shown != key {
                     ui.painter()
                         .rect_filled(rect, 0, Color32::from_black_alpha(40));
                 }
@@ -264,47 +349,47 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
                 );
             }
         }
-        let at = |pos: egui::Pos2| -> Option<(u8, u8)> {
+        let at = |pos: egui::Pos2, cell: f32, cells: u8| -> Option<(u8, u8)> {
             let d = pos - rect.min;
-            let (x, y) = ((d.x / tile).floor(), (d.y / tile).floor());
-            (x >= 0.0 && y >= 0.0 && x < f32::from(LAYER1_SIZE) && y < f32::from(LAYER1_SIZE))
+            let (x, y) = ((d.x / cell).floor(), (d.y / cell).floor());
+            (x >= 0.0 && y >= 0.0 && x < f32::from(cells) && y < f32::from(cells))
                 .then_some((x as u8, y as u8))
         };
-        if let Some((x, y)) = response.hover_pos().and_then(at) {
-            hovered = Some((x, y));
+        let outline = |x: u8, y: u8, cell: f32, stroke: egui::Stroke| {
             let r = egui::Rect::from_min_size(
-                rect.min + egui::vec2(f32::from(x) * tile, f32::from(y) * tile),
-                egui::vec2(tile, tile),
+                rect.min + egui::vec2(f32::from(x) * cell, f32::from(y) * cell),
+                egui::vec2(cell, cell),
             );
-            ui.painter().rect_stroke(
-                r,
-                0,
-                egui::Stroke::new(1.0, Color32::WHITE),
-                egui::StrokeKind::Inside,
-            );
+            ui.painter()
+                .rect_stroke(r, 0, stroke, egui::StrokeKind::Inside);
+        };
+        if let Some(pos) = response.hover_pos() {
+            if let Some((x, y)) = at(pos, cell, cells) {
+                outline(x, y, cell, egui::Stroke::new(1.0, Color32::WHITE));
+            }
+            hovered = at(pos, 16.0 * zoom, LAYER1_SIZE);
         }
         if let Some((m, x, y)) = state.chosen
             && m == map
         {
-            let r = egui::Rect::from_min_size(
-                rect.min + egui::vec2(f32::from(x) * tile, f32::from(y) * tile),
-                egui::vec2(tile, tile),
-            );
-            ui.painter().rect_stroke(
-                r,
-                0,
-                egui::Stroke::new(2.0, theme::ACCENT),
-                egui::StrokeKind::Inside,
-            );
+            outline(x, y, 16.0 * zoom, egui::Stroke::new(2.0, theme::ACCENT));
         }
         let primary = ui.input(|i| i.pointer.primary_down());
         if primary && (response.is_pointer_button_down_on() || response.dragged()) {
-            if let Some((x, y)) = response.interact_pointer_pos().and_then(at) {
-                let index = layer1_index(map, x, y);
+            if let Some((x, y)) = response
+                .interact_pointer_pos()
+                .and_then(|p| at(p, cell, cells))
+            {
+                let index = index_of(state.layer, map, x, y);
                 if state.stroke != Some(index) {
                     change = Some(Change::Draw {
+                        layer: state.layer,
                         index,
-                        tile: state.brush,
+                        tile: if state.layer == 1 {
+                            state.brush
+                        } else {
+                            state.brush2
+                        },
                         amend: state.stroke.is_some(),
                     });
                     state.stroke = Some(index);
@@ -314,17 +399,25 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
             state.stroke = None;
         }
         if response.secondary_clicked()
-            && let Some((x, y)) = response.interact_pointer_pos().and_then(at)
+            && let Some(pos) = response.interact_pointer_pos()
         {
-            let index = layer1_index(map, x, y);
-            state.brush = overworld.layer1[index];
-            state.chosen = Some((map, x, y));
-            let t = overworld.translevels[index];
-            state.name = overworld
-                .names
-                .get(usize::from(t))
-                .map(name_text)
-                .unwrap_or_default();
+            if let Some((x, y)) = at(pos, cell, cells) {
+                let picked = tile_of(overworld, state.layer, index_of(state.layer, map, x, y));
+                if state.layer == 1 {
+                    state.brush = picked;
+                } else {
+                    state.brush2 = picked;
+                }
+            }
+            if let Some((x, y)) = at(pos, 16.0 * zoom, LAYER1_SIZE) {
+                state.chosen = Some((map, x, y));
+                let t = overworld.translevels[layer1_index(map, x, y)];
+                state.name = overworld
+                    .names
+                    .get(usize::from(t))
+                    .map(name_text)
+                    .unwrap_or_default();
+            }
         }
     });
     let shown = hovered.map(|(x, y)| (map, x, y)).or(state.chosen);
@@ -347,7 +440,31 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
         ui.label(RichText::new(line).monospace());
     }
     if let Some((m, x, y)) = state.chosen {
-        let t = overworld.translevels[layer1_index(m, x, y)];
+        let index = layer1_index(m, x, y);
+        let (t, d) = (overworld.translevels[index], overworld.directions[index]);
+        ui.horizontal(|ui| {
+            ui.label(format!("The tile at {x}, {y}:"));
+            let (mut translevel, mut directions) = (t, d);
+            ui.label("translevel");
+            let a = ui
+                .add(
+                    egui::DragValue::new(&mut translevel)
+                        .range(0..=0x5F)
+                        .hexadecimal(2, false, true),
+                )
+                .on_hover_text("The level the tile enters (0 for none): up to 24 its own number, 101 on from 25");
+            ui.label("directions");
+            let b = ui
+                .add(egui::DragValue::new(&mut directions).hexadecimal(2, false, true))
+                .on_hover_text("The tile's direction byte, which the game copies from the translevel's when it numbers them");
+            if (a.changed() || b.changed()) && (translevel, directions) != (t, d) {
+                change = Some(Change::Level {
+                    index,
+                    translevel,
+                    directions,
+                });
+            }
+        });
         if t != 0 {
             ui.horizontal(|ui| {
                 ui.label(format!("Level {:03X}'s name", level_of(t)));

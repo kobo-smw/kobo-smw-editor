@@ -96,8 +96,9 @@ from the editor where the user is working.
 - The overworld window (2026-10-09): `edit::OverworldDocument` (the overworld file
   open, every change worked out again against the clean ROM's, undo by snapshot) and
   `Workspace::set_overworld`; the editor's window shows each map from a build, draws
-  layer 1 tiles, and renames levels (editor.md, "The overworld"). Layer 2, level tiles'
-  translevels, events, and paths are to come.
+  layer 1 and layer 2 tiles, sets level tiles' translevels and direction bytes, and
+  renames levels (editor.md, "The overworld"). Events, paths, sprites, and the start
+  are to come.
 
 - The emulator to play in (2026-10-08, item 7): `play.emulator` in the config file, or
   `KOBO_EMULATOR`, opens Play's and Build and play's ROM in place of what the system

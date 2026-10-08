@@ -1961,6 +1961,75 @@ fn the_overworld_is_drawn_on_renamed_undone_and_saved_into_the_project() {
 }
 
 #[test]
+fn the_overworld_map_is_drawn_on_with_the_pointer() {
+    use egui_kittest::kittest::Queryable;
+    use kobo_core::overworld::layer1_index;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "overworld-pointer");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().overworld_editor.open = true;
+    harness.run_steps(2);
+    wait_for(&mut harness, "the overworld's picture", |app| {
+        app.overworld_editor.drawn()
+    });
+    let map = harness.get_by_label("The overworld's map").rect();
+    // The middle of the main map's 16x16 tile (x, y), at 1x.
+    let tile = |x: f32, y: f32| map.min + egui::vec2(x * 16.0 + 8.0, y * 16.0 + 8.0);
+    // A right click on the main map's level tile at 12, 3 (translevel 1)
+    // takes its tile as the brush and chooses it.
+    let overworld = |app: &App| app.open_overworld().unwrap().overworld().clone();
+    let before = overworld(harness.state());
+    let at = layer1_index(0, 12, 3);
+    harness.event(egui::Event::PointerMoved(tile(12.0, 3.0)));
+    harness.event(egui::Event::PointerButton {
+        pos: tile(12.0, 3.0),
+        button: PointerButton::Secondary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    });
+    harness.event(egui::Event::PointerButton {
+        pos: tile(12.0, 3.0),
+        button: PointerButton::Secondary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.run_steps(2);
+    assert_eq!(harness.state().overworld_editor.brush, before.layer1[at]);
+    assert_eq!(before.translevels[at], 1);
+    // A drag across three tiles draws them, as one step.
+    harness.state_mut().overworld_editor.brush = 0x58;
+    harness.event(egui::Event::PointerMoved(tile(2.0, 2.0)));
+    harness.event(egui::Event::PointerButton {
+        pos: tile(2.0, 2.0),
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    });
+    harness.step();
+    for x in [3.0, 4.0] {
+        harness.event(egui::Event::PointerMoved(tile(x, 2.0)));
+        harness.step();
+    }
+    harness.event(egui::Event::PointerButton {
+        pos: tile(4.0, 2.0),
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.run_steps(2);
+    let after = overworld(harness.state());
+    for x in 2..=4 {
+        assert_eq!(after.layer1[layer1_index(0, x, 2)], 0x58, "tile {x}, 2");
+    }
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    let undone = overworld(harness.state());
+    assert_eq!(undone.layer1, before.layer1);
+}
+
+#[test]
 fn an_animation_list_is_given_and_a_slot_added_from_the_inspector() {
     use egui_kittest::kittest::Queryable;
 

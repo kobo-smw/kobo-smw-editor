@@ -207,10 +207,12 @@ The overworld window (View menu) shows the project's overworld as a player on th
 chosen map sees it: the main map, or the submaps' map in one submap's graphics and
 colours, drawn from a build of the project as it is in memory, as the ROM's own load
 puts it up (`render::render_overworld`), dimmed while a newer one is being drawn.
-Dragging draws layer 1's 16x16 tiles with the brush (a tile number, its page in the
-high digit); a right click takes the tile under it as the brush and chooses its level
-tile, whose level and name show below and whose name is edited there (19 tiles at most,
-`\xNN` for a tile that is not a letter; Enter sets it). Each change is one undo step, a
+Dragging draws the chosen layer's tiles with its brush: layer 1's 16x16 tiles (a tile
+number, its page in the high digit), or layer 2's 8x8 ones (the properties, then the
+number). A right click takes the tile under it as the brush and chooses the layer 1 tile
+there, whose translevel (the level it enters, 0 for none) and direction byte are set
+below, and its level's name (19 tiles at most, `\xNN` for a tile that is not a letter;
+Enter sets it). Each change is one undo step, a
 stroke one in all. Saving writes `overworld.toml` (docs/build.md, "Source formats"),
 named in `kobo.toml`'s `[overworld]` the first time; a project with an overworld file
 builds it in Lunar Magic's layout (lunar-magic-install.md, "The overworld").
