@@ -10,7 +10,9 @@ use std::thread;
 
 use eframe::egui::{self, Color32, RichText, Sense, TextureHandle, TextureOptions};
 use kobo_core::edit::Workspace;
-use kobo_core::overworld::{LAYER1_SIZE, LAYER2_SIZE, Overworld, layer1_index, layer2_index};
+use kobo_core::overworld::{
+    LAYER1_SIZE, LAYER2_SIZE, Overworld, Start, layer1_index, layer2_index,
+};
 use kobo_core::render::OVERWORLD_SIDE;
 use kobo_core::source::overworld::{name_text, parse_name};
 
@@ -156,6 +158,10 @@ enum Change {
         translevel: u8,
         directions: u8,
     },
+    /// The event passing a translevel makes.
+    Event { translevel: u8, event: u8 },
+    /// Where a new game puts Mario (0) or Luigi (1).
+    Start { player: usize, start: Start },
 }
 
 impl Change {
@@ -188,6 +194,16 @@ impl Change {
                 ow.translevels[index] = translevel;
                 ow.directions[index] = directions;
             }),
+            Change::Event { translevel, event } => {
+                app.change_overworld("Change a level's event", false, |ow| {
+                    if let Some(slot) = ow.level_events.get_mut(usize::from(translevel)) {
+                        *slot = event;
+                    }
+                })
+            }
+            Change::Start { player, start } => {
+                app.change_overworld("Move the start", false, |ow| ow.start[player] = start)
+            }
         }
     }
 }
@@ -465,7 +481,46 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
                 });
             }
         });
+        ui.horizontal(|ui| {
+            for (player, who) in ["Mario", "Luigi"].iter().enumerate() {
+                let here = Start {
+                    submap: state.submap,
+                    x: u16::from(x) * 16 + 8,
+                    y: u16::from(y) * 16 + 8,
+                };
+                let starts = overworld.start[player] == here;
+                if ui
+                    .add_enabled(!starts, egui::Button::new(format!("{who} starts here")))
+                    .on_hover_text("Where a new game puts the player: this tile, on the map shown")
+                    .on_disabled_hover_text(format!("A new game puts {who} here"))
+                    .clicked()
+                {
+                    change = Some(Change::Start {
+                        player,
+                        start: here,
+                    });
+                }
+            }
+        });
         if t != 0 {
+            ui.horizontal(|ui| {
+                let was = overworld.level_events[usize::from(t)];
+                let mut event = was;
+                ui.label(format!("Passing level {:03X} makes event", level_of(t)));
+                let response = ui
+                    .add(
+                        egui::DragValue::new(&mut event)
+                            .range(0..=0x77)
+                            .hexadecimal(2, false, true),
+                    )
+                    .on_hover_text("Its secret exit makes the next one");
+                if response.changed() && event != was {
+                    change = Some(Change::Event {
+                        translevel: t,
+                        event,
+                    });
+                }
+            });
             ui.horizontal(|ui| {
                 ui.label(format!("Level {:03X}'s name", level_of(t)));
                 let response = ui.add(

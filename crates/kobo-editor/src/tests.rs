@@ -1998,6 +1998,17 @@ fn the_overworld_map_is_drawn_on_with_the_pointer() {
     harness.run_steps(2);
     assert_eq!(harness.state().overworld_editor.brush, before.layer1[at]);
     assert_eq!(before.translevels[at], 1);
+    // Mario starts on the chosen tile, in its middle.
+    harness.get_by_label("Mario starts here").click();
+    harness.run_steps(2);
+    let start = overworld(harness.state()).start[0];
+    assert_eq!(
+        (start.submap, start.x, start.y),
+        (0, 12 * 16 + 8, 3 * 16 + 8)
+    );
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    assert_eq!(overworld(harness.state()).start, before.start);
     // A drag across three tiles draws them, as one step.
     harness.state_mut().overworld_editor.brush = 0x58;
     harness.event(egui::Event::PointerMoved(tile(2.0, 2.0)));
