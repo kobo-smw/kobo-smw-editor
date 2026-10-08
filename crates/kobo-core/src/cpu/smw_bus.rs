@@ -893,10 +893,20 @@ mod tests {
     use crate::rom::Rom;
 
     #[test]
+    fn controller_1_reads_what_a_pass_presses() {
+        let rom = rom();
+        let mut bus = SmwBus::new(&rom);
+        assert_eq!((bus.read(0x4218), bus.read(0x4219)), (0, 0));
+        bus.pad = 0x1080;
+        assert_eq!((bus.read(0x4218), bus.read(0x4219)), (0x80, 0x10));
+    }
+
+    #[test]
     fn stubs_and_unsupported_accesses_are_distinct() {
         let rom = rom();
         let mut bus = SmwBus::new(&rom);
-        bus.read(0x4218);
+        // Controller 2, which no pass presses.
+        bus.read(0x421A);
         bus.write(0x420C, 0);
         // Open bus on a LoROM cartridge, a write to a read-only register.
         bus.read(0x3800);
