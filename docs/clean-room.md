@@ -32,7 +32,9 @@ that checked everything Kobo knew of Lunar Magic against it is
   Where a checked byte is an instruction's, the instruction is Kobo's own and does its work
   in Kobo's code.
 - Allowed evidence: SMWCentral and SNESLab documentation, Lunar Magic's readme and help
-  file, the sources of open tools (PIXI, GPS, UberASM Tool, SA-1 Pack), byte diffs of a ROM
+  file, the sources of open tools (PIXI, GPS, UberASM Tool, SA-1 Pack), a community
+  patch's hook sites and stated behaviour, read to interoperate with it, though not its
+  code where that says it is adapted from Lunar Magic's (decided 2026-10-08), byte diffs of a ROM
   before and after a Lunar Magic operation, bisecting which bytes make Lunar Magic keep or
   export something (printing addresses only), and running Lunar Magic-saved ROMs to
   observe which addresses they read and write, with what values.

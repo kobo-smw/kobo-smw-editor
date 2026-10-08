@@ -145,8 +145,8 @@ file by hand; when they do, the editor follows.
   `retry_config/ram.asm`), the play build sets its respawn point to the entrance, as an
   entry from the overworld would have set it to the level's start: without that it was
   0, so a retry went to level `000`, and past a midway point to translevel 0's (the
-  Romhack Races baserom's `13B` went to `0C5`). Reading that file is a decision marked
-  in [review.md](review.md).
+  Romhack Races baserom's `13B` went to `0C5`). Kobo knows this one community resource, as
+  it knows Callisto (maintainer, 2026-10-08).
 - A play starts with four lives and the power-up chosen in the menu (F5 the last one).
 - A click on the ground or a wall starts the player on its top: the first tile of page 1
   (`100`-`1FF`, by what it acts like) above the click with two free tiles over it, within

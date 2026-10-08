@@ -858,7 +858,9 @@ and the rows follow what is on screen.
   each stripe for `$2000`-`$3FFF` to its place, the address's low 11 bits at `$3000`
   (layer 1) or `$3800` (layer 2), or takes it out of the buffer when its Map16 row (mod
   32, bit 11 being the row's bit 4 in the game's 64x64 tilemaps) is not one of
-  `cy`..`cy+14`, in game modes `$05`, `$07`, `$13`, and `$14` (review.md). Until then
+  `cy`..`cy+14`, in game modes `$05`, `$07`, `$13`, and `$14`, the ones
+  `vram_optimize.asm` runs its move in (its hook sites and stated behaviour are evidence:
+  clean-room.md, maintainer, 2026-10-08). Until then
   Kobo's queued its own address and decided from the camera when the tile was made,
   kept so on review (2026-10-04) until a hack's code read the stripe buffer: the Romhack
   Races baserom's `vram_optimize.asm` (kkevinm's) does, taking that hook over to move
