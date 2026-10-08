@@ -405,6 +405,74 @@ fn main() {
                 }
             }
         }
+        Some("enter") if args.len() >= 2 => {
+            // `enter rom...`: the level number the level load takes for
+            // each translevel entered through $0109, from the main map and
+            // from a submap ($0E-$0F after CODE_05D796).
+            use kobo_core::ram::RamAddr;
+            for path in &args[1..] {
+                let rom = Rom::load(path).unwrap();
+                let mut line = String::new();
+                for t in [0x01u8, 0x24, 0x25, 0x30, 0x5F] {
+                    for submap in [0u8, 1] {
+                        let ram =
+                            kobo_core::expand::enter_by_exit(&rom, 0, 0, false, submap, |ram| {
+                                ram.set_u8(kobo_core::ram::SUBLEVEL_COUNT, 0);
+                                ram.set_u8(RamAddr::new(0x7E_0109), t);
+                                if let Ok(n) = std::env::var("TRANSLEVEL") {
+                                    let n = u8::from_str_radix(&n, 16).unwrap();
+                                    ram.set_u8(RamAddr::new(0x7E_13BF), n);
+                                }
+                            })
+                            .unwrap();
+                        let level = u16::from(ram.u8(RamAddr::new(0x7E_000F))) << 8
+                            | u16::from(ram.u8(RamAddr::new(0x7E_000E)));
+                        line += &format!(" {t:02X}/{submap}:{level:03X}");
+                    }
+                }
+                println!("{path}:{line}");
+            }
+        }
+        Some("enter2") if args.len() >= 2 => {
+            // `enter2 rom...`: as `enter`, from the player's place (x 5,
+            // y 6), with each bit of the place's direction byte set.
+            use kobo_core::ram::RamAddr;
+            let at = |a: u32| RamAddr::new(0x7E_0000 | a);
+            for path in &args[1..] {
+                let rom = Rom::load(path).unwrap();
+                let mut line = String::new();
+                for t in [0x05u8, 0x30] {
+                    for submap in [0u8, 1] {
+                        for dir in [0u8, 1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80] {
+                            let ram = kobo_core::expand::enter_by_exit(
+                                &rom,
+                                0,
+                                0,
+                                false,
+                                submap,
+                                |ram| {
+                                    ram.set_u8(kobo_core::ram::SUBLEVEL_COUNT, 0);
+                                    ram.set_u8(at(0x0109), 0);
+                                    ram.set_u8(at(0x0DD6), 0);
+                                    ram.set_u8(at(0x1F1F), 5);
+                                    ram.set_u8(at(0x1F20), 0);
+                                    ram.set_u8(at(0x1F21), 6);
+                                    ram.set_u8(at(0x1F22), 0);
+                                    let place = 5 | 6 << 4 | if submap != 0 { 0x400 } else { 0 };
+                                    ram.set_u8(RamAddr::new(0x7E_D000 + place), t);
+                                    ram.set_u8(RamAddr::new(0x7E_D800 + place), dir);
+                                },
+                            )
+                            .unwrap();
+                            let level =
+                                u16::from(ram.u8(at(0x0F))) << 8 | u16::from(ram.u8(at(0x0E)));
+                            line += &format!(" {t:02X}/{submap}/{dir:02X}:{level:03X}");
+                        }
+                    }
+                }
+                println!("{path}:{line}");
+            }
+        }
         Some("pair") if args.len() == 3 => {
             let a = Rom::load(&args[1]).unwrap();
             let b = Rom::load(&args[2]).unwrap();

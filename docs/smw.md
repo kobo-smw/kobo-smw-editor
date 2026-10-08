@@ -582,6 +582,9 @@ Magic's layout, lunar-magic-install.md, "The overworld").
   `$68`, `$78`), and that position in tiles (the pixels over 16); and it opens the
   directions of 8 level tiles, by translevel (`InitLevelTileMovementData`, `$009EE0`,
   Yoshi's House and the star warps).
+- The level a level tile enters (`CODE_05D83E`): the translevel at the player's place
+  (or the overworld override, `$0109`, for the intro level), less `$24` from `$25` on,
+  and the high byte 1 on any submap, 0 on the main map.
 - The level name (`CODE_049D07`) goes out as a stripe image (`DynamicStripeImage`,
   `$7F837D`, its size at `$7F837B`): 19 tiles at VRAM `$508B` with properties `$39`,
   composed from up to three parts per translevel (`LevelNames`), padded with spaces.

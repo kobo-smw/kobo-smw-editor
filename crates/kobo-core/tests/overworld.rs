@@ -79,6 +79,65 @@ fn the_vanilla_overworld_built_plays_as_the_games_own() {
     assert_eq!(ended, 18);
 }
 
+/// The level a translevel enters, in Kobo's build of the clean ROM's
+/// overworld: in Lunar Magic's layout by the translevel (`$1xx` from `$25`
+/// on), whichever map it is on, as Lunar Magic-saved ROMs' loads take it;
+/// through the overworld override (`$0109`), by the submap, as the game's.
+#[test]
+fn a_built_overworld_enters_levels_by_translevel() {
+    use kobo_core::build::{self, Project};
+    use kobo_core::ram::{self, RamAddr};
+
+    if common::asar().is_none() {
+        return;
+    }
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let project = Project {
+        root: std::path::PathBuf::from("."),
+        overworld: Some(overworld::Changes::default()),
+        ..Default::default()
+    };
+    let built = build::build(&clean, &project).unwrap();
+    let at = |a: u32| RamAddr::new(0x7E_0000 | a);
+    // The level entered from translevel `t` on `submap`, from the player's
+    // place or through the override.
+    let enter = |rom: &kobo_core::Rom, t: u8, submap: u8, by_override: bool| {
+        let ram = expand::enter_by_exit(rom, 0, 0, false, submap, |ram| {
+            ram.set_u8(ram::SUBLEVEL_COUNT, 0);
+            ram.set_u8(at(0x0DD6), 0);
+            ram.set_u8(at(0x1F1F), 5);
+            ram.set_u8(at(0x1F20), 0);
+            ram.set_u8(at(0x1F21), 6);
+            ram.set_u8(at(0x1F22), 0);
+            let place = 5 | 6 << 4 | if submap != 0 { 0x400 } else { 0 };
+            ram.set_u8(RamAddr::new(0x7E_D000 + place), t);
+            ram.set_u8(at(0x0109), if by_override { t } else { 0 });
+        })
+        .unwrap();
+        u16::from(ram.u8(at(0x0F))) << 8 | u16::from(ram.u8(at(0x0E)))
+    };
+    for (t, submap, game, layout) in [
+        (0x05, 0, 0x005, 0x005),
+        (0x05, 1, 0x105, 0x005),
+        (0x30, 0, 0x00C, 0x10C),
+        (0x30, 1, 0x10C, 0x10C),
+    ] {
+        assert_eq!(enter(&clean, t, submap, false), game, "{t:02X} on {submap}");
+        assert_eq!(
+            enter(&built, t, submap, false),
+            layout,
+            "{t:02X} on {submap}"
+        );
+        assert_eq!(
+            enter(&built, t, submap, true),
+            game,
+            "{t:02X} on {submap}, $0109"
+        );
+    }
+}
+
 #[test]
 fn lunar_magic_overworlds_read_as_their_loads_leave_them() {
     let failures = common::failures::Failures::new(

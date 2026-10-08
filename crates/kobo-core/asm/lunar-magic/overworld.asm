@@ -75,6 +75,18 @@ org $049549
     db $EA,$EA,$EA,$EA
 +
 
+; The level a translevel enters (CODE_05D8A2): the game takes the number's
+; high byte from the player's submap, 1 on any submap; this layout from
+; the translevel, 1 from $25 on, on whichever map, but when the overworld
+; override ($0109, the intro level's) names the level, which keeps the
+; game's rule. In place of the game's BEQ and LDA #$01, with the submap in
+; A (8-bit); the game stores what is left in A as the high byte.
+!overworld_override = $0109|!addr
+!translevel = $13BF|!addr
+
+org $05D8B1
+    JSL level_bank
+
 ; The game's loop through its list, from its first branch on: Kobo's code
 ; makes the event's tiles, and the game goes on at $04E9FC.
 org $04E9F7
@@ -355,4 +367,22 @@ level_name:
     ADC #$0004
     STA.l !stripe_size
     PLB
+    RTL
+
+; The high byte of the level number a translevel enters: A the player's
+; submap (8-bit) in, the byte out.
+level_bank:
+    PHA
+    LDA !overworld_override
+    BEQ .by_translevel
+    PLA
+    BEQ +
+    LDA #$01
++   RTL
+.by_translevel:
+    PLA
+    LDA !translevel
+    CMP #$25
+    LDA #$00
+    ROL A
     RTL

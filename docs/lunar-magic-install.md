@@ -2005,6 +2005,15 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   build of it, where the hack itself draws at `$5088` (2026-10-08). The corpus hacks
   whose names come out otherwise draw them with code of their own: two lines from VRAM
   `$506B`, 28 tiles from `$5062`, or elsewhere (known_failures.toml).
+- The level a translevel enters: the hook at `$05D8B1` (4 bytes, over the game's `BEQ :
+  LDA #$01`, the submap in A, the level number's high byte left in A) takes it from the
+  translevel, `$1xx` from `$25` on, on either map, unless the overworld override
+  (`$0109`) names the level, which keeps the game's rule (by the submap). From the
+  memory effects of `self.smc` and the corpus hacks entered from a place with each
+  translevel and each bit of its direction byte, and through `$0109` with
+  `TranslevelNo` set or not (`examples/ow_probe.rs`, `enter` and `enter2`, 2026-10-08):
+  the direction byte and `TranslevelNo` change nothing through `$0109`. Kobo's code
+  does the same (tests/overworld.rs); for the vanilla overworld both rules agree.
 - Where a new game starts (the players' submaps and positions, `InitPlayerOverworldData`
   at `$009EF0`, and the 8 level tiles it opens, `InitLevelTileMovementData` at
   `$009EE0`) stays in the game's tables, which Lunar Magic's overworld editor changes in
