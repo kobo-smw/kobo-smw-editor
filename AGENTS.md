@@ -2,7 +2,7 @@
 
 An open-source Super Mario World ROM editor and build system.
 Desktop app for Windows, Linux, and macOS.
-Early stage: roadmap steps 1 and 2 are complete; step 3, the GUI level editor, is next.
+Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-4.md`).
 
 ## Principles
 
@@ -400,8 +400,9 @@ describes that module's code rather than the game). Do not grow this file with t
   what builds refuse, what is left to Lunar Magic, and the risks.
 - `docs/clean-room.md`: why Kobo looks at Lunar Magic only to interoperate with it, what
   evidence that allows, and how Kobo's outputs keep to it.
-- `docs/step-3.md`: the plan for the level editor, its decisions and work order, until
-  step 3 is done. `docs/editor.md`: the editor, as its users meet it.
+- `docs/editor.md`: the editor, as its users meet it, and the decisions it rests on.
+  `docs/step-4.md`: the plan for roadmap step 4, its decisions and work order, until
+  step 4 is done.
 - `docs/review.md`: decisions taken without the maintainer, and settings left refused,
   waiting for a batch review. Add to it rather than stopping to ask.
 - `docs/clean-room-audit.md`: the 2026-10-03 audit of everything Kobo knew of Lunar Magic:
@@ -431,7 +432,7 @@ describes that module's code rather than the game). Do not grow this file with t
   where a tool orders files by directory listing, which may vary by file system.
 - **The editor is egui** (`eframe`, its OpenGL renderer), decided 2026-10-05: one
   binary in Rust alone on all three platforms, and an immediate-mode interface drawn from
-  the editor's state with no second copy of it. `docs/step-3.md` has the reasoning.
+  the editor's state with no second copy of it. `docs/editor.md` has the reasoning.
 - **Tools come from pinned builds**: `kobo-smw/kobo-tools` builds Asar, PIXI, and UberASM
   Tool from pinned upstream commits for Linux x64, Windows x64, and macOS (arm64 and x64)
   and publishes them with their sources; Kobo pins a release's hashes

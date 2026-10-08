@@ -1,5 +1,5 @@
 //! The Kobo level editor: a window over `kobo_core`, which does
-//! everything it shows and every change it makes (docs/step-3.md).
+//! everything it shows and every change it makes (docs/editor.md).
 
 mod app;
 mod backgrounds;
