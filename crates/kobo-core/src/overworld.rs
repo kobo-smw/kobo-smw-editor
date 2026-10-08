@@ -197,8 +197,11 @@ mod operands {
     pub const EXTRA_KINDS: SnesAddr = SnesAddr::new(0x04_EA27);
     pub const EXTRA_DATA: SnesAddr = SnesAddr::new(0x04_EA32);
     pub const EXTRA_PLACES: SnesAddr = SnesAddr::new(0x04_EA38);
-    /// `CPY #$0900`: where the event tile data's 2x2 blocks start.
+    /// `CPY #$0900`: where the event tile data's 2x2 blocks start; and the
+    /// path fade's `CMP #$0900` (`CODE_04EAC9`), which draws a block's
+    /// tiles as sprites by the same split.
     pub const EVENT_SPLIT: SnesAddr = SnesAddr::new(0x04_E4C0);
+    pub const FADE_SPLIT: SnesAddr = SnesAddr::new(0x04_EAD8);
 }
 
 /// Where Lunar Magic's layout keeps the pointers only its code reads.
@@ -1381,6 +1384,8 @@ impl Overworld {
         plan.fixed
             .push((operands::EVENT_SPLIT, events.split.to_le_bytes().to_vec()));
         plan.fixed
+            .push((operands::FADE_SPLIT, events.split.to_le_bytes().to_vec()));
+        plan.fixed
             .push((START_PLAYERS, self.start.iter().map(|p| p.submap).collect()));
         let positions = |f: &dyn Fn(&Start) -> [u16; 2]| -> Vec<u8> {
             self.start
@@ -1546,6 +1551,11 @@ pub struct Changes {
     pub event_split: Option<u16>,
     /// The tables kept in place, by name ([`TABLES`]): those that differ.
     pub tables: std::collections::BTreeMap<String, Vec<u8>>,
+    /// Lunar Magic's option to turn the event path fade off, with how much
+    /// each frame adds to a step's timer (a step every `$40`): installed as
+    /// Kobo's code, not read from the ROM's tables (an import finds it with
+    /// `expand::reveal_speed`).
+    pub reveal_speed: Option<u8>,
 }
 
 impl Changes {

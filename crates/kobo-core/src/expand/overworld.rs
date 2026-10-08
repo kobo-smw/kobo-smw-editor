@@ -264,6 +264,28 @@ pub fn enters(rom: &Rom, place: (u8, u8, u8), settings: &[u8]) -> Result<Vec<boo
         .collect()
 }
 
+/// The game's code for an event's path fade, per frame (`CODE_04EAC9`),
+/// as far as Lunar Magic's option to turn the fade off rewrites it.
+const FADE_STEP: crate::addr::SnesAddr = crate::addr::SnesAddr::new(0x04_EAC9);
+const FADE_STEP_LEN: usize = 13;
+
+/// How fast an event reveals its path: `None` with the game's fade (its
+/// code at `CODE_04EAC9`), else how much each frame adds to the step's
+/// timer (`ColorFadeTimer`, a step every `$40`), which Lunar Magic's
+/// option for it sets, found by running the ROM's step once from 0.
+pub fn reveal_speed(rom: &Rom, clean: &Rom) -> Result<Option<u8>, ExpandError> {
+    let read = |r: &Rom| r.read(FADE_STEP, FADE_STEP_LEN).map(<[u8]>::to_vec);
+    if read(rom).ok() == read(clean).ok() {
+        return Ok(None);
+    }
+    let (mut machine, _) = load(rom, &[0; EVENT_BYTES])?;
+    machine.bus.pinned.clear();
+    let timer = RamAddr::new(0x7E_1495);
+    machine.bus.ram.set_u8(timer, 0);
+    machine.call(Call::jsr(FADE_STEP.raw()).data_bank(0x04))?;
+    Ok(Some(machine.bus.ram.u8(timer)))
+}
+
 /// Where a warp puts a player: the submap, and x and y in pixels.
 pub type Warped = (u8, u16, u16);
 

@@ -193,9 +193,12 @@ fn build_overworld(clean: &Rom, hack: &Rom) -> Result<Rom, String> {
         .map_err(|e| format!("read: {e}"))?
         .in_lunar_magic_shape();
     let base = Overworld::read(clean).unwrap().in_lunar_magic_shape();
+    let mut changes = theirs.changes_from(&base);
+    changes.reveal_speed =
+        kobo_core::expand::reveal_speed(hack, clean).map_err(|e| e.to_string())?;
     let project = Project {
         root: std::path::PathBuf::from("."),
-        overworld: Some(theirs.changes_from(&base)),
+        overworld: Some(changes),
         ..Default::default()
     };
     build::build(clean, &project).map_err(|e| format!("build: {e}"))
@@ -672,6 +675,17 @@ fn main() {
                 print!(" {s:02X}:{}", if e { "in" } else { "no" });
             }
             println!();
+        }
+        Some("speed") if args.len() >= 3 => {
+            // `speed clean.smc rom...`: each ROM's path reveal speed.
+            let clean = Rom::load(&args[1]).unwrap();
+            for path in &args[2..] {
+                let rom = Rom::load(path).unwrap();
+                println!(
+                    "{path}: {:?}",
+                    kobo_core::expand::reveal_speed(&rom, &clean)
+                );
+            }
         }
         Some("pair") if args.len() == 3 => {
             let a = Rom::load(&args[1]).unwrap();

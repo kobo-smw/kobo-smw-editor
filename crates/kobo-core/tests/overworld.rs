@@ -247,6 +247,66 @@ fn a_built_overworld_keeps_a_level_s_settings() {
     );
 }
 
+/// Lunar Magic's option to turn the event path fade off, in Kobo's build:
+/// each step of an event's layer 2 path takes ceil($40 / speed) + 1 frames,
+/// as in Lunar Magic-saved ROMs, and the speed reads back from the build.
+#[test]
+fn a_built_overworld_reveals_paths_at_its_speed() {
+    use kobo_core::build::{self, Project};
+
+    if common::asar().is_none() {
+        return;
+    }
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    let changes = overworld::Changes {
+        reveal_speed: Some(6),
+        ..Default::default()
+    };
+    let project = Project {
+        root: std::path::PathBuf::from("."),
+        overworld: Some(changes),
+        ..Default::default()
+    };
+    let built = build::build(&clean, &project).unwrap();
+    assert_eq!(expand::reveal_speed(&built, &clean).unwrap(), Some(6));
+    assert_eq!(expand::reveal_speed(&clean, &clean).unwrap(), None);
+    // A level whose event has layer 2 blocks.
+    let read = Overworld::read(&clean).unwrap();
+    let (index, _) = read
+        .translevels
+        .iter()
+        .enumerate()
+        .find(|&(_, &t)| {
+            t != 0 && {
+                let e = usize::from(read.level_events[usize::from(t)]);
+                e < read.events.count() && !read.events.blocks(e).is_empty()
+            }
+        })
+        .unwrap();
+    let place = overworld::layer1_place(index);
+    // The lengths of the runs of the event process's step 4.
+    let steps = |rom: &kobo_core::Rom| {
+        let (_, steps) = expand::beat_level(rom, &[0; 0x0F], place, 1, 0x300).unwrap();
+        let mut runs: Vec<(u8, u8, usize)> = Vec::new();
+        for (p, e) in steps {
+            match runs.last_mut() {
+                Some((q, f, n)) if (*q, *f) == (p, e) => *n += 1,
+                _ => runs.push((p, e, 1)),
+            }
+        }
+        runs.into_iter()
+            .filter(|&(p, e, _)| (p, e) == (1, 4))
+            .map(|(_, _, n)| n)
+            .collect::<Vec<_>>()
+    };
+    let ours = steps(&built);
+    assert!(!ours.is_empty());
+    assert!(ours.iter().all(|&n| n == 12), "{ours:?}");
+    assert!(steps(&clean).iter().all(|&n| n == 5));
+}
+
 /// The level a translevel enters, in Kobo's build of the clean ROM's
 /// overworld: in Lunar Magic's layout by the translevel (`$1xx` from `$25`
 /// on), whichever map it is on, as Lunar Magic-saved ROMs' loads take it;

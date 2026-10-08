@@ -672,6 +672,14 @@ impl Stage {
                 if entrances.is_some() {
                     hash.update(project.entrance_count().to_le_bytes());
                 }
+                if let Some(speed) = project.overworld.as_ref().and_then(|o| o.reveal_speed)
+                    && layout
+                {
+                    let (name, text) = install::OVERWORLD_REVEAL;
+                    hash.update(name.as_bytes());
+                    hash.update([0, speed]);
+                    hash.update(text.as_bytes());
+                }
                 hash.finalize().to_vec()
             }
             // The pixels' indexes and the size: the palette is only for
@@ -930,9 +938,13 @@ impl Stage {
                         *rom = install::apply_layer3(&asar, rom)
                             .map_err(|e| BuildError::Asar(Box::new(e)))?;
                     }
-                    if project.overworld.is_some() {
+                    if let Some(overworld) = &project.overworld {
                         *rom = install::apply_overworld(&asar, rom)
                             .map_err(|e| BuildError::Asar(Box::new(e)))?;
+                        if let Some(speed) = overworld.reveal_speed {
+                            *rom = install::apply_overworld_reveal(&asar, rom, speed)
+                                .map_err(|e| BuildError::Asar(Box::new(e)))?;
+                        }
                     }
                 }
                 if project.choc_island_rooms() {

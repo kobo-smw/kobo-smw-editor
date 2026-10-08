@@ -22,6 +22,9 @@
 //! [event_tiles]                  # where the event tile data's 2x2 blocks start
 //! split = 0x0900
 //!
+//! [options]                      # Lunar Magic's: the event path fade off, a speed to reveal at
+//! reveal_speed = 0x06
+//!
 //! [tables]                       # the tables kept in place, their bytes (overworld::TABLES)
 //! music = "02 03 04 06 07 09 05"
 //!
@@ -203,6 +206,12 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
             text += &format!("{} = {}\n", hex(u32::from(t), 2), quoted.trim());
         }
         sections.push(text);
+    }
+    if let Some(speed) = changes.reveal_speed {
+        sections.push(format!(
+            "[options]\nreveal_speed = {}\n",
+            hex(u32::from(speed), 2)
+        ));
     }
     if !changes.tables.is_empty() {
         let mut text = String::from("[tables]\n");
@@ -443,6 +452,21 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                     changes.names.insert(t, parse_name(&at, text)?);
                 }
             }
+            "options" => {
+                let table = item
+                    .as_table()
+                    .ok_or_else(|| invalid(key, "must be a table"))?;
+                for (name, _) in table.iter() {
+                    if name != "reveal_speed" {
+                        return Err(invalid(format!("options.{name}"), "is not an option"));
+                    }
+                }
+                let speed = int("options.reveal_speed", table.get("reveal_speed"), 0x40)?;
+                if speed == 0 {
+                    return Err(invalid("options.reveal_speed", "is 1 to 0x40"));
+                }
+                changes.reveal_speed = Some(speed as u8);
+            }
             "tables" => {
                 let table = item
                     .as_table()
@@ -674,6 +698,7 @@ mod tests {
         changes.level_flags.insert(0x28, 0x13);
         changes.level_events.insert(0x13, 0x0A);
         changes.event_split = Some(0x0A00);
+        changes.reveal_speed = Some(6);
         changes
             .tables
             .insert("music".into(), vec![2, 3, 4, 6, 7, 9, 5]);

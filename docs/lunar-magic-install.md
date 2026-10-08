@@ -2068,6 +2068,19 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   which Kobo's hook leaves unreachable. Kobo's code for the three hooks does the same
   (tests/overworld.rs); the table is `level_flags` in the overworld file. Both
   findings 2026-10-09.
+- Lunar Magic's Extra Options ("Each of these options make a very minor ASM
+  modification to the ROM", its help says) change bytes of the game's code. One is
+  carried so far: "Disable event path fade effect" with a "Path Reveal Speed", which
+  rewrites the fade's frame (`CODE_04EAC9`, the bytes from it differ from the game's)
+  and the call after a step at `$04EAAE`. A step of an event's path then takes
+  ceil(`$40` / speed) + 1 frames (the game's fade 5, as a speed of `$10`): QW2 2
+  (`$40`), riff2 12 (6), found from the event process's steps frame by frame, and the
+  speed is what one run of the ROM's own frame leaves in `ColorFadeTimer` from 0
+  (`expand::reveal_speed`; across the corpus 6 to `$40`, or the game's fade). Kobo's
+  code (`asm/lunar-magic/overworld-reveal.asm`, the overworld file's `[options]
+  reveal_speed`) takes the fade's frame and adds the speed; riff2's build plays every
+  level's events step for step as riff2 does (2026-10-09). The fade's own `CMP #$0900`
+  (`$04EAD8`) gets the event tile data's split as well.
 - Beating each level of the vanilla overworld, by either exit (`expand::beat_level`),
   plays the same steps to the same RAM and VRAM in the game, its transfer, and Kobo's
   build (2026-10-09). In hacks, events play faster where Lunar Magic's Extra Options

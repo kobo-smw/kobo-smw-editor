@@ -106,6 +106,13 @@ pub const OVERWORLD: (&str, &str) = (
     include_str!("../asm/lunar-magic/overworld.asm"),
 );
 
+/// The overworld's event path fade turned off, with a path reveal speed
+/// (`!speed`), for a project whose overworld asks for it.
+pub const OVERWORLD_REVEAL: (&str, &str) = (
+    "overworld-reveal.asm",
+    include_str!("../asm/lunar-magic/overworld-reveal.asm"),
+);
+
 /// The banks of Choc Island 2's rooms, applied by a build that writes one
 /// of levels `0CD`-`0CF`, whose banks those rooms would otherwise take
 /// (docs/lunar-magic-install.md, "Choc Island 2's rooms").
@@ -194,6 +201,12 @@ pub fn apply_graphics(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
 /// Applies [`LAYER3`], which reads the lists [`GRAPHICS`] finds.
 pub fn apply_overworld(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
     Ok(asar.patch(rom, &patch(OVERWORLD))?.rom)
+}
+
+/// Applies [`OVERWORLD_REVEAL`] with the reveal speed `speed`.
+pub fn apply_overworld_reveal(asar: &Asar, rom: &Rom, speed: u8) -> Result<Rom, AsarError> {
+    let patch = patch(OVERWORLD_REVEAL).define("speed", format!("${speed:02X}"));
+    Ok(asar.patch(rom, &patch)?.rom)
 }
 
 pub fn apply_layer3(asar: &Asar, rom: &Rom) -> Result<Rom, AsarError> {
