@@ -17,6 +17,19 @@ fn the_vanilla_overworld_reads_as_its_load_leaves_it() {
     assert_eq!(read.events.count(), 0x6F);
     let loaded = expand::load_overworld(&clean).unwrap();
     assert_eq!(overworld::differences(&read, &loaded), Vec::<String>::new());
+    // Every name's text is the game's, from its tiles as from its parts.
+    for t in 0..0x60u8 {
+        let level = if t < 0x25 {
+            u16::from(t)
+        } else {
+            0x101 + u16::from(t - 0x25)
+        };
+        assert_eq!(
+            kobo_core::level::name_text(&read.names[usize::from(t)]),
+            kobo_core::level::level_name(&clean, level),
+            "translevel {t:02X}"
+        );
+    }
     // Level names read as the game composes them: translevel 28 is
     // "YOSHI'S HOUSE".
     assert_eq!(

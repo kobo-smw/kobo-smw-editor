@@ -527,6 +527,7 @@ impl App {
         self.overworld = None;
         self.overworld_generation += 1;
         self.overworld_editor.forget();
+        self.level_names = Default::default();
         self.global_animation = None;
     }
 
@@ -681,10 +682,23 @@ impl App {
     pub fn level_name(&self, number: u16) -> Option<&str> {
         let workspace = self.workspace.as_ref()?;
         let names = self.level_names.get_or_init(|| {
+            // The project's own overworld's names, if it has one.
+            let overworld = workspace.project().overworld.as_ref().and_then(|changes| {
+                kobo_core::overworld::Overworld::read(workspace.clean())
+                    .ok()?
+                    .in_lunar_magic_shape()
+                    .with(changes)
+                    .ok()
+            });
             (0..0x200)
                 .map(|n| {
-                    kobo_core::level::level_name(workspace.clean(), n)
-                        .map(|name| kobo_core::names::title_case(&name))
+                    let name = match &overworld {
+                        Some(overworld) => kobo_core::level::translevel(n)
+                            .and_then(|t| overworld.names.get(usize::from(t)))
+                            .and_then(|tiles| kobo_core::level::name_text(tiles)),
+                        None => kobo_core::level::level_name(workspace.clean(), n),
+                    };
+                    name.map(|name| kobo_core::names::title_case(&name))
                 })
                 .collect()
         });
@@ -1090,12 +1104,14 @@ impl App {
         }
     }
 
-    /// After the overworld changed: the project is built with it.
+    /// After the overworld changed: the project is built with it, and its
+    /// levels named by it.
     fn overworld_changed(&mut self) {
         if let (Some(workspace), Some(Ok(overworld))) = (&mut self.workspace, &self.overworld) {
             workspace.set_overworld(overworld);
         }
         self.overworld_generation += 1;
+        self.level_names = Default::default();
     }
 
     /// Undoes or redoes the overworld's last step, if it has one.

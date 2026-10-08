@@ -380,6 +380,8 @@ AGENTS.md.
   ROM's order.
 - "Level" names every one of the 512, as Lunar Magic does, though the community says
   "sublevel" for those under another; the grouping shows which is which.
+- An overworld level's name is its translevel's: the project's own overworld's when it
+  has one (the overworld window renames levels), else the clean ROM's.
 - In step 4, once the overworld is a project's, the overworld's own tiles decide which
   levels are overworld levels, so that a hack that leaves translevels unused groups by
   what the player can enter.

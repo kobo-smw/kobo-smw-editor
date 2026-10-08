@@ -1926,6 +1926,8 @@ fn the_overworld_is_drawn_on_renamed_undone_and_saved_into_the_project() {
         .change_overworld("Rename a level", false, |ow| ow.names[0x28] = name);
     harness.step();
     assert_eq!(tile(harness.state()), 0x58);
+    // The level list names Yoshi's House (translevel 28, level 104) anew.
+    assert_eq!(harness.state().level_name(0x104), Some("Kobo's House"));
     // A new picture of the build with the change.
     wait_for(&mut harness, "the overworld's new picture", |app| {
         app.overworld_editor.drawn()

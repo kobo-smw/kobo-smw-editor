@@ -467,6 +467,19 @@ pub fn level_name(rom: &Rom, level: u16) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
+/// A name kept as its 19 tiles (Lunar Magic's layout's table,
+/// `overworld::Overworld::names`) as text, trimmed: a tile that is no
+/// character shows as `?`; `None` for a blank name.
+pub fn name_text(tiles: &[u8]) -> Option<String> {
+    let text: String = tiles
+        .iter()
+        .take(NAME_TILES)
+        .map(|&t| name_char(t & 0x7F).unwrap_or("?"))
+        .collect();
+    let text = text.trim().to_string();
+    (!text.is_empty()).then_some(text)
+}
+
 /// The game's layer 2 scroll rates for each of the secondary header's 16
 /// settings: horizontal (`DATA_05D720`, into `$1413`) and vertical
 /// (`DATA_05D710`, into `$1414`). `UpdateScreenPosition` moves layer 2 by
