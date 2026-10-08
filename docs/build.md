@@ -6,11 +6,11 @@ decisions are in [AGENTS.md](../AGENTS.md), the clean-room ones in
 [clean-room.md](clean-room.md).
 
 A project directory builds into a ROM from a clean SMW ROM. Levels, Map16, palettes,
-ExGFX, and ExAnimation are written natively in Lunar Magic's layout; existing work is
-imported from ROMs, MWL files, Lunar Magic's Map16 exports, and Callisto projects; Asar,
-PIXI, GPS, UberASM Tool, and AddmusicK run in a fixed order. What Kobo does not cover yet
-(the overworld, title screen, credits, messages) is finished in Lunar Magic on the built
-ROM.
+ExGFX, ExAnimation, and the overworld are written natively in Lunar Magic's layout;
+existing work is imported from ROMs, MWL files, Lunar Magic's Map16 exports, and Callisto
+projects; Asar, PIXI, GPS, UberASM Tool, and AddmusicK run in a fixed order. What Kobo
+does not cover yet (the overworld's graphics and most of Lunar Magic's Extra Options, the
+title screen, credits, messages) is finished in Lunar Magic on the built ROM.
 
 ## Lunar Magic and Kobo builds
 
@@ -220,9 +220,12 @@ and what each hack still has refused, are in [testing.md](testing.md).
 
 ## What is left to Lunar Magic
 
-- The overworld (its layer 1 and 2, events, paths), the title screen, the credits, and
-  messages: builds keep them as the game has them, and Lunar Magic edits them on the
-  built ROM. Overworld graphics lists a hack names are noted on import, not carried.
+- The title screen, the credits, and messages: builds keep them as the game has them,
+  and Lunar Magic edits them on the built ROM. A project's overworld (`[overworld] file`,
+  its layers, level tiles, names, events, start, settings, and the tables the game
+  keeps in place) is built in Lunar Magic's layout (lunar-magic-install.md, "The
+  overworld"), and an import carries a hack's; its graphics lists and Lunar Magic's
+  Extra Options but the path reveal speed are left to Lunar Magic.
 - Builds are not FastROM ([known-gaps.md](known-gaps.md)).
 - Lunar Magic's GUI operations (overworld save, message and title screen edits,
   ExAnimation, custom palettes, the VRAM patch options) have not been tried on a Kobo

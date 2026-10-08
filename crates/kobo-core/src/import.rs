@@ -626,6 +626,7 @@ pub fn import_rom_with(
         &mut manifest,
         &crate::source::palettes::SharedPalettes::changes(rom, base)?,
     )?;
+    import_overworld(rom, base, dir, &mut manifest, &mut report)?;
     let insert = crate::pixi::read(rom, base)?;
     let mut manifest_comments = Comments::default();
     if let Some(folder) = options.pixi {
@@ -1265,6 +1266,58 @@ fn write_shared_palettes(
     let file = PathBuf::from("palettes").join("shared.toml");
     write_text(&dir.join(&file), palettes.to_toml(&[]))?;
     manifest.shared_palettes = Some(file);
+    Ok(())
+}
+
+/// The hack's overworld, as what it changes of the clean ROM's
+/// (`overworld::Changes`), into `overworld.toml`: what the reader carries,
+/// and Lunar Magic's option to turn the event path fade off. An overworld
+/// the reader cannot read is the clean ROM's, with a note.
+fn import_overworld(
+    rom: &Rom,
+    base: &Rom,
+    dir: &Path,
+    manifest: &mut Manifest,
+    report: &mut Report,
+) -> Result<(), ImportError> {
+    use crate::overworld::Overworld;
+    let theirs = match Overworld::read(rom) {
+        Ok(read) => read.in_lunar_magic_shape(),
+        Err(e) => {
+            report.notes.push(format!(
+                "its overworld does not read ({e}); the project keeps the clean ROM's"
+            ));
+            return Ok(());
+        }
+    };
+    let Ok(clean) = Overworld::read(base) else {
+        return Ok(());
+    };
+    let mut changes = theirs.changes_from(&clean.in_lunar_magic_shape());
+    match crate::expand::reveal_speed(rom, base) {
+        Ok(speed) => changes.reveal_speed = speed,
+        Err(e) => report.notes.push(format!(
+            "its overworld's path reveal speed could not be found ({e}); the game's fade is kept"
+        )),
+    }
+    if changes.is_empty() {
+        return Ok(());
+    }
+    let file = PathBuf::from("overworld.toml");
+    let top = [
+        "# The hack's overworld, as what it changes of the clean ROM's.".to_string(),
+        "# Not carried yet: Lunar Magic's other Extra Options, and the submaps' graphics.".into(),
+    ];
+    write_text(
+        &dir.join(&file),
+        crate::source::overworld::to_toml(&changes, &top),
+    )?;
+    manifest.overworld = Some(file);
+    report.notes.push(
+        "its overworld is carried (overworld.toml), but for Lunar Magic's Extra Options other \
+         than the path reveal speed, and the submaps' graphics"
+            .into(),
+    );
     Ok(())
 }
 
