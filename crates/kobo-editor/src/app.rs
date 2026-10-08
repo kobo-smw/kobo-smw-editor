@@ -319,6 +319,8 @@ pub struct App {
     overworld_generation: u64,
     /// The overworld window.
     pub overworld_editor: crate::overworld::OverworldEditor,
+    /// The watch window: RAM read while a build plays in Mesen.
+    pub ram_watch: crate::ram_watch::WatchState,
     /// The global ExAnimation list, opened when first shown.
     global_animation: Option<Result<edit::GlobalAnimation, String>>,
     pub global_animation_window: crate::animation::GlobalWindow,
@@ -420,6 +422,7 @@ impl App {
             overworld: None,
             overworld_generation: 0,
             overworld_editor: Default::default(),
+            ram_watch: Default::default(),
             global_animation: None,
             global_animation_window: Default::default(),
             map16_editor: Default::default(),
@@ -2493,6 +2496,14 @@ impl App {
                 ui.close();
             }
             if ui
+                .button("Watch")
+                .on_hover_text("RAM read while a build plays in Mesen, and writes that pause it")
+                .clicked()
+            {
+                self.ram_watch.open = true;
+                ui.close();
+            }
+            if ui
                 .button("Shared palettes")
                 .on_hover_text("The game's colour tables, which levels without a palette of their own draw from")
                 .clicked()
@@ -2905,6 +2916,7 @@ impl eframe::App for App {
         crate::palettes::window(self, &ctx);
         crate::layer3::window(self, &ctx);
         crate::overworld::window(self, &ctx);
+        crate::ram_watch::window(self, &ctx);
         crate::animation::window(self, &ctx);
         crate::project::window(self, &ctx);
         crate::commands::window(self, &ctx);

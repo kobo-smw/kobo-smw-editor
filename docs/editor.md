@@ -290,6 +290,16 @@ the overworld. `kobo play` does the same from the command line.
 A level that does not build does not stop the others from drawing: the picture's build
 leaves it out, as the game's own, and says so above the canvas.
 
+**Watch** (View menu) lists RAM variables (a name, the game's address, a byte or a
+word) to read while a build plays in Mesen 2: Play and Build and play then give Mesen a
+script beside the ROM (`kobo_core::emulator`), which after every frame writes their
+values to a report the window shows a few times a second, the frame with them. A
+watch set to *pause* stops the game, as a breakpoint does, when the game writes the
+variable through any of its addresses, and the window says what was written at which
+frame. An SA-1 build's variables are read where SA-1 Pack moves them. Mesen runs the
+script only with its script window's "Allow access to I/O and OS functions" on, and
+other emulators get the ROM alone.
+
 ## Running without a display
 
 `--screenshot out.png` saves the window once the level is drawn and quits, with `--tab`

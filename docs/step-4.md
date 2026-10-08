@@ -134,6 +134,12 @@ from the editor where the user is working.
 - The emulator to play in (2026-10-08, item 7): `play.emulator` in the config file, or
   `KOBO_EMULATOR`, opens Play's and Build and play's ROM in place of what the system
   opens a ROM with.
+- Watching a build in Mesen (2026-10-09, item 7): `kobo_core::emulator` writes a Lua
+  script Mesen 2 runs beside the ROM, which reports watched RAM after every frame and
+  pauses the game on a watched write (in each memory's own addresses, so any mirror
+  counts); the editor's Watch window lists the variables and shows the report, and Play
+  and Build and play give Mesen the script (editor.md, "Building"). Reports carry RAM
+  addresses and values alone, nothing of where code is.
 - Symbols for emulators' debuggers (2026-10-08, item 7): a build's labels of Kobo's and
   the project's code, kept through the stage cache, written beside the ROM as a WLA-DX
   `.sym` by `kobo build --sym`, the editor's builds, and play builds; Mesen 2 loads it

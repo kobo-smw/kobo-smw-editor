@@ -13,6 +13,7 @@ pub mod compress;
 pub mod config;
 pub mod cpu;
 pub mod edit;
+pub mod emulator;
 pub mod entrance;
 pub mod exanimation;
 pub mod exgfx;

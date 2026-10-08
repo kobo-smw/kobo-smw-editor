@@ -684,7 +684,19 @@ pub(crate) fn play_rom(app: &mut App, path: &Path) {
     }
     match kobo_core::config::emulator_path() {
         Ok(Some(emulator)) => {
-            if let Err(e) = std::process::Command::new(&emulator).arg(path).spawn() {
+            let mut command = std::process::Command::new(&emulator);
+            command.arg(path);
+            // Mesen runs the watch window's script given after the ROM.
+            if kobo_core::emulator::is_mesen(&emulator) {
+                match app.ram_watch.script_for(path) {
+                    Ok(Some(script)) => {
+                        command.arg(script);
+                    }
+                    Ok(None) => {}
+                    Err(e) => app.say(format!("The watch script: {e}")),
+                }
+            }
+            if let Err(e) = command.spawn() {
                 app.say(format!("Could not start {}: {e}", emulator.display()));
             }
         }

@@ -2454,3 +2454,45 @@ fn the_overworld_window_edits_its_lists_and_an_event_s_further_tiles() {
     assert_eq!(extras.len(), before + 2);
     assert!(matches!(extras.last(), Some(ExtraTile::Layer2(block)) if block.tiles.len() == 4));
 }
+
+#[test]
+fn the_watch_window_writes_mesen_s_script_and_shows_its_report() {
+    use egui_kittest::kittest::Queryable;
+    use kobo_core::emulator::{Watch, report_path};
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "watch-window");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().ram_watch.open = true;
+    harness.state_mut().ram_watch.watches.push(Watch {
+        name: "Player x".into(),
+        addr: kobo_core::ram::RamAddr::new(0x7E_0094),
+        size: 2,
+        pause_on_write: false,
+    });
+    harness.run_steps(2);
+    // What Play does before it opens Mesen: the script beside the ROM.
+    let rom = project.0.join("play.sfc");
+    std::fs::write(&rom, clean.data()).unwrap();
+    let script = harness
+        .state_mut()
+        .ram_watch
+        .script_for(&rom)
+        .unwrap()
+        .unwrap();
+    let text = std::fs::read_to_string(&script).unwrap();
+    assert!(text.contains("{ 0x7E0094, 2 },"), "{text}");
+    harness.run_steps(2);
+    assert!(
+        harness
+            .query_by_label("Waiting for Mesen's first frame.")
+            .is_some()
+    );
+    // Mesen's report, which the window reads a few times a second.
+    std::fs::write(report_path(&rom), "frame 42\n1A8\n").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    harness.run_steps(2);
+    assert!(harness.query_by_label("01A8").is_some());
+    assert!(harness.query_by_label("Frame 42.").is_some());
+}

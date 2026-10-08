@@ -77,7 +77,7 @@ Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-
     `kobo_core::edit`. Its tests drive the window headlessly (`egui_kittest`).
     `docs/editor.md` is how to use it; each module of it says what it holds (`canvas`,
     `inspector`, `levels`, `palette`, `outline`, `changes`, `find`, `build`, `play`,
-    `project`, `start`, `commands`, `backgrounds`, `map16`, `graphics`, `palettes`, `layer3`, `overworld`, `dialogs`, `preview` for the worker that
+    `project`, `start`, `commands`, `backgrounds`, `map16`, `graphics`, `palettes`, `layer3`, `overworld`, `overworld_lists`, `ram_watch`, `dialogs`, `preview` for the worker that
     draws, `thumbnails` for the levels' small pictures, `selection` for what is under the
     mouse).
 - `kobo_core::addr` is the only place that knows how SNES addresses map to file offsets.
@@ -194,6 +194,9 @@ Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-
   `GlobalAnimation` the global ExAnimation list;
   `Workspace` is the project in memory, built and a level rendered from it
   (`preview`). The editor makes no change any other way.
+- `kobo_core::emulator` is how a build is watched while it plays: the Lua script Mesen 2
+  runs (`mesen_script`, watched RAM after every frame, a pause on a watched write) and
+  its report (`read_report`), which carry RAM alone.
 - `kobo_core::stripe` is the one place that knows the game's stripe images (runs of VRAM
   words, layer 3's tilemaps above all): `Tilemap` is what one writes, read and written
   back as an image (the overworld's border).

@@ -26,6 +26,7 @@ mod picture;
 mod play;
 mod preview;
 mod project;
+mod ram_watch;
 mod selection;
 mod source;
 mod start;
