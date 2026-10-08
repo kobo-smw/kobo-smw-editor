@@ -1604,7 +1604,7 @@ fn a_mouse_wheel_scrolls_along_the_level() {
 }
 
 #[test]
-fn the_level_list_groups_sublevels_and_leaves_unused_levels_out() {
+fn the_level_list_groups_sublevels_or_lists_by_number_and_leaves_unused_levels_out() {
     use egui_kittest::kittest::Queryable;
 
     let Some(clean) = vanilla() else { return };
@@ -1652,6 +1652,15 @@ fn the_level_list_groups_sublevels_and_leaves_unused_levels_out() {
     );
     harness.run_steps(2);
     assert!(harness.query_by_label_contains("1CB ").is_none());
+    // By number, every level shows, with nothing folded.
+    harness.get_by_label("By number").click();
+    harness.run_steps(2);
+    harness.get_by_label_contains("1CB ");
+    assert!(
+        harness
+            .query_by_label_contains("Not reached by an exit")
+            .is_none()
+    );
 }
 
 #[test]

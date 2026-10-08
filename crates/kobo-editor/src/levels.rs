@@ -1,6 +1,7 @@
 //! The level list: each overworld level with the sublevels its exits
 //! lead to (`edit::reach`), the levels nothing reaches by an exit, and
-//! the game's own levels the project does not have. The game's unused
+//! the game's own levels the project does not have; or the project's
+//! levels by number. The game's unused
 //! level numbers, which all hold its "TEST" level, are left out unless
 //! asked for. One search finds levels by number, name, or tileset, and
 //! what every level holds (`edit::find`).
@@ -28,6 +29,8 @@ pub struct LevelsState {
     pub filter: String,
     /// Put the cursor in the search field on the next frame.
     pub focus_search: bool,
+    /// The project's levels by number rather than by overworld level.
+    by_number: bool,
     /// Overworld levels whose sublevels are shown.
     expanded: BTreeSet<u16>,
     /// The level whose group was last opened for it.
@@ -194,6 +197,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     if std::mem::take(&mut app.levels.focus_search) {
         field.request_focus();
     }
+    ui.horizontal(|ui| {
+        let state = &mut app.levels;
+        ui.selectable_value(&mut state.by_number, false, "Grouped")
+            .on_hover_text("Each overworld level with the sublevels its screen exits lead to");
+        ui.selectable_value(&mut state.by_number, true, "By number")
+            .on_hover_text("Every level of the project by number, as the ROM holds them");
+    });
     ui.add_space(4.0);
     let filter = app.levels.filter.trim().to_lowercase();
     let found: Vec<Found> = if filter.is_empty() {
@@ -308,8 +318,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     }
 }
 
-/// The rows: with no search, the levels as they are reached; with one,
-/// the levels it names and what it finds in them.
+/// The rows: with no search, the levels as they are reached, or by
+/// number; with one, the levels it names and what it finds in them.
 fn rows(app: &App, known: &Known, filter: &str, found: &[Found]) -> Vec<Row> {
     let state = &app.levels;
     let mut rows = Vec::new();
@@ -357,20 +367,25 @@ fn rows(app: &App, known: &Known, filter: &str, found: &[Found]) -> Vec<Row> {
         }
         return rows;
     }
-    for group in &known.reach.groups {
-        let open = state.expanded.contains(&group.level);
-        rows.push(Row::Level {
-            number: group.level,
-            sublevel: false,
-            expanded: (!group.sublevels.is_empty()).then_some(open),
-        });
-        if open {
-            rows.extend(group.sublevels.iter().map(|&n| level(n, true)));
+    if state.by_number {
+        let levels = known.info.iter().filter(|(_, i)| i.listed && !i.unused);
+        rows.extend(levels.map(|(&n, _)| level(n, false)));
+    } else {
+        for group in &known.reach.groups {
+            let open = state.expanded.contains(&group.level);
+            rows.push(Row::Level {
+                number: group.level,
+                sublevel: false,
+                expanded: (!group.sublevels.is_empty()).then_some(open),
+            });
+            if open {
+                rows.extend(group.sublevels.iter().map(|&n| level(n, true)));
+            }
         }
-    }
-    if !known.reach.unreached.is_empty() {
-        rows.push(Row::Heading("Not reached by an exit".into()));
-        rows.extend(known.reach.unreached.iter().map(|&n| level(n, false)));
+        if !known.reach.unreached.is_empty() {
+            rows.push(Row::Heading("Not reached by an exit".into()));
+            rows.extend(known.reach.unreached.iter().map(|&n| level(n, false)));
+        }
     }
     if !known.others.is_empty() {
         rows.push(Row::Toggle(

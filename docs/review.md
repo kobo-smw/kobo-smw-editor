@@ -67,14 +67,6 @@ settle it.
   while Kobo carries none of a project's. For a project imported from a hack they are the
   game's names, not the hack's, though true of what the build makes. To settle once the
   overworld is a project's (step 4): the project's names then.
-- **The level list by overworld level (2026-10-07).** The list groups each sublevel under
-  the first overworld level (by number) whose screen exits reach it, directly or through
-  other sublevels (`edit::reach`); an overworld level is one with a translevel
-  (`000`-`024`, `101`-`13B`), whether or not the overworld has a tile for it. Levels only
-  the game's code reaches (the credits' rooms, the bonus game) are listed apart as "not
-  reached by an exit". "Sublevel" is the community's and Lunar Magic's users' word; the
-  editor keeps "level" for every one of the 512, as Lunar Magic does. To settle: whether
-  the overworld's own tiles (step 4) should decide which are overworld levels instead.
 - **The game's unused levels hidden (2026-10-07).** A level whose objects are those of
   the layer 1 data most of the clean ROM's levels point at (the "TEST" level at
   `$068000`, 277 of the 512) is left out of the level list until asked for

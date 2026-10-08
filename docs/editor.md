@@ -34,7 +34,8 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
     levels the overworld enters, `000`-`024` and `101`-`13B`, by their names there),
     with the sublevels its screen exits lead to folded under it, then the levels no exit
     reaches (the credits' rooms, the bonus game), then the game's own levels the project
-    does not have, which build as the game has them and are added when chosen. The
+    does not have, which build as the game has them and are added when chosen;
+    *By number* lists the project's levels flat instead, in the ROM's order. The
     game's unused level numbers, which all hold its "TEST" level, are left out unless
     asked for. Each row has a small picture of the level (hovering shows it larger), its
     number and name (or tileset), and its screens, wide (↔) or tall (↕). The search finds

@@ -87,6 +87,21 @@ file by hand; when they do, the editor follows.
 - Sprites are placed by their entry's tile; the objects the sprite capture drew for an
   entry (`CapturedSprite`) give its outline.
 
+### The level list by overworld level
+
+- Reviewed 2026-10-08. The list groups each sublevel under the first overworld level (by
+  number) whose screen exits reach it, directly or through other sublevels
+  (`edit::reach`); an overworld level is one with a translevel (`000`-`024`,
+  `101`-`13B`), whether or not the overworld has a tile for it. Levels only the game's
+  code reaches (the credits' rooms, the bonus game) are listed apart as "not reached by an
+  exit". Grouped is the default; *By number* lists the project's levels flat, in the
+  ROM's order.
+- "Level" names every one of the 512, as Lunar Magic does, though the community says
+  "sublevel" for those under another; the grouping shows which is which.
+- In step 4, once the overworld is a project's, the overworld's own tiles decide which
+  levels are overworld levels, so that a hack that leaves translevels unused groups by
+  what the player can enter.
+
 ### Clean room in the editor
 
 - The editor shows no CPU trace, read trace, RAM view, or routine address. A debugging
