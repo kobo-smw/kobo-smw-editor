@@ -126,7 +126,10 @@ file by hand; when they do, the editor follows.
 - It is for testing a level: power-on goes straight in (the title screen's load is
   hooked, game mode `$03`; "Nintendo Presents" runs a frame, dark, to set the screen up
   and decompress the player's graphics), and a death, a game over, or the level's end
-  goes back into it rather than to the overworld. The same hook uploads the level music
+  goes back into it rather than to the overworld, through the overworld's load once it
+  has cleared the level's RAM (item memory among it, so collected coins come back; until
+  2026-10-08 the hook came before that, and a coin collected on one life was gone, with
+  its whole column, on the next). The title screen's hook uploads the level music
   bank, which an entry by screen exit never does, and sets the translevel (`$13BF`) the
   overworld would have entered by (a sublevel's is its overworld level's, `edit::reach`),
   which midway points and patches keep their state by.

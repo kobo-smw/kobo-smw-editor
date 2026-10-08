@@ -46,10 +46,12 @@ if !retry
 endif
 
 ; The title screen's load checks the overworld override first; the
-; overworld's load begins with a JSR to turn the screen off, then a load
-; of the star warp flag, which its hook replaces.
+; overworld's load turns the screen off, clears the level's RAM
+; (Clear_1A_13D3: $1A-$D7 and $13D3-$1BA1, the item memory that keeps
+; collected coins gone among it), then checks the overworld override, which
+; its hook replaces.
 assert read1($0096BE) == $AD && read1($0096C1) == $D0, "the title screen's loading code is not the game's"
-assert read1($00A087) == $20 && read1($00A08A) == $AD, "the overworld's loading code is not the game's"
+assert read1($00A093) == $20 && read1($00A096) == $AD && read2($00A097) == $0109, "the overworld's loading code is not the game's"
 
 ; "Nintendo Presents": the logo off the screen, and a frame of it.
 if read1($0093A4) == $A9 && read1($0093A5) == $70
@@ -70,7 +72,7 @@ else
 endif
     JMP $93F7                       ; Mode04Finish: NMI back on, and return
 
-org $00A08A
+org $00A096
     JML playtest_again
 
 freecode
@@ -101,8 +103,10 @@ playtest:
     STA $0100|!addr
     RTL
 
-; Game mode $0C, the overworld's load, once it has turned the screen off:
-; after a death, or the level's end, the level again instead.
+; Game mode $0C, the overworld's load, once it has turned the screen off
+; and cleared the level's RAM, where it checks for a level to go into at
+; once: after a death, or the level's end, the level again instead, with
+; every coin back.
 playtest_again:
     SEP #$30
     ; After a game over, four lives again.

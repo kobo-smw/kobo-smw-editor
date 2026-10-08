@@ -35,8 +35,12 @@ fn a_play_build_enters_the_level_at_the_tile() {
             powerup: 1,
         };
         let rom = playtest::build(&workspace, &start, &asar).unwrap();
-        // The title screen's load goes to Kobo's code.
+        // The title screen's load goes to Kobo's code, and the overworld's
+        // once it has cleared the level's RAM (Clear_1A_13D3, at $00A093),
+        // item memory among it, so that collected coins are back.
         assert_eq!(rom.read_u8(SnesAddr::new(0x0096BE)).unwrap(), 0x22);
+        assert_eq!(rom.read_u8(SnesAddr::new(0x00A093)).unwrap(), 0x20);
+        assert_eq!(rom.read_u8(SnesAddr::new(0x00A096)).unwrap(), 0x5C);
         // The entrance the ROM takes puts the player on the tile, as the
         // game's own loader enters by it.
         let id = workspace.free_entrance(level).unwrap();
