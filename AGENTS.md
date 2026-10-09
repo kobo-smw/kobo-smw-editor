@@ -360,7 +360,7 @@ skipped. Keep all three green.
 - `~/.local/share/kobo/docs/smwdisx/`: the SMWDisX disassembly banks and `SMW_U.sym` (downloaded
   from GitHub, not committed). Use it to read how the game consumes a table; never build on it.
   SMW Central is behind a JavaScript challenge and cannot be fetched from tools.
-- Asar 1.91 built from source (`~/src/asar`, tag `v1.91`): `~/.local/bin/asar`, and
+- Asar 1.91 built from source (`~/src/vendor/asar`, tag `v1.91`): `~/.local/bin/asar`, and
   `libasar.so` in `~/.local/lib`, which `KOBO_ASAR_LIB` points the tests at. Without it,
   `kobo tools fetch` caches the pinned builds of Asar, PIXI, and UberASM Tool
   (`~/.cache/kobo/tools`), which the tests then find.
@@ -376,8 +376,8 @@ skipped. Keep all three green.
   technical ones). `tools/lunar-magic/` has a wrapper that runs it headlessly and a ROM
   diff that reports changed regions without printing Lunar Magic's code.
 - Mesen 2: `~/.local/share/kobo/tools/mesen2/Mesen`, built from source against the system
-  libstdc++ (`~/src/Mesen2`, `USE_GCC=true make`, with SDL2 built into `~/.local/sdl2`
-  and X11 headers unpacked from Debian's packages into `~/src/x11dev`; .NET SDK in
+  libstdc++ (`~/src/vendor/Mesen2`, `USE_GCC=true make`, with SDL2 built into `~/.local/sdl2`
+  and X11 headers unpacked from Debian's packages into `~/src/vendor/x11dev`; .NET SDK in
   `~/.dotnet`). It runs with `DOTNET_ROOT=~/.dotnet` and
   `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` (no libicu here), under `xvfb-run -a`. The
   official 2.1.1 binary in `tools/mesen/` bundles GCC 12's libstdc++ and aborts with

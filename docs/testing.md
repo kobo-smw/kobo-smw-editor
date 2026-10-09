@@ -419,7 +419,7 @@ folders make a full run about an hour; leave them out for a quicker one.
 - **Tool stages**: `tests/tool_stages.rs` builds two Asar patches, early and late, one
   including a file, onto the synthetic base when Asar's library is configured (no ROM):
   they apply in order, the output repeats, and changing the included file changes the
-  build. With AddmusicK (`KOBO_ADDMUSICK` or `tools.addmusick`, a folder; `~/src/addmusick` here) and the
+  build. With AddmusicK (`KOBO_ADDMUSICK` or `tools.addmusick`, a folder; `~/src/vendor/addmusick` here) and the
   vanilla ROM, a project with an empty music folder gets AddmusicK's default music
   (`@AMK` at `$0E8000`), the same bytes twice.
 - **GPS**: with GPS (`KOBO_GPS` or `tools.gps`, a folder with GPS built for the system and its files;
@@ -453,7 +453,7 @@ folders make a full run about an hour; leave them out for a quicker one.
   release before the tests (a cache keyed by both files), and runs the tests with
   `KOBO_OFFLINE=1`, so no test downloads. The published builds are checked against a
   rebuild from their sources by `kobo-smw/kobo-tools`'s `verify` workflow.
-- **SA-1 builds**: with SA-1 Pack (`KOBO_SA1PACK`, `~/src/sa1pack` here, or the pinned
+- **SA-1 builds**: with SA-1 Pack (`KOBO_SA1PACK`, `~/src/vendor/sa1pack` here, or the pinned
   release in the tool cache, which CI fetches), `sa1_pack_applies_without_a_rom` applies
   it to the synthetic image, which must give the same bytes on every platform; with the
   vanilla ROM as well, `tool_stages.rs` imports
