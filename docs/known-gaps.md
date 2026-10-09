@@ -121,13 +121,15 @@ What a rendered level does not reproduce, and what the tooling does not handle.
   its event tile data, drawn blank. For about 12 frames after a submap change, a
   submap's ExAnimation tiles lag behind Lunar Magic's, which uploads the eight first
   frames at once (accepted on review, 2026-10-09).
-- Kaizo Mario (Lunar Magic 1.62), imported with `--all` and built, draws 14 levels
-  otherwise than the hack (`002`, `009`, `011`, `012`, `0CA`, `0CB`, `0F8`, `101`,
-  `10E`, `116`, `119`, `11C`, `1BD`, `1D8`; `render_hashes`): in `002` layer 2's
-  background is garbled and some blocks take other graphics. Lunar Magic 3.70's save of
-  the hack with `002` imported again draws `002` as the hack does, so the difference is
-  Kobo's import or build, not the newer code (`012`, `0F8`, and `101` may be 3.70's, as
-  in vanilla: testing-log.md). Found 2026-10-09; not yet looked into.
+- Kaizo Mario (Lunar Magic 1.62), imported with `--all` and built, draws all its levels
+  as the hack does but `012`, `0F8`, and `101` (`render_hashes`, 2026-10-09), which
+  Lunar Magic 3.70's save of the hack draws as the build does: 3.70's behaviour, as in
+  vanilla (testing-log.md, "The checks of every level"). Kaizo Mario 2 the same, but for
+  `109`, whose player tile words in VRAM (`$6060` on) come out otherwise, as they do
+  under a Lunar Magic 3 install (lunar-magic-install.md, "Tilemap streaming"). The
+  other eleven Kaizo Mario levels were import errors, fixed the same day: ten graphics
+  lists in the first layout read as the current one, and `1BD`'s background taken to
+  be in BG Map16 table 1 (testing-log.md).
 
 ## Full hack render sweep: 2026-09-22
 

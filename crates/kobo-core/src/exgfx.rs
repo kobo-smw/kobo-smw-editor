@@ -17,7 +17,10 @@ pub const HEADER_HOOK: SnesAddr = SnesAddr::new(0x0583B8);
 /// A `JSL` here when the ROM has Lunar Magic's (or Kobo's) layer 3
 /// settings code; with anything else, a save installs Lunar Magic's.
 pub const LAYER3_CHECK: SnesAddr = SnesAddr::new(0x00A01F);
-/// `"LM"` here makes Lunar Magic's save keep the lists as they are.
+/// `"LM"` here makes Lunar Magic's save keep the lists as they are, and
+/// its reads take them in the current layout; without it they take them in
+/// the first layout ([`GraphicsList::from_first_layout`]), which the save
+/// then converts.
 pub const LISTS_MARKER: SnesAddr = SnesAddr::new(0x0FF15C);
 /// The byte that marks a patched site: `NOP` and `JSL`.
 pub const NOP: u8 = 0xEA;
@@ -235,6 +238,31 @@ impl GraphicsList {
         Self(words)
     }
 
+    /// A list stored in the first layout, the one Lunar Magic 1.60 to 1.6x
+    /// wrote (before 1.70 added BG2 and BG3), converted as Lunar Magic 3.70
+    /// converts it: word 0 holds `G` (bit 15; its other bits are not read),
+    /// words 1 to 8 FG3, BG1, FG2, FG1, SP4, SP3, SP2, SP1, word 9 AN2, and
+    /// words 10 to 15 nothing. An empty slot (`$FFFF`) becomes `7F` but in
+    /// SP4, which keeps it; LT3, BG2, and BG3 are `7F`, and LG1-LG4 the
+    /// game's layer 3 files. Found from 3.70's exports and save of ROMs
+    /// without [`LISTS_MARKER`] (Kaizo Mario, 1.62) with each word changed
+    /// (docs/lunar-magic-install.md, "Per-level graphics lists").
+    pub fn from_first_layout(bytes: &[u8; 32]) -> Self {
+        let old = Self::from_bytes(bytes).0;
+        let slot = |w: u16| if w == EMPTY { NO_FILE } else { w };
+        let mut list = Self::DEFAULT.0;
+        list[slot::AN2] = old[0] & BYPASS | old[9] & 0x0FFF;
+        list[slot::FG3] = slot(old[1]);
+        list[slot::BG1] = slot(old[2]);
+        list[slot::FG2] = slot(old[3]);
+        list[slot::FG1] = slot(old[4]);
+        list[slot::SP4] = old[5];
+        list[slot::SP3] = slot(old[6]);
+        list[slot::SP2] = slot(old[7]);
+        list[slot::SP1] = slot(old[8]);
+        Self(list)
+    }
+
     pub fn to_bytes(self) -> [u8; 32] {
         let mut out = [0; 32];
         for (b, word) in out.as_chunks_mut::<2>().0.iter_mut().zip(self.0) {
@@ -386,17 +414,31 @@ pub fn read_list(rom: &Rom, n: u16) -> Result<Option<GraphicsList>, RomError> {
     }
     // Lunar Magic 2.30 gave submaps their lists (its help's version
     // history); past the levels' lists, an older version's ROM has other
-    // data.
-    if n >= SUBMAP_LISTS && rom.saved_by_lunar_magic_before((2, 30)) {
+    // data, as a ROM with lists in the first layout (1.6x) has.
+    if n >= SUBMAP_LISTS
+        && (rom.saved_by_lunar_magic_before((2, 30)) || lists_in_first_layout(rom)?)
+    {
         return Ok(None);
     }
     let Some(at) = pointer(rom, LIST_POINTER)? else {
         return Ok(None);
     };
-    let bytes = rom.read(at.add(n as u32 * 32), 32)?;
-    Ok(Some(GraphicsList::from_bytes(
-        bytes.try_into().expect("32 bytes"),
-    )))
+    let bytes = rom
+        .read(at.add(n as u32 * 32), 32)?
+        .try_into()
+        .expect("32 bytes");
+    Ok(Some(if lists_in_first_layout(rom)? {
+        GraphicsList::from_first_layout(bytes)
+    } else {
+        GraphicsList::from_bytes(bytes)
+    }))
+}
+
+/// Whether the ROM's lists are in the first layout: Lunar Magic reads them
+/// so without `"LM"` at [`LISTS_MARKER`], both bytes (Lunar Magic 1.62 and
+/// 1.63 ROMs; every later one in the corpus, and every Kobo build, has it).
+pub fn lists_in_first_layout(rom: &Rom) -> Result<bool, RomError> {
+    Ok(rom.read(LISTS_MARKER, 2)? != b"LM")
 }
 
 /// Where ExGFX file `file` (`80`-`FFF`) is stored, if the ROM has it.
@@ -521,6 +563,44 @@ pub fn converts(format: gfx::GfxFormat) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn first_layout_lists_convert_as_lunar_magic_3_70_saves_them() {
+        let bytes = |words: [u16; 16]| GraphicsList(words).to_bytes();
+        // Kaizo Mario's level 002 and an empty list, as Lunar Magic 1.62
+        // left them, and as 3.70's save of that ROM wrote them.
+        let level_002 = [
+            0x8001, 0x16, 0x19, 0x17, 0x14, 0x81, 0x80, 0x01, 0x00, 0x7F, 0xFFFF, 0xFFFF, 0xFFFF,
+            0xFFFF, 0xFFFF, 0xFFFF,
+        ];
+        assert_eq!(
+            GraphicsList::from_first_layout(&bytes(level_002)).0,
+            [
+                0x807F, 0x7F, 0x7F, 0x7F, 0x16, 0x19, 0x17, 0x14, 0x81, 0x80, 0x01, 0x00, 0x2B,
+                0x2A, 0x29, 0x28
+            ]
+        );
+        let mut empty = [0xFFFF; 16];
+        empty[0] = 0x0001;
+        assert_eq!(
+            GraphicsList::from_first_layout(&bytes(empty)).0,
+            [
+                0x0FFF, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0xFFFF, 0x7F, 0x7F, 0x7F, 0x2B,
+                0x2A, 0x29, 0x28
+            ]
+        );
+        // Word 9 is AN2; word 0's bits but `G`, and words 10 to 15, are
+        // not read (3.70's export of 002 with each changed).
+        let mut changed = level_002;
+        (changed[0], changed[9], changed[10], changed[11]) = (0xE001, 0x85, 0x11, 0x1234);
+        let list = GraphicsList::from_first_layout(&bytes(changed));
+        assert_eq!(list.0[slot::AN2], 0x8085);
+        assert!(list.bypass() && !list.layer3_files() && !list.layer3_tilemap());
+        assert_eq!(
+            list.0[slot::LT3..],
+            GraphicsList::from_first_layout(&bytes(level_002)).0[1..]
+        );
+    }
 
     #[test]
     fn list_bits() {

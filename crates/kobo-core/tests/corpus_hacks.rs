@@ -74,3 +74,59 @@ fn a_lunar_magic_roms_pipes_take_their_columns_colours() {
         .collect();
     assert!(variants.len() > 1, "every column's pipe drawn alike");
 }
+
+/// Kaizo Mario (Lunar Magic 1.62): its graphics lists are in the layout
+/// Lunar Magic wrote before 1.70, which a ROM without `"LM"` at `$0FF15C`
+/// has, and its custom backgrounds' flags give their tiles' high byte, not
+/// a BG Map16 table, in a ROM without Lunar Magic's tables. Imported and
+/// built, the levels that use them draw as the hack does: before, `002`
+/// and the other levels with lists drew from the wrong files, and `1BD`'s
+/// background from BG Map16 table 1, which the build had empty.
+#[test]
+fn kaizo_marios_older_lists_and_backgrounds_build_as_the_hack_draws_them() {
+    use kobo_core::build::{self, Project};
+    use kobo_core::exgfx::{self, slot};
+    use kobo_core::import;
+    use kobo_core::source::level::Layer2;
+
+    let Some((_, hack)) = common::corpus_hack(common::hacks::KAIZO_MARIO) else {
+        return;
+    };
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    if common::asar().is_none() {
+        return;
+    }
+    assert!(exgfx::lists_in_first_layout(&hack).unwrap());
+    let list = exgfx::read_list(&hack, 0x002).unwrap().unwrap();
+    assert!(list.bypass());
+    let files = [
+        (slot::FG1, 0x14),
+        (slot::FG2, 0x17),
+        (slot::BG1, 0x19),
+        (slot::FG3, 0x16),
+        (slot::SP1, 0x00),
+        (slot::SP2, 0x01),
+        (slot::SP3, 0x80),
+        (slot::SP4, 0x81),
+    ];
+    assert_eq!(list.files(), {
+        let mut f = files.to_vec();
+        f.sort();
+        f
+    });
+    let (level, _) = import::read_level(&hack, 0x1BD).unwrap();
+    let Layer2::Background(bg) = &level.layer2 else {
+        panic!("1BD has a background: {:?}", level.layer2);
+    };
+    assert_eq!(bg.table, 0);
+    assert_eq!(bg.tiles[0], 0x176);
+
+    let dir = common::temp::TempDir::unmade("kaizo-mario");
+    import::import_rom(&hack, &clean, &dir, false).unwrap();
+    let built = build::build(&clean, &Project::load(&dir).unwrap()).unwrap();
+    let differ =
+        common::render_hashes::pictures_differ(&hack, &built, &[0x002, 0x009, 0x011, 0x1BD]);
+    assert!(differ.is_empty(), "{differ:?}");
+}

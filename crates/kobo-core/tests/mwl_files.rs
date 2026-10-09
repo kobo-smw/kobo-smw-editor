@@ -570,10 +570,58 @@ fn vanilla_exports_import_and_build() {
     }
 }
 
+/// A level's graphics list reads from a ROM as Lunar Magic exports it, in
+/// either layout (`exgfx::read_list`), as far as a load goes: whether it
+/// is used, its files and slots, and its bits. Kaizo Mario and Kaizo Mario
+/// 2 keep the first layout, which Lunar Magic 1.6x wrote; read in the
+/// current one, ten of Kaizo Mario's levels loaded other files.
+#[test]
+fn graphics_lists_read_as_lunar_magic_exports_them() {
+    let Some(dirs) = export_dirs() else { return };
+    let (mut compared, mut first, mut mismatches) = (0, 0, Vec::new());
+    for (dir, rom) in dirs {
+        let Ok(rom) = kobo_core::Rom::load(&rom) else {
+            continue;
+        };
+        let older = kobo_core::exgfx::lists_in_first_layout(&rom).unwrap();
+        for level in 0..0x200u16 {
+            let Some(ours) = kobo_core::exgfx::read_list(&rom, level).unwrap() else {
+                break;
+            };
+            let Ok(bytes) = std::fs::read(dir.join(format!("level {level:03X}.mwl"))) else {
+                continue;
+            };
+            let Ok(mwl) = MwlFile::parse(&bytes).unwrap().decode(None) else {
+                continue;
+            };
+            // What a load takes from the list: the export writes an empty
+            // slot (`$FFFF`) as `7F`, which loads nothing either.
+            let theirs = mwl.exgfx;
+            let loads = |l: &kobo_core::exgfx::GraphicsList| {
+                l.is_used()
+                    .then(|| (l.files(), l.bypass(), l.layer3_files(), l.layer3_tilemap()))
+            };
+            if loads(&ours) != loads(&theirs) {
+                mismatches.push(format!(
+                    "{}: level {level:03X}: {:04X?}, exported {:04X?}",
+                    dir.display(),
+                    ours.0,
+                    theirs.0
+                ));
+            }
+            compared += 1;
+            first += older as usize;
+        }
+    }
+    eprintln!("{compared} lists compared, {first} in the first layout");
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+}
+
 /// A background in Lunar Magic's layout imports from an MWL file as it
-/// does from the ROM the file came from, but for Lunar Magic's older
-/// format (`C` without `F`), which the export folds into table 0 and a
-/// ROM import reads with the tiles' high byte as the table.
+/// does from the ROM the file came from. Lunar Magic's older format (`C`
+/// without `F`) reads its tiles from the first BG Map16 table with the
+/// flags' high nibble as their high byte, which the export folds into table
+/// 0, as the import does.
 #[test]
 fn backgrounds_import_from_mwl_as_from_the_rom() {
     use kobo_core::source::level::Layer2;
@@ -601,15 +649,7 @@ fn backgrounds_import_from_mwl_as_from_the_rom() {
             let Layer2::Background(got) = &from_mwl.layer2 else {
                 panic!("{}: level {level:03X} has no background", dir.display());
             };
-            let older = mwl.layer2.header.0[0] == 0x06
-                && got.table == 0
-                && expected.table != 0
-                && got.tiles == expected.tiles;
-            assert!(
-                got == expected || older,
-                "{}: level {level:03X}",
-                dir.display()
-            );
+            assert_eq!(got, expected, "{}: level {level:03X}", dir.display());
             compared += 1;
         }
     }

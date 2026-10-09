@@ -161,7 +161,7 @@ what Lunar Magic does differently is recorded here.
 | `$06F5FC`-`$06F5FD` = `4C 4D` (`"LM"`), just before the gate | Lunar Magic's Map16 editor and `-ExportAllMap16` read the acts-like tables through `$06F624`, pages `$10`-`$7F` through their pointers, and page 2 per tileset through `$06F547` and `$06F586` only with it; without it they read all of those from elsewhere, getting other bytes for every tile (pages 0 to `$0F` and the tilesets' pages 0 and 1 read the same either way), and a Map16 save from the editor would write that back | bisecting `-ExportAllMap16` of a Kobo build against the same with Lunar Magic's bytes copied in (a Lunar Magic-saved ROM with Kobo's bank `$06` code swapped in, `swap bank06`), printing addresses only (2026-09-27); in neither the help file nor the open tools' sources. Every build before it had its pages past `$0F` and its acts-like settings shown wrong in Lunar Magic's editor | written (`actslike.asm`). With it, a level save also writes other values at `$0FF05D`-`$0FF05E` and `$0FFFFF`, in the areas it keeps for itself (above); nothing else it writes changes |
 | `$0FFFFF` not `$FF` (a build writes `$00`), when a build stores GFX as LC_LZ3 | Lunar Magic reads the compression setting at `$0FFFEB` only then: with `$FF` it exports every LC_LZ3 file as if LC_LZ2, and a save writes `$00` (LC_LZ2) at `$0FFFEB` over the ROM's `$02` | bisecting `-ExportGFX` of an SA-1 Kobo build with LC_LZ3 GFX against the same after Lunar Magic's `-ChangeCompression`, addresses only, then trying values (2026-09-27) | written by `[rom] lz3` builds (`build::Stage::Base`); `tests/lunar_magic_save.rs` checks both ways. What the byte records is not known; Lunar Magic's own saves leave `$00` or `$03` |
 | `$06F547` = `$06` to turn page 2 per tileset on | with the marker above, Lunar Magic 3.70's editor and export take page 2 as per tileset only when this byte is `$06`; `$00`-`$05`, `$07`, `$08`, `$0E`, `$16`, `$26`, `$46`, `$80`, `$86`, `$EA`, and `$FF` all read as off (the two Lunar Magic 2.53 ROMs of the corpus have `$06` there). Kobo's Map16 routine takes any value but `$00` as on | trying values with `-ExportAllMap16` (2026-09-27) | written by a build with page 2 per tileset (`build::write_tileset_page2`) |
-| `$00AAD8` = `$EA` (4bpp GFX), `$00AA47` = `$EA` and a `JSL` (`$22`) at `$0583B8` (ExGFX and lists), `"LM"` at `$0FF15C` (lists kept) | Lunar Magic reads the GFX files as 4bpp, and its ExGFX export and level export read the ExGFX tables and the level's list, only with the first three; its save keeps the lists and ExGFX tables as they are only with the marker ("Graphics", below) | bisecting `-ExportExGFX`, `-ExportLevel`, and a save over `+ExGFX` with Kobo's graphics code swapped in, printing addresses only (2026-09-28) | written (`graphics.asm`) by a build that uses Lunar Magic's graphics formats. Without the marker a save installs Lunar Magic's ExGFX code over the tables and rewrites the lists and ExGFX pointers; without any one of the other three a save keeps everything (tests/lunar_magic_save.rs) |
+| `$00AAD8` = `$EA` (4bpp GFX), `$00AA47` = `$EA` and a `JSL` (`$22`) at `$0583B8` (ExGFX and lists), `"LM"` at `$0FF15C` (lists kept) | Lunar Magic reads the GFX files as 4bpp, and its ExGFX export and level export read the ExGFX tables and the level's list, only with the first three; its save keeps the lists and ExGFX tables as they are only with the marker, and its export and save read the lists in the current layout only with it, without it in the first layout, 1.6x's ("Per-level graphics lists", below) | bisecting `-ExportExGFX`, `-ExportLevel`, and a save over `+ExGFX` with Kobo's graphics code swapped in, printing addresses only (2026-09-28); the layout, `-ExportLevel` of Kaizo Mario with the marker written and each of its bytes alone (2026-10-09) | written (`graphics.asm`) by a build that uses Lunar Magic's graphics formats. Without the marker a save installs Lunar Magic's ExGFX code over the tables and rewrites the lists and ExGFX pointers; without any one of the other three a save keeps everything (tests/lunar_magic_save.rs) |
 | `$0EF519` = `$5C` (a `JML`): Kobo's background entry at `$0EF510` is laid out so that its jump lands there | Lunar Magic's save keeps the background piece and the level flags (`$0EF310`) only with it ("How a save decides what to install") | `install-gate.py`, then trying values: `$00`, `$01`, `$80`, `$FE` do not count (2026-09-26) | written (`background.asm`). Without it a save loses a level's background in Lunar Magic's layout (`tests/lunar_magic_save.rs`) |
 | `$0EF550`-`$0EF56B` not all `$FF`: Kobo's level number hook's code is placed there | Lunar Magic's save keeps the level number hook (`$05D8E2`) only with it | `install-gate.py` (2026-09-26) | written (`level.asm`). Without it a save puts its own code there, which the level number hook then reaches; the level reads the same (`tests/lunar_magic_save.rs`) |
 | A `JSL` (`$22`) at `$00A390` (ExAnimation) | Lunar Magic's save treats ExAnimation as installed with it, whatever follows the opcode: it keeps every site and reads and writes the level table through `read3(read3($0583AE) + $EA)` and the global list through `+$5B`/`+$65`, as does its level export | ablation of each site from a Kobo ExAnimation install on `vanilla+LM`, then of the byte (a `JML`, `JSR`, `NOP`, or the game's bytes all fail), printing addresses only (2026-09-28) | written (`exanimation.asm`, whose NMI hook it is). Without it a save of a level with ExAnimation installs Lunar Magic's code over every site with new, empty tables (tests/lunar_magic_save.rs) |
@@ -696,8 +696,10 @@ the hook's outputs as the ROM's code leaves them) and implemented by Kobo
   nibble for Lunar Magic's own format with `F` (`C` and `F`) and 0 for any other background
   (flags `08`, `18`, `00`, and `C` alone: Kaizo Mario World 3's, flags `$32` and `$12`,
   read their tiles from pointer 0 under the hack's own code, and Lunar Magic's MWL export
-  gives them table 0 with the nibble in each tile's high byte); `$05` = `$0200` with `F`,
-  else `$01B0`. Kobo's builds write `C` only with `F`. A background's tile numbers count
+  gives them table 0 with the nibble in each tile's high byte; so does Kobo's import
+  since 2026-10-09, which had taken the nibble for the table, and a build pointed such
+  a background at a table it had not written: Kaizo Mario's `1BD` drew its castle from
+  table 1, empty); `$05` = `$0200` with `F`, else `$01B0`. Kobo's builds write `C` only with `F`. A background's tile numbers count
   from its table's pointer. Kobo's routine at `$0EFD00`, the hook's target, keeps the
   caller's register sizes, as any routine at a fixed entry point Kobo's code does not
   alone call should.
@@ -767,7 +769,8 @@ times:
   usual `$0FEFC9`-`$0FF044`, keeps every list and pointer, and exports the level's list as
   imported. Without the marker it installs its ExGFX code over the bank `$0F` area and
   the hooks above, and rewrites one word of every level's list (`+$10`, the SP4 slot, from
-  `$FFFF`); without `$00AA47` it warns that the ROM has no ExGFX list and uses the
+  `$FFFF`: it takes the lists to be in the first layout and converts them, which
+  changes only that word of an empty list; "Per-level graphics lists"); without `$00AA47` it warns that the ROM has no ExGFX list and uses the
   standard files on import, and keeps everything; without the `JSL` at `$0583B8` it keeps
   everything but exports the level's list as if there were none.
 - The pointers at `$00B88B` and `$00B8D8` (the operands of `LDY #GFX33` and `LDA #GFX32`)
@@ -936,6 +939,33 @@ NMI before the game loop has ended the frame; `exlevel_probe compare ... lag=N`)
   after the load is the same either way (SMW_2021-5-8, 2026-10-02), and so it is with
   Kobo's loader, which builds such a list as it is (kept so on review, 2026-10-04: an
   import notes each, and `kobo build` warns of each, `build::warnings`).
+- The layout above is the one Lunar Magic reads with `"LM"` at `$0FF15C`. Without it
+  (both bytes; `4C FF`, `FF 4D`, and `4C 4E` count as without) its export and its save
+  read every list in the first layout, the one 1.60 to 1.6x wrote (1.70 added BG2 and
+  BG3, its version history), and the save writes them back converted: word 0 holds `G`
+  in bit 15 (`$0001` or `$8001` in every list of the corpus's three such ROMs; its
+  other bits, `3` and `T` among them, are not read), words 1 to 8 are FG3, BG1, FG2,
+  FG1, SP4, SP3, SP2, SP1, word 9 is AN2's file, and words 10 to 15 (`$FFFF`) are not
+  read. A slot of `$FFFF` becomes `7F` but SP4, which keeps it; AN2 becomes `G` with
+  word 9's low 12 bits (`$0FFF` for an empty list); LT3, BG2, and BG3 are `7F` and
+  LG1-LG4 `28`-`2B`. The list is at the same place, `read3($0FF7FF)` plus 32 per
+  level: moving that pointer by 8 moved what the export read by 4 words, and moving
+  `$0FF873` changed nothing. Kaizo Mario and Kaizo Mario 2 (1.62) and Smb2dx (1.63)
+  have no marker, and every ROM of the corpus from 2.30 on has it; the version string
+  plays no part (`3.70` written there, the export still converted). Found 2026-10-09
+  from Lunar Magic 3.70's `-ExportLevel` of copies of Kaizo Mario with one word or
+  byte changed at a time, imported back to read the MWL's list, and its save of the
+  ROM (save-check), whose lists were all converted so; with the marker written into
+  Kaizo Mario the export read the words as the current layout. With it taken out of
+  that save (which has Lunar Magic 3.70's own code installed), the export read the
+  converted lists in neither layout as given here, as if from 8 bytes further on (not
+  followed further: no ROM has lists in the current layout without the marker but by
+  such an edit). Kobo's import converts them so (`exgfx::read_list`,
+  `GraphicsList::from_first_layout`); taking them in the current layout had loaded
+  the wrong files in the ten Kaizo Mario levels with `G` set (`002`'s FG1 slot got
+  `GFX01`, its SP slots `GFX00`). The doc's earlier finding that a save without the
+  marker rewrites one word of every list (SP4, from `$FFFF`) is this conversion, of
+  lists that were in the current layout.
 - The block (`$6E00` bytes in Kaizo Kindergarten, Invictus, and `+ExGFX`) starts with
   the ExGFX `100`-`FFF` pointers (`$2D00` bytes), and the lists follow: `read3($0FF7FF)`
   is `read3($0FF873)` plus `$2D00`. `$0FF873` and `$0FF937` both hold the block's start.

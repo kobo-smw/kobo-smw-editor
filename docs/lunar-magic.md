@@ -326,7 +326,9 @@ ROMs of the corpus and Smb2dx ("Requested operation failed").
   top nibble (`BB`, the BG Map16 bank) is kept if it had `F`, and folded into the tiles'
   high bytes and cleared if not. So a background in the older format (`C` alone) comes out
   as `C` and `F` in table 0 with every tile's high byte `BB`, which a table 0 background
-  with all its tiles on page `BB` also gives: the file cannot tell them apart. Layer 2 objects or a background follow the flags, not the
+  with all its tiles on page `BB` also gives, and is what the game loads: without `F`
+  the ROM's code reads the first table, the nibble being the tiles' high byte alone
+  (lunar-magic-install.md, "Backgrounds"). Layer 2 objects or a background follow the flags, not the
   level mode: boss levels export their pointer's background.
 - Sprite data is the ROM's list byte for byte, from the level's sprite pointer, and parses
   to the same sprites given the ROM's PIXI size table, which the file lacks: `kobo import

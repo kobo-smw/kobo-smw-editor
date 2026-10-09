@@ -284,6 +284,11 @@ folders make a full run about an hour; leave them out for a quicker one.
   vanilla: the background of the 276 levels on the shared empty level, `0C5`'s header,
   and layer 1 of eleven levels. It also compares the screen exits' bytes, which `kobo diff`
   puts in one format: the import writes them back in the game's format.
+  `graphics_lists_read_as_lunar_magic_exports_them` requires every level's graphics list
+  read from the ROM (`exgfx::read_list`, in either layout) to load what the export's does
+  (whether it is used, its files, its bits; the export writes an empty slot as `7F`), and
+  `backgrounds_import_from_mwl_as_from_the_rom` every background to import from the file
+  as from the ROM, the older format (`C` alone) in table 0 from both.
 - **ExAnimation in builds**: `tests/mwl_files.rs` (with `KOBO_MWL_DIR`) requires every
   level's list read from the ROM (but Lunar Magic 2.41's older lists, which Kobo does not
   read from a ROM) to equal the

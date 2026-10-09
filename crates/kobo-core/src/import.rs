@@ -894,6 +894,11 @@ fn background_changed(rom: &Rom, clean: &Rom, number: u16) -> Result<bool, Impor
 /// behind a full pointer (`V`), whose tiles all take the flags' high nibble
 /// as their high byte. Its own format without high bytes (`C` alone, from
 /// older versions) comes through as 32 rows, the last five tile `$000`.
+/// The high nibble names the BG Map16 table only with `F`: without it the
+/// tiles are in the first table, the game's own in a ROM without Lunar
+/// Magic's tables (1.6x), as the ROM's own code reads them and as Lunar
+/// Magic 3.70 exports them (docs/lunar-magic-install.md, "Backgrounds and
+/// the level load's uploads").
 fn background_tiles(bg: &level::Background) -> Option<BackgroundTiles> {
     let flags = bg.flags?;
     let byte = |i: usize| bg.data.get(i).copied().unwrap_or(0) as u16;
@@ -917,7 +922,7 @@ fn background_tiles(bg: &level::Background) -> Option<BackgroundTiles> {
                     }
                 }
             }
-            if custom { (flags >> 4, 32) } else { (0, 27) }
+            (0, if custom { 32 } else { 27 })
         }
         _ => return None,
     };
@@ -939,9 +944,8 @@ fn background_from_mwl(flags: u8, mwl_tiles: &[u16]) -> Option<BackgroundTiles> 
     }
     let (custom, full, vanilla) = (flags & 0x02 != 0, flags & 0x04 != 0, flags & 0x08 != 0);
     // The file's own reading. From a ROM in Lunar Magic's older format (`C`
-    // alone), 3.70 exports `C` and `F` with table 0 and the table folded
-    // into the tiles, where a ROM import takes that high byte as the table;
-    // the file alone cannot tell it from a table 0 background.
+    // alone), 3.70 exports `C` and `F` with table 0 and the flags' high
+    // nibble in every tile's high byte, as a ROM import reads it.
     let (table, rows) = match (custom, full, vanilla) {
         (true, true, _) => (flags >> 4, BACKGROUND_ROWS),
         (false, _, true) => (0, 27),
