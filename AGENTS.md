@@ -195,8 +195,9 @@ Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-
   `Workspace` is the project in memory, built and a level rendered from it
   (`preview`). The editor makes no change any other way.
 - `kobo_core::emulator` is how a build is watched while it plays: the Lua script Mesen 2
-  runs (`mesen_script`, watched RAM after every frame, a pause on a watched write) and
-  its report (`read_report`), which carry RAM alone.
+  runs (`mesen_script`, watched RAM after every frame, a pause on a watched write, a
+  stop at a `Breakpoint` on code) and its report (`read_report`), which carry RAM and
+  the breakpoint the user chose alone.
 - `kobo_core::stripe` is the one place that knows the game's stripe images (runs of VRAM
   words, layer 3's tilemaps above all): `Tilemap` is what one writes, read and written
   back as an image (the overworld's border).
