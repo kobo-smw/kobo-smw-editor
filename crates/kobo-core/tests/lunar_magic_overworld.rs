@@ -7,7 +7,8 @@
 //! where Lunar Magic reads it (`$058B22`), and without the `JSL` at
 //! `$00A4E3` it takes the overworld's ExAnimation as installed by, and
 //! without the byte it keeps the FG1-2 merge as (`$0FF9F0`), as
-//! docs/lunar-magic-install.md records.
+//! docs/lunar-magic-install.md records; and with the game's bytes for one
+//! of the Extra Options a build turns off (`overworld::GAME_OPTIONS`).
 //!
 //! Opt-in: the Lunar Magic tier, with the vanilla ROM and Asar.
 
@@ -86,6 +87,20 @@ fn lunar_magic_reads_a_built_overworld() {
     animation.global = Some(list);
     ours.animation = Some(animation);
     ours.merge_fg = true;
+    // Every Extra Option that is bytes of the game's code off, and the
+    // tables of the crushed tile's earthquake and the second ghost's events.
+    ours.options = [false; overworld::GAME_OPTIONS.len()];
+    for (name, bytes) in [
+        ("crush_earthquake_level", vec![0x2B]),
+        ("ghost_events", vec![0x03]),
+        ("ghost_event_bits", vec![0x80]),
+    ] {
+        let t = overworld::TABLES
+            .iter()
+            .position(|t| t.name == name)
+            .unwrap();
+        ours.tables[t] = bytes;
+    }
     ours.start[0] = Start {
         submap: 0,
         x: 12 * 16 + 8,
@@ -109,6 +124,24 @@ fn lunar_magic_reads_a_built_overworld() {
     assert_eq!(theirs.level_events, read.level_events);
     assert_eq!(theirs.animation, read.animation);
     assert!(theirs.merge_fg, "FG1-2 merged");
+    assert_eq!(theirs.options, read.options, "the Extra Options");
+    assert!(read.options.iter().all(|&on| !on));
+    for name in ["crush_earthquake_level", "ghost_events", "ghost_event_bits"] {
+        let t = overworld::TABLES
+            .iter()
+            .position(|t| t.name == name)
+            .unwrap();
+        assert_eq!(theirs.tables[t], read.tables[t], "{name}");
+    }
+
+    // An option is its bytes: the game's put back, the transfer has it on.
+    let life = &overworld::GAME_OPTIONS[3];
+    assert_eq!(life.name, "life_exchange");
+    let mut on = Rom::from_bytes(built.data().to_vec()).unwrap();
+    on.write(life.at, life.game).unwrap();
+    let theirs = transferred(&lunar_magic, &clean, &on, "overworld-option");
+    assert!(theirs.options[3], "life exchange with the game's bytes");
+    assert!(theirs.options.iter().filter(|&&on| on).count() == 1);
 
     // Without the check byte, Lunar Magic takes layer 1 for one page.
     let mut unchecked = Rom::from_bytes(built.data().to_vec()).unwrap();

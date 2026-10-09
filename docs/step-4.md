@@ -77,8 +77,13 @@ from the editor where the user is working.
   hack's does (tests/overworld.rs).
 - Import carries a hack's overworld (2026-10-09): `overworld.toml`, what it changes of
   the clean ROM's, with its path reveal speed; riff2's import builds to the same
-  overworld and plays every level's events as riff2 does. Still left: Lunar Magic's
-  other Extra Options.
+  overworld and plays every level's events as riff2 does. Lunar Magic's other Extra
+  Options followed (2026-10-09): ten that are bytes of the game's code
+  (`overworld::GAME_OPTIONS`, `[options]`, and the editor's *Options*), found by
+  transferring every corpus hack's overworld and diffing, which Lunar Magic reads back
+  from a build, the save tiles' one at `$03BA26` too; four are left (the default
+  clouds and saving after the intro, which no hack sets, and Luigi's position and the
+  lightning's colours, which are code of Lunar Magic's).
 - The overworld's graphics (2026-10-09): each submap's graphics list (`[graphics]`,
   Kobo's code for the `JSL` at `$00A140`), Lunar Magic's 14 overworld palettes
   (`[palettes.0xNN]`, Kobo's code for the `JSL` at `$00AD32`), and layer 1's 16x16
@@ -104,7 +109,7 @@ from the editor where the user is working.
   again, which it tells by the game's operand at `$00AA8D` (bisected; Kobo's install
   writes `$32` there): Kaizo Mario 1 and 2 and Kaizo Mario World 3 import and build to
   what Lunar Magic 3.70 makes of them. Still left: the first frames after a submap
-  change, and the other Extra Options.
+  change.
 - The events' further tiles (2026-10-08): the game's list of 44 and Lunar Magic's
   tables of them, read (`Events::extras`), carried in the overworld file (an event's
   `extras`), and Kobo's code for the layout's two hooks of them (`$04E9F7`, `$04DCA5`),

@@ -510,6 +510,7 @@ fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
             && ours.palettes == theirs.palettes
             && ours.border == theirs.border
             && ours.title == theirs.title
+            && ours.options == theirs.options
             // An install with no list and no setting is none.
             && ours.animation.as_ref().filter(|a| !a.is_empty())
                 == theirs.animation.as_ref().filter(|a| !a.is_empty());

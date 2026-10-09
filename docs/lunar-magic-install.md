@@ -2130,12 +2130,40 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   transfer of a build keeps the merge, and drops it with `$F0` at `$0FF9F0`
   (`tests/lunar_magic_overworld.rs`). An install of the overworld's ExAnimation with
   no list (riff2's) is carried too, for its waterfall fix.
+- The other Extra Options (2026-10-09). Lunar Magic's transfer of each corpus hack's
+  overworld into the clean ROM saved once (40 hacks; the locked ones refuse it), diffed
+  against the vanilla overworld's transfer outside RATS blocks and outside what Kobo's
+  own builds of the two overworlds differ in, printing addresses only, leaves bytes of
+  the game's code that some hacks change and most do not. Each is an instruction the
+  help's description of an option names (SMWDisX): the `BPL` on a level's passed flag
+  in the Start-Select exit (`$00A267`, 13 hacks), the `AND #$10` of Start on the main
+  map (`$048380`, 5), the start of the hardcoded paths' search (`$049307`, 2), the
+  `BEQ`s of the life exchange prompt (`$04828D`, 6) and of L/R (`$04836E`, 2), the
+  `BEQ` after `CMP #$81` that lets L+R into a destroyed castle (`$04914E`, 2), the
+  `BNE` after level 24's `CMP #$24` (`$05DAE6`, 5), the `BNE` of the save tiles' list
+  after an event (`$04E622`, 4), the `BNE` of slot C's second ghost (`$04FD8A`, 1) with
+  its events' byte and bits (`$04FD86`, `$04FD89`, 2), and the `LDA #$30` of sprites'
+  colour math on the load (`$00A0EB`, 4: `$20`, translucency for palettes C-F off).
+  Each option's bytes off are one value across the corpus (a `BRA`, `$00` for Start,
+  two `NOP`s for L+R, a `BRA` past the search for the paths), which Lunar Magic's
+  transfer of a Kobo build reads back (`tests/lunar_magic_overworld.rs`): Kobo writes
+  them (`overworld::GAME_OPTIONS`, the overworld file's `[options]`), and the ghost's
+  events and the earthquake's level below as tables. The save tiles' option is also
+  a byte Lunar Magic reads at `$03BA26`, in its code for the hook at `$048F8A` (`$01`
+  on, `$00` off; bisected by grafting it alone into the vanilla overworld's transfer,
+  and into Kobo's build, where nothing else around the hook mattered): Kobo's code for
+  the hook reads the same byte (the game's `$FF` there counts as on), which a build
+  writes 0 for off. The translevel whose event's crushed tile shakes the screen, the
+  `CMP #$18` at `$04E660`, differs in 16 hacks, a level number Lunar Magic edits
+  (`crush_earthquake_level`). Not carried: the default clouds and saving after the
+  intro message (no corpus hack has them off), and Luigi's map position and lightning
+  colours from the ROM, each a `JSL` into Lunar Magic's code (`$049A35`, 2 hacks;
+  `$04F767`, 2), which would need Kobo's own.
 - Beating each level of the vanilla overworld, by either exit (`expand::beat_level`),
   plays the same steps to the same RAM and VRAM in the game, its transfer, and Kobo's
   build (2026-10-09). In hacks, events play faster where Lunar Magic's Extra Options
   turn off the event path fade effect and set the path reveal speed (QW2, 2 frames a
-  step, not 5); those options are bytes of code at fixed places ("Each of these options
-  make a very minor ASM modification to the ROM", its help says), not found yet.
+  step, not 5), carried since (above).
 - Layer 1's 16x16 tiles (`OWL1CharData`, 8 bytes a tile number, `$C1` of them at
   `$05D000` in the game) move to a RATS block sized to the tiles in use (`$620` to `$1000`
   bytes across the corpus, in steps of 8; numbers reach `$1FF`, two pages), through the

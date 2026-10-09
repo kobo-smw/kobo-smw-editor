@@ -1332,7 +1332,9 @@ fn import_overworld(
     let file = PathBuf::from("overworld.toml");
     let top = [
         "# The hack's overworld, as what it changes of the clean ROM's.".to_string(),
-        "# Not carried yet: Lunar Magic's other Extra Options.".into(),
+        "# Not carried yet: Lunar Magic's Extra Options for the default clouds, saving after"
+            .to_string(),
+        "# the intro message, Luigi's map position, and lightning colours from the ROM.".into(),
     ];
     write_text(
         &dir.join(&file),
@@ -1340,8 +1342,9 @@ fn import_overworld(
     )?;
     manifest.overworld = Some(file);
     report.notes.push(
-        "its overworld is carried (overworld.toml), but for Lunar Magic's Extra Options other \
-         than the path reveal speed"
+        "its overworld is carried (overworld.toml), but for four of Lunar Magic's Extra \
+         Options: the default clouds, saving after the intro message, Luigi's map position, and \
+         lightning colours from the ROM"
             .into(),
     );
     Ok(())

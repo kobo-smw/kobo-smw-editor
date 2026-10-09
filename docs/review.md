@@ -20,9 +20,10 @@ settle it.
   imported, and edited, with its graphics, palettes, ExAnimation, border, and lists),
   and the emulator (Play, symbols, and watching RAM in Mesen with pauses on writes and
   the player on the canvas). Left, as step-4.md's entries say: the first frames after a
-  submap change, Lunar Magic's other overworld Extra Options, the title screen's demo
-  moves, and breakpoints on code rather than RAM (older Lunar Magic versions'
-  overworlds followed on 2026-10-09).
+  submap change, four of Lunar Magic's overworld Extra Options (two needing code of
+  Kobo's own), the title screen's demo moves, and breakpoints on code rather than RAM
+  (older Lunar Magic versions' overworlds and the other Extra Options followed on
+  2026-10-09).
   Settled by closing step 4 (folding step-4.md into the other docs) or naming what
   else it needs.
 
@@ -69,3 +70,15 @@ settle it.
   upload leaves dead, so that Lunar Magic exports a build's files as stored
   (lunar-magic-install.md, "The overworld"). Settled by agreeing, or by choosing the
   hack's own look (then `GFX08` would need a copy for the overworld).
+
+- **The Extra Options as their bytes (2026-10-09).** Ten of Lunar Magic's overworld
+  Extra Options are a byte or two of the game's code each (a branch made `BRA`, an
+  operand made 0, two `NOP`s), which its transfer reads back from a Kobo build. Taken
+  without asking: Kobo writes exactly those bytes for an option off, since they are
+  both what Lunar Magic checks and the whole of the effect, rather than code of its own
+  (`overworld::GAME_OPTIONS`); and Kobo's code for the save tiles' hook reads its
+  option from `$03BA26`, where Lunar Magic's code keeps it, rather than a flag of its
+  own beside it (as with the FG1-2 merge's byte). Names in the overworld file are
+  Kobo's (`life_exchange = false`), the help's wording in the editor
+  (lunar-magic-install.md, "The overworld"). Settled by agreeing, or by a rule for
+  options that are bytes of the game's code.

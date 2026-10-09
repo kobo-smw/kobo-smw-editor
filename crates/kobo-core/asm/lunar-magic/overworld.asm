@@ -109,6 +109,7 @@ org $05D8B1
 !player_x = $1F1F|!addr
 !player_y = $1F21|!addr
 !player_submaps = $1F11|!addr
+!save_tiles = $03BA26
 
 org $009F19
     JSL init_flags
@@ -444,19 +445,25 @@ init_flags:
     RTL
 
 ; Carry set when the level the player has passed (TranslevelNo) brings up
-; the save prompt: its settings' bit 4, or a level tile of the game's
-; list. A and the index registers 8-bit.
+; the save prompt: its settings' bit 4, or a level tile of the game's list
+; unless !save_tiles is 0, Lunar Magic's Extra Option for them off, where
+; its editor and transfer read the option (docs/lunar-magic-install.md,
+; "The overworld"); the game has $FF there. A and the index registers
+; 8-bit.
 save_check:
     LDX !translevel
     LDA !level_settings,X
     AND #$10
     BNE .yes
+    LDA !save_tiles
+    BEQ .no
     LDX #$07
 -   LDA !layer1_tile
     CMP.l $048F7F,X
     BEQ .yes
     DEX
     BPL -
+.no:
     CLC
     RTL
 .yes:

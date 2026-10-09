@@ -43,7 +43,9 @@
 //!
 //! [options]                      # Lunar Magic's: the event path fade off, a speed to reveal at,
 //! reveal_speed = 0x06            # and FG1-2 merged into SP3-4 (the list then has FG1-2's
-//! merge_fg = true                # files in SP3-4's slots)
+//! merge_fg = true                # files in SP3-4's slots); and its Extra Options that are
+//! life_exchange = false          # bytes of the game's code (overworld::GAME_OPTIONS), all on
+//!                                # in the game
 //!
 //! [tables]                       # the tables kept in place, their bytes (overworld::TABLES)
 //! music = "02 03 04 06 07 09 05"
@@ -78,7 +80,7 @@
 use toml_edit::{DocumentMut, Item, Table, Value};
 
 use super::{SourceError, hex, invalid};
-use crate::overworld::{Changes, Crush, Event, EventBlock, ExtraTile, NAME_TILES, Start};
+use crate::overworld::{self, Changes, Crush, Event, EventBlock, ExtraTile, NAME_TILES, Start};
 
 const MAP_NAMES: [&str; 2] = ["main", "submaps"];
 
@@ -306,13 +308,19 @@ pub fn to_toml(changes: &Changes, top: &[String]) -> String {
             text
         });
     }
-    if changes.reveal_speed.is_some() || changes.merge_fg {
+    if changes.reveal_speed.is_some() || changes.merge_fg || !changes.options.is_empty() {
         let mut text = String::from("[options]\n");
         if let Some(speed) = changes.reveal_speed {
             text += &format!("reveal_speed = {}\n", hex(u32::from(speed), 2));
         }
         if changes.merge_fg {
             text += "merge_fg = true\n";
+        }
+        // In GAME_OPTIONS's order.
+        for option in &overworld::GAME_OPTIONS {
+            if let Some(on) = changes.options.get(option.name) {
+                text += &format!("{} = {on}\n", option.name);
+            }
         }
         sections.push(text);
     }
@@ -706,10 +714,17 @@ pub fn from_toml(text: &str) -> Result<(Changes, Vec<String>), SourceError> {
                 let table = item
                     .as_table()
                     .ok_or_else(|| invalid(key, "must be a table"))?;
-                for (name, _) in table.iter() {
-                    if name != "reveal_speed" && name != "merge_fg" {
+                for (name, value) in table.iter() {
+                    if name == "reveal_speed" || name == "merge_fg" {
+                        continue;
+                    }
+                    if !overworld::GAME_OPTIONS.iter().any(|o| o.name == name) {
                         return Err(invalid(format!("options.{name}"), "is not an option"));
                     }
+                    let on = value.as_bool().ok_or_else(|| {
+                        invalid(format!("options.{name}"), "must be true or false")
+                    })?;
+                    changes.options.insert(name.to_string(), on);
                 }
                 if table.contains_key("reveal_speed") {
                     let speed = int("options.reveal_speed", table.get("reveal_speed"), 0x40)?;
@@ -957,6 +972,8 @@ mod tests {
         changes.event_split = Some(0x0A00);
         changes.reveal_speed = Some(6);
         changes.merge_fg = true;
+        changes.options.insert("life_exchange".into(), false);
+        changes.options.insert("save_prompts".into(), false);
         let mut row = vec![Some(0x38FE); 32];
         row[3] = None;
         row[4] = Some(0x7895);

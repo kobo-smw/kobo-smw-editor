@@ -9,7 +9,7 @@ A project directory builds into a ROM from a clean SMW ROM. Levels, Map16, palet
 ExGFX, ExAnimation, and the overworld are written natively in Lunar Magic's layout;
 existing work is imported from ROMs, MWL files, Lunar Magic's Map16 exports, and Callisto
 projects; Asar, PIXI, GPS, UberASM Tool, and AddmusicK run in a fixed order. What Kobo
-does not cover yet (most of Lunar Magic's overworld Extra Options, the title screen's
+does not cover yet (four of Lunar Magic's overworld Extra Options, the title screen's
 demo moves, credits, messages) is finished in Lunar Magic on the built ROM.
 
 ## Lunar Magic and Kobo builds
@@ -226,8 +226,9 @@ and what each hack still has refused, are in [testing.md](testing.md).
   settings, graphics lists, palettes, ExAnimation, border, the title screen's layer 3,
   and the tables the game keeps in place) is built in
   Lunar Magic's layout (lunar-magic-install.md, "The overworld"), and an import carries
-  a hack's; Lunar Magic's Extra Options but the path reveal speed are left to Lunar
-  Magic.
+  a hack's, with Lunar Magic's Extra Options but four (the default clouds, saving after
+  the intro message, Luigi's map position, and lightning colours from the ROM), which
+  are left to Lunar Magic.
 - Builds are not FastROM ([known-gaps.md](known-gaps.md)).
 - Lunar Magic's GUI operations (overworld save, message and title screen edits,
   ExAnimation, custom palettes, the VRAM patch options) have not been tried on a Kobo

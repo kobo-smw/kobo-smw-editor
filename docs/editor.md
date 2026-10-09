@@ -241,7 +241,10 @@ a layer 2 block at the chosen 8x8 tile, of the tiles there. *Sprites* is the gam
 slots of a sprite and its place in pixels, *Here* the chosen tile of the main map),
 *Reveal list* the layer 1 tiles events turn into others, and *Crushed tiles* each
 crushed tile's event and place (*Here* the chosen tile). *Options* sets Lunar
-Magic's path reveal speed (the event path fade off) and its merge of FG1-2 into SP3-4.
+Magic's path reveal speed (the event path fade off), its merge of FG1-2 into SP3-4, and
+its Extra Options that change the game's code (life exchange, Start-Select out of passed
+levels, Start's scrolling, the hardcoded paths, the save prompts, level 24's redirects,
+the second ghost, sprites' translucency), each on in the game.
 *ExAnimation* installs Lunar Magic's overworld ExAnimation, sets the shown submap's
 settings (the game's tiles, the level dots' colours, its list, the global list), and
 edits its list and the overworld's global list as a level's are edited (triggers 01-08

@@ -631,7 +631,7 @@ impl Stage {
             // 2026-10-09: the 16x16 tiles moved, the event properties' run,
             // the palettes, ExAnimation, the FG1-2 merge, and the border (2),
             // and the title screen's layer 3 (3).
-            Stage::Overworld => 3,
+            Stage::Overworld => 4,
             _ => 1,
         }
     }

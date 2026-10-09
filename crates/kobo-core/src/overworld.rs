@@ -78,7 +78,7 @@ const fn site(name: &'static str, at: u32, len: usize, about: &'static str) -> T
 }
 
 /// The overworld's tables kept in place (smw.md, "The overworld").
-pub const TABLES: [TableSite; 14] = [
+pub const TABLES: [TableSite; 17] = [
     site(
         "boss_levels",
         0x00_C9A7,
@@ -158,6 +158,129 @@ pub const TABLES: [TableSite; 14] = [
         8,
         "a sprite's place on the main map and the first submap (DATA_04FC1E)",
     ),
+    site(
+        "crush_earthquake_level",
+        0x04_E660,
+        1,
+        "the level whose event's crushed tile shakes the screen (CMP #$18)",
+    ),
+    site(
+        "ghost_events",
+        0x04_FD86,
+        1,
+        "the low byte of the events that show slot C's second ghost (LDA $1F07)",
+    ),
+    site(
+        "ghost_event_bits",
+        0x04_FD89,
+        1,
+        "those events' bits (AND #$12)",
+    ),
+];
+
+/// One of Lunar Magic's overworld Extra Options that is bytes of the
+/// game's code ("Each of these options make a very minor ASM modification
+/// to the ROM", its help says): where, the game's bytes, and the bytes
+/// with the option off, as Lunar Magic's transfer of an overworld writes
+/// them and its editor reads them back (docs/lunar-magic-install.md, "The
+/// overworld"). Every one is on in the game.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct GameOption {
+    pub name: &'static str,
+    pub at: SnesAddr,
+    pub game: &'static [u8],
+    pub off: &'static [u8],
+    pub about: &'static str,
+}
+
+const fn option(
+    name: &'static str,
+    at: u32,
+    game: &'static [u8],
+    off: &'static [u8],
+    about: &'static str,
+) -> GameOption {
+    GameOption {
+        name,
+        at: SnesAddr::new(at),
+        game,
+        off,
+        about,
+    }
+}
+
+/// The Extra Options carried, each the help's wording.
+pub const GAME_OPTIONS: [GameOption; 10] = [
+    option(
+        "exit_passed_levels",
+        0x00_A267,
+        &[0x10],
+        &[0x80],
+        "Allow using Start-Select to exit passed levels",
+    ),
+    option(
+        "start_scrolls_main_map",
+        0x04_8380,
+        &[0x10],
+        &[0x00],
+        "Allow using Start to scroll on the main overworld map",
+    ),
+    option(
+        "hardcoded_paths",
+        0x04_9307,
+        &[0xA6, 0x08],
+        &[0x80, 0x71],
+        "Allow the hardcoded default layer 1 paths",
+    ),
+    option(
+        "life_exchange",
+        0x04_828D,
+        &[0xF0],
+        &[0x80],
+        "Allow players to exchange lives",
+    ),
+    option(
+        "life_exchange_lr",
+        0x04_836E,
+        &[0xF0],
+        &[0x80],
+        "Allow using L/R for life exchange",
+    ),
+    option(
+        "enter_destroyed_castles",
+        0x04_914E,
+        &[0xF0, 0x4F],
+        &[0xEA, 0xEA],
+        "Allow using L+R to enter destroyed castles and fortresses",
+    ),
+    option(
+        "level_24_redirects",
+        0x05_DAE6,
+        &[0xD0],
+        &[0x80],
+        "Allow level 24 to redirect screen exits",
+    ),
+    option(
+        "save_prompts",
+        0x04_E622,
+        &[0xD0],
+        &[0x80],
+        "Bring up a save prompt after castles, fortresses, ghost houses, switch palaces, and tiles 80 and 7E",
+    ),
+    option(
+        "second_ghost_hidden",
+        0x04_FD8A,
+        &[0xD0],
+        &[0x80],
+        "Hide the second ghost of sprite slot C until its events are passed",
+    ),
+    option(
+        "sprite_translucency",
+        0x00_A0EB,
+        &[0x30],
+        &[0x20],
+        "Translucency for palettes C-F in sprites",
+    ),
 ];
 
 /// Each translevel's event (`DATA_05D608`), which a level passed makes (the
@@ -236,6 +359,12 @@ mod lunar_magic {
     /// has one page.
     pub const PAGES_CHECK: SnesAddr = SnesAddr::new(0x04_D818);
     pub const PAGES_CHECK_ON: u8 = 0xA2;
+    /// Whether the game's level tiles bring up the save prompt after a
+    /// level (`CODE_048F87`, the layout's hook at `$048F8A`): 0 with the
+    /// Extra Option off, `$FF` (the game's) or 1 on, where Lunar Magic's
+    /// code for the hook keeps it and its transfer reads it (bisected;
+    /// docs/lunar-magic-install.md, "The overworld").
+    pub const SAVE_TILES: SnesAddr = SnesAddr::new(0x03_BA26);
     /// The events' further tiles: a `JSL` here (`$22`, where the game's
     /// loop through its table branches) leads to code with the tables'
     /// pointers at fixed offsets from its start: the ranges, then each
@@ -589,6 +718,9 @@ pub struct Overworld {
     /// Lunar Magic's option to merge FG1 and FG2 into SP3 and SP4
     /// ([`MERGE_FG`]).
     pub merge_fg: bool,
+    /// Each of [`GAME_OPTIONS`]: off only where the ROM has its bytes for
+    /// off.
+    pub options: [bool; GAME_OPTIONS.len()],
     /// The border on layer 3: what its stripe image ([`BORDER_IMAGE`])
     /// writes of the tilemap from [`BORDER_BASE`].
     pub border: crate::stripe::Tilemap,
@@ -797,6 +929,10 @@ impl Overworld {
         let tiles = read_tiles(rom)?;
         let animation = crate::exanimation::read_overworld(rom)?;
         let merge_fg = rom.read_u8(MERGE_FG)? == MERGE_FG_ON;
+        let mut options = [true; GAME_OPTIONS.len()];
+        for (on, option) in options.iter_mut().zip(&GAME_OPTIONS) {
+            *on = rom.read(option.at, option.off.len())? != option.off;
+        }
         let border_at = rom.read_ptr(BORDER_IMAGE)?;
         let border =
             crate::stripe::Tilemap::read(BORDER_BASE, BORDER_ROWS, rom.read_tail(border_at)?)
@@ -823,6 +959,7 @@ impl Overworld {
             palettes,
             animation,
             merge_fg,
+            options,
             border,
             title,
         })
@@ -1609,6 +1746,17 @@ impl Overworld {
             plan.fixed
                 .push((ANIMATED_TILES, MERGED_ANIMATED_TILES.to_le_bytes().to_vec()));
         }
+        for (&on, option) in self.options.iter().zip(&GAME_OPTIONS) {
+            if !on {
+                plan.fixed.push((option.at, option.off.to_vec()));
+            }
+        }
+        // The save prompts' option is a byte for the code of the layout's
+        // hook of the save tiles' check too, where Lunar Magic reads it.
+        let prompts = GAME_OPTIONS.iter().position(|o| o.name == "save_prompts");
+        if prompts.is_some_and(|i| !self.options[i]) {
+            plan.fixed.push((lunar_magic::SAVE_TILES, vec![0]));
+        }
         // Lunar Magic's ExAnimation, whose tables Kobo's code for it keeps.
         if let Some(animation) = &self.animation {
             use crate::exanimation::{
@@ -1826,6 +1974,8 @@ pub struct Changes {
     pub animation: Option<crate::exanimation::OverworldAnimation>,
     /// Lunar Magic's option to merge FG1 and FG2 into SP3 and SP4.
     pub merge_fg: bool,
+    /// Each of [`GAME_OPTIONS`] that differs from the clean ROM's, by name.
+    pub options: std::collections::BTreeMap<String, bool>,
     /// By row: the border's 32 cells, `None` where its image writes none.
     pub border: std::collections::BTreeMap<u8, Vec<Option<u16>>>,
     /// By row: the title screen's layer 3, likewise.
@@ -1970,6 +2120,12 @@ impl Overworld {
             changes.animation = self.animation.clone();
         }
         changes.merge_fg = self.merge_fg && !clean.merge_fg;
+        for ((&ours, &theirs), option) in self.options.iter().zip(&clean.options).zip(&GAME_OPTIONS)
+        {
+            if ours != theirs {
+                changes.options.insert(option.name.to_string(), ours);
+            }
+        }
         for (ours, theirs, rows) in [
             (&self.border, &clean.border, &mut changes.border),
             (&self.title, &clean.title, &mut changes.title),
@@ -2058,6 +2214,12 @@ impl Overworld {
             self.animation = Some(animation.clone());
         }
         self.merge_fg |= changes.merge_fg;
+        // The overworld file names only options it knows.
+        for (name, &on) in &changes.options {
+            if let Some(i) = GAME_OPTIONS.iter().position(|o| o.name == name) {
+                self.options[i] = on;
+            }
+        }
         for (map, rows) in [
             (&mut self.border, &changes.border),
             (&mut self.title, &changes.title),

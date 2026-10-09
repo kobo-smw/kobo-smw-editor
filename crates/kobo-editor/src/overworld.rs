@@ -199,6 +199,8 @@ enum Change {
     RevealSpeed(Option<u8>),
     /// Lunar Magic's FG1-2 merge on or off.
     Merge(bool),
+    /// One of `overworld::GAME_OPTIONS` turned on or off.
+    GameOption { index: usize, on: bool },
     /// The overworld as changed by one of its lists.
     Edited(crate::overworld_lists::Edited),
     /// The overworld's ExAnimation as `to`.
@@ -279,6 +281,15 @@ impl Change {
                 false,
                 |ow| ow.merge_fg = on,
             ),
+            Change::GameOption { index, on } => {
+                let option = &kobo_core::overworld::GAME_OPTIONS[index];
+                let label = format!(
+                    "Turn {} {}",
+                    option.name.replace('_', " "),
+                    if on { "on" } else { "off" }
+                );
+                app.change_overworld(&label, false, |ow| ow.options[index] = on)
+            }
             Change::Edited(edited) => {
                 let to = *edited.to;
                 app.change_overworld(&edited.label, false, |ow| *ow = to)
@@ -875,6 +886,18 @@ fn settings(
             );
             if r.changed() {
                 change = Some(Change::Merge(merged));
+            }
+            ui.separator();
+            ui.label(
+                egui::RichText::new("Lunar Magic's Extra Options that change the game's code; all on in the game.")
+                    .small()
+                    .color(theme::MUTED),
+            );
+            for (index, option) in kobo_core::overworld::GAME_OPTIONS.iter().enumerate() {
+                let mut on = overworld.options[index];
+                if ui.checkbox(&mut on, option.about).changed() {
+                    change = Some(Change::GameOption { index, on });
+                }
             }
         });
     let name = kobo_core::names::submap(submap).unwrap_or("?");

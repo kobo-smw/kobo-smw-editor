@@ -2355,6 +2355,11 @@ fn the_overworld_window_sets_its_options_and_animation() {
             .reveal_speed,
         Some(0x10)
     );
+    harness
+        .get_by_label("Allow players to exchange lives")
+        .click();
+    harness.run_steps(2);
+    assert!(!overworld(harness.state()).options[3]);
     harness.get_by_label_contains("ExAnimation: ").click();
     harness.run_steps(2);
     harness
@@ -2374,6 +2379,7 @@ fn the_overworld_window_sets_its_options_and_animation() {
     let file = std::fs::read_to_string(project.0.join("overworld.toml")).unwrap();
     assert!(file.contains("merge_fg = true"), "{file}");
     assert!(file.contains("reveal_speed = 0x10"), "{file}");
+    assert!(file.contains("life_exchange = false"), "{file}");
     assert!(
         file.contains("[animation.0x00]\ngame_tiles = false"),
         "{file}"
