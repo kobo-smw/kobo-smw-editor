@@ -191,6 +191,17 @@ layer 3 is) placed under the status bar, with the list's `T` set and nothing els
 it changed (one undo step of the level). Saving writes the file and names it in
 `kobo.toml`'s `[exgfx]`.
 
+### The title screen and the overworld border
+
+*Title screen and border* (View menu) shows the title screen's layer 3 (its logo) or the
+overworld's border, as a build's load leaves layer 3 (the title screen's as power-on
+reaches it, the border as the overworld's load puts it up), with layer 3's tiles in the
+loaded colours. A click draws the brush's word in a cell (the tile, chosen from layer
+3's tiles beside, its palette, flips, and priority), a right click takes the word under
+the pointer. They are the overworld file's `[title]` and `[border]` (Lunar Magic edits
+both in its overworld editor), so each change is an undo step of the overworld's and is
+saved with it.
+
 ## Shared palettes
 
 The shared palettes window (View menu) edits the game's colour tables, which every level

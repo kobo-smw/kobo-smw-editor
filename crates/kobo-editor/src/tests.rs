@@ -2508,3 +2508,47 @@ fn the_watch_window_writes_mesen_s_script_and_shows_its_report() {
         Some((0x105, 0x40, 0x150))
     );
 }
+
+#[test]
+fn the_title_screen_is_drawn_on_through_the_overworld() {
+    use egui_kittest::kittest::Queryable;
+
+    let Some(clean) = vanilla() else { return };
+    let project = Project::new(&clean, "screens-window");
+    let mut harness = harness(&project.0);
+    wait_for(&mut harness, "the picture", drawn);
+    harness.state_mut().screens_editor.open = true;
+    harness.run_steps(2);
+    wait_for(&mut harness, "the title screen's picture", |app| {
+        app.screens_editor.drawn()
+    });
+    let screen = harness.get_by_label("The layer 3 screen").rect();
+    // A right click takes the word at (3, 2), a click puts it at (10, 20).
+    let at = |x: f32, y: f32| screen.min + egui::vec2(x * 16.0 + 8.0, y * 16.0 + 8.0);
+    for pressed in [true, false] {
+        harness.event(egui::Event::PointerButton {
+            pos: at(3.0, 2.0),
+            button: PointerButton::Secondary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        });
+    }
+    harness.run_steps(2);
+    let word = harness.state().screens_editor.brush.0;
+    harness.event(egui::Event::PointerMoved(at(10.0, 20.0)));
+    for pressed in [true, false] {
+        harness.event(egui::Event::PointerButton {
+            pos: at(10.0, 20.0),
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        });
+    }
+    harness.run_steps(2);
+    let title = |app: &App| app.open_overworld().unwrap().overworld().title.clone();
+    assert_eq!(title(harness.state()).cells[20 * 32 + 10], Some(word));
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    harness.step();
+    let file = std::fs::read_to_string(project.0.join("overworld.toml")).unwrap();
+    assert!(file.contains("[title]\n0x14 = "), "{file}");
+}

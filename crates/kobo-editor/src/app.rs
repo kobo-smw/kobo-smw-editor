@@ -321,6 +321,8 @@ pub struct App {
     pub overworld_editor: crate::overworld::OverworldEditor,
     /// The watch window: RAM read while a build plays in Mesen.
     pub ram_watch: crate::ram_watch::WatchState,
+    /// The title screen's and the overworld border's layer 3.
+    pub screens_editor: crate::screens::ScreensEditor,
     /// The global ExAnimation list, opened when first shown.
     global_animation: Option<Result<edit::GlobalAnimation, String>>,
     pub global_animation_window: crate::animation::GlobalWindow,
@@ -423,6 +425,7 @@ impl App {
             overworld_generation: 0,
             overworld_editor: Default::default(),
             ram_watch: Default::default(),
+            screens_editor: Default::default(),
             global_animation: None,
             global_animation_window: Default::default(),
             map16_editor: Default::default(),
@@ -2496,6 +2499,14 @@ impl App {
                 ui.close();
             }
             if ui
+                .button("Title screen and border")
+                .on_hover_text("The title screen's layer 3 and the overworld's border, to draw on")
+                .clicked()
+            {
+                self.screens_editor.open = true;
+                ui.close();
+            }
+            if ui
                 .button("Watch")
                 .on_hover_text("RAM read while a build plays in Mesen, and writes that pause it")
                 .clicked()
@@ -2736,6 +2747,7 @@ impl App {
                 && !self.thumbnails.busy()
                 && !self.thumbnails.waiting()
                 && (!self.overworld_editor.open || self.overworld_editor.drawn())
+                && (!self.screens_editor.open || self.screens_editor.drawn())
         }) || matches!(self.clean, Clean::Missing(_))
             || self.workspace.is_none();
         match &mut self.screenshot_frames {
@@ -2917,6 +2929,7 @@ impl eframe::App for App {
         crate::layer3::window(self, &ctx);
         crate::overworld::window(self, &ctx);
         crate::ram_watch::window(self, &ctx);
+        crate::screens::window(self, &ctx);
         crate::animation::window(self, &ctx);
         crate::project::window(self, &ctx);
         crate::commands::window(self, &ctx);

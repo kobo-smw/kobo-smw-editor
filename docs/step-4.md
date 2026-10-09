@@ -95,7 +95,8 @@ from the editor where the user is working.
   import builds to its overworld but for its own name code. The border on layer 3
   (`[border]`, `kobo_core::stripe`) and the animated tiles from an ExGFX source
   followed, and the title screen's layer 3 (`[title]`), which Lunar Magic edits in its
-  overworld editor; across the corpus's `.smc` hacks, an import's overworld now differs from
+  overworld editor (drawn on in the editor's *Title screen and border* window); across
+  the corpus's `.smc` hacks, an import's overworld now differs from
   the hack's only where the hack's own code or patches draw (names, lives), in the
   player's tiles for a frame or two after the load, and in older Lunar Magic versions'
   formats. Still left: the first
