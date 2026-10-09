@@ -2002,7 +2002,7 @@ pub fn diff_levels(a: &Rom, b: &Rom) -> Vec<LevelDiff> {
                 ("background", xbg != ybg),
                 ("sprites", x.sprites != y.sprites),
                 ("entrances", x.entrances != y.entrances),
-                ("palette", x.palette != y.palette),
+                ("palette", visible(&x.palette) != visible(&y.palette)),
                 ("graphics", x.graphics != y.graphics),
                 (
                     "animation",
@@ -2158,6 +2158,17 @@ pub fn level_from_mwl(
     notes.extend(graphics_notes(None, &level)?);
     notes.extend(animation_notes(level.animation.as_ref()));
     Ok((level, notes))
+}
+
+/// A palette's colours as the SNES shows them: without bit 15, which it
+/// ignores, so that a diff does not report what an import drops.
+fn visible(p: &Option<CustomPalette>) -> Option<Vec<u16>> {
+    p.as_ref().map(|p| {
+        std::iter::once(p.back_area)
+            .chain(p.palette.colors)
+            .map(|c| c.0 & 0x7FFF)
+            .collect()
+    })
 }
 
 /// Whether a palette has a colour with bit 15 set, which the SNES ignores
@@ -2925,6 +2936,22 @@ pub fn map16_from_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_diff_sees_palettes_as_the_snes_shows_them() {
+        use crate::palette::{Color15, CustomPalette, Palette};
+        let plain = CustomPalette {
+            back_area: Color15(0x1234),
+            palette: Palette::default(),
+        };
+        let mut high = plain.clone();
+        high.back_area = Color15(0x9234);
+        high.palette.colors[5] = Color15(high.palette.colors[5].0 | 0x8000);
+        assert_eq!(visible(&Some(plain.clone())), visible(&Some(high)));
+        let mut other = plain.clone();
+        other.palette.colors[5] = Color15(other.palette.colors[5].0 ^ 1);
+        assert_ne!(visible(&Some(plain)), visible(&Some(other)));
+    }
     use crate::level::objects::ScreenExit;
 
     fn blank_rom() -> Rom {
