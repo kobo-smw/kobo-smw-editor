@@ -1900,7 +1900,7 @@ Initialised for all 512 levels; a save rewrites the saved level's entry (observe
 
 ### The overworld
 
-Being found (roadmap step 4, from 2026-10-08), and built as it is: Kobo's code for the
+Found in roadmap step 4 (2026-10-08 and 2026-10-09), and built as it is: Kobo's code for the
 pieces below is `asm/lunar-magic/overworld.asm`, and `overworld::Overworld::plan` writes
 the tables. Lunar Magic's overworld transfer reads a Kobo build's overworld as Kobo
 wrote it (`tests/lunar_magic_overworld.rs`). The method:
@@ -1986,7 +1986,8 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   without which it takes layer 1 for one page (the high bytes all 0). Of the 57 bytes of
   the scan's place that differ between Lunar Magic's layout and Kobo's, nothing else is
   needed. `tests/lunar_magic_overworld.rs` transfers a build with and without the
-  second.
+  second. Kobo's code jumps away at `$04D7F9`, so its `$A2` at `$04D818` is a lone byte
+  nothing runs, written for the check alone (reviewed 2026-10-09, clean-room.md).
 - Older versions' overworlds otherwise (2026-10-09, Kaizo Mario 1 and 2, 1.62): no
   submap graphics lists (2.30 added them, the help's version history; what lies past the
   levels' lists in such a ROM is other data, so `exgfx::read_list` gives none). Kaizo
@@ -2011,7 +2012,11 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   Kaizo Mario World 3's builds equal what Lunar Magic 3.70 makes of them in every GFX
   file and in the overworld's video memory. Kobo's install writes `$32` at `$00AA8D`, in
   code its upload leaves dead (`graphics.asm`), so that Lunar Magic exports a build's
-  files as stored (`tests/lunar_magic_save.rs`, with and without).
+  files as stored (`tests/lunar_magic_save.rs`, with and without). Reviewed 2026-10-09:
+  an import takes what Lunar Magic 3.70 makes of such a hack rather than the hack's own
+  overworld, which would need a second copy of `GFX08` for the overworld; none of the
+  three hacks' imports holds `GFX08`, `GFX17`, or `GFX1E`, and each draws every submap
+  as the hack does, pixel for pixel.
 - The events' further tiles (smw.md, "The overworld": the game's list of 44, which
   Lunar Magic leaves in place unread) are four tables, each a RATS block, whose 24-bit
   pointers are at fixed offsets from the target of the `JSL` at `$04E9F7` (5 bytes, to
@@ -2041,7 +2046,8 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   routine does: 19 tiles at VRAM `$508B`, properties `$39`, the image grown by `$2A`
   bytes. The vanilla overworld's transfer and Kobo's build leave the same stripe and VRAM;
   so do Lunar Magic's transfer of Luminescent's overworld into a clean ROM and Kobo's
-  build of it, where the hack itself draws at `$5088` (2026-10-08). The corpus hacks
+  build of it, where the hack itself draws at `$5088` (2026-10-08); Kobo's builds of 33
+  of the corpus's `.smc` hacks load as the hacks do, name and all. The corpus hacks
   whose names come out otherwise draw them with code of their own: two lines from VRAM
   `$506B`, 28 tiles from `$5062`, or elsewhere (known_failures.toml).
 - The level a translevel enters: the hook at `$05D8B1` (4 bytes, over the game's `BEQ :
@@ -2128,7 +2134,8 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   game's `LDY #$0750` (`$00A4EB`) made `$7750`. riff2's import builds to the hack's
   overworld on every submap but for its layer 3 and the player's tiles; Lunar Magic's
   transfer of a build keeps the merge, and drops it with `$F0` at `$0FF9F0`
-  (`tests/lunar_magic_overworld.rs`). An install of the overworld's ExAnimation with
+  (`tests/lunar_magic_overworld.rs`). Kobo's loader reading Lunar Magic's byte rather
+  than a flag of its own was reviewed on 2026-10-09 and made a rule (clean-room.md). An install of the overworld's ExAnimation with
   no list (riff2's) is carried too, for its waterfall fix.
 - The other Extra Options (2026-10-09). Lunar Magic's transfer of each corpus hack's
   overworld into the clean ROM saved once (40 hacks; the locked ones refuse it), diffed
@@ -2153,7 +2160,9 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   on, `$00` off; bisected by grafting it alone into the vanilla overworld's transfer,
   and into Kobo's build, where nothing else around the hook mattered): Kobo's code for
   the hook reads the same byte (the game's `$FF` there counts as on), which a build
-  writes 0 for off. The translevel whose event's crushed tile shakes the screen, the
+  writes 0 for off. Writing those bytes, and reading the save tiles' byte where Lunar
+  Magic keeps it, were reviewed on 2026-10-09 (clean-room.md); the overworld file names
+  the options Kobo's way (`life_exchange`), the editor in the help's words. The translevel whose event's crushed tile shakes the screen, the
   `CMP #$18` at `$04E660`, differs in 16 hacks, a level number Lunar Magic edits
   (`crush_earthquake_level`). Not carried: the default clouds and saving after the
   intro message (no corpus hack has them off), and Luigi's map position and lightning
@@ -2263,7 +2272,8 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
     `CODE_048086`'s set up is skipped too, `GfxDecompOWAni` left 0, and the NMI does not
     upload it), `$20` the submap's list off, `$10` the global list off. Which low bit
     turns the lightning colour (`47`, `CODE_04F708`) off is not known: no corpus hack
-    sets one, and no map tried flashed in 1000 frames.
+    sets one, and no map tried flashed in 1000 frames. The low bits are carried as data
+    and the editor offers the four known ones (reviewed 2026-10-09).
   - In play the lists run as a level's (ExAnimation, above) with the overworld's global
     list for the level global and the submap's for the level's: counters `$7FC0A0` and
     `$7FC080`, the same RAM for triggers. The load runs them for `$14` = 0 to 7 and
@@ -2271,7 +2281,7 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
     slot shows its first frame; then the game's own call runs `k` = 0 again. Colours
     go to `MainPalette` only (no fade copy at `$0905`), and colour uploads are made
     from it. The game's animated tiles go to VRAM where they always do, or, with Lunar
-    Magic's option to merge FG1-2 into SP3-4 (an Extra Option, not carried, which
+    Magic's option to merge FG1-2 into SP3-4 (an Extra Option, carried as above, which
     moves layers 1 and 2's characters to `$E000`), to `$7750`. `$7FC004` is not kept
     (the help says so).
   - What Lunar Magic checks to read it: the `JSL` (`$22`) at `$00A4E3`, whatever
@@ -2297,7 +2307,9 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
     first frames as it makes them and Kobo leaves them to the NMI and the slots' next
     turns. Lunar Magic's upload also makes the level dots' colours (`6D`, `7D`) during
     the change, which the game's code skips (`CMP #$0A : BEQ` at `$00A50D`); Kobo's goes
-    on past that check too, and the colours match. Neither reloads the submap's
+    on past that check too, and the colours match. Kept so on review (2026-10-09):
+    waiting as Lunar Magic's does would shape Kobo's code and machine after its timing
+    for a fifth of a second, in the game's own transition. Neither reloads the submap's
     graphics in that flow.
   - The events as triggers ("Event Manual 8-F" in the help, which take the place of
     level ones), from lists written into KK's transfer and played with events held
@@ -2436,7 +2448,8 @@ restorable code, or anything else, reads it; which reads exist is the main open 
   which Lunar Magic's save of vanilla does not install; `$65`-`$66` and `$CE`-`$CF` point
   at level data that sits elsewhere; and direct page scratch. Community patches remain.
 - Behaviour that a level load does not exercise: the overworld (`$04DCFA`, `$04E5F1`),
-  which builds leave as the game has it (roadmap step 4). The rest has been played
+  which builds have written in Lunar Magic's layout since roadmap step 4, with Kobo's
+  code for its hooks ("The overworld"). The rest has been played
   against Lunar Magic's code since: block contact ("Custom block actions"), scrolling
   and screen shake ("Taller levels", "Graphics"), Choc Island 2's rooms, midway points,
   goal tapes ("Sprites"), the bonus and Yoshi wings exits ("Entrances"), and tiles

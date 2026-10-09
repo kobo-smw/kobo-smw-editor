@@ -212,7 +212,8 @@ builds refuse, with a message naming the level. Each is described where its feat
 - LC_LZ3 GFX on a LoROM build, which would need an LC_LZ3 decompressor of Kobo's own; a
   LoROM hack with LC_LZ3 GFX imports and builds with LC_LZ2, which reads the same. Kept
   so (maintainer, 2026-10-03): LoROM loses about 5% of the GFX's space; revisit if a
-  project runs short of it, or with graphics editing (roadmap step 4).
+  project runs short of it. Graphics editing (roadmap step 4) writes LC_LZ2 as the
+  build does, and did not need it.
 
 Locked ROMs are out of scope: their levels are hidden or encoded by the hack's own code,
 and import leaves out what it cannot read, with a note. The corpus sweep's latest results,

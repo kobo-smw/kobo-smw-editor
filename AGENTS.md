@@ -2,7 +2,8 @@
 
 An open-source Super Mario World ROM editor and build system.
 Desktop app for Windows, Linux, and macOS.
-Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-4.md`).
+Early stage: roadmap steps 1 to 4 are complete (step 4 closed 2026-10-09); what comes next
+is not yet planned.
 
 ## Principles
 
@@ -191,7 +192,7 @@ Early stage: roadmap steps 1 to 3 are complete; step 4 is under way (`docs/step-
   edited a tile at a time for a tileset and written where the page files' rules put
   it; `GraphicsDocument` a GFX or ExGFX file as its indexed image; `PalettesDocument`
   the shared palettes; `TilemapDocument` a level's layer 3 tilemap file;
-  `GlobalAnimation` the global ExAnimation list;
+  `GlobalAnimation` the global ExAnimation list; `OverworldDocument` the overworld file;
   `Workspace` is the project in memory, built and a level rendered from it
   (`preview`). The editor makes no change any other way.
 - `kobo_core::emulator` is how a build is watched while it plays: the Lua script Mesen 2
@@ -417,8 +418,6 @@ describes that module's code rather than the game). Do not grow this file with t
 - `docs/clean-room.md`: why Kobo looks at Lunar Magic only to interoperate with it, what
   evidence that allows, and how Kobo's outputs keep to it.
 - `docs/editor.md`: the editor, as its users meet it, and the decisions it rests on.
-  `docs/step-4.md`: the plan for roadmap step 4, its decisions and work order, until
-  step 4 is done.
 - `docs/review.md`: decisions taken without the maintainer, and settings left refused,
   waiting for a batch review. Add to it rather than stopping to ask.
 - `docs/clean-room-audit.md`: the 2026-10-03 audit of everything Kobo knew of Lunar Magic:

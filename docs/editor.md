@@ -335,8 +335,9 @@ download`, `dpkg-deb -x`) and point `LD_LIBRARY_PATH` at them, with a
 ## How it is made
 
 The editor was roadmap step 3, planned and settled on 2026-10-05 and finished on
-2026-10-08. These are the decisions it rests on; the rules that follow from them are in
-AGENTS.md.
+2026-10-08; roadmap step 4 added the windows for the rest of a hack and the emulator,
+from 2026-10-08 to 2026-10-09. These are the decisions it rests on; the rules that
+follow from them are in AGENTS.md.
 
 
 ### Toolkit: egui
@@ -384,6 +385,28 @@ AGENTS.md.
 - Undo keeps whole snapshots of the level and its comments, one per edit, labelled with
   the edit. A level is small (a few KB), so snapshots are simpler and safer than inverse
   edits; a drag is one undo step.
+
+### Every kind of file is a document
+
+- Step 4 (2026-10-08) gave each kind of project file a document in `kobo_core::edit`,
+  as levels have `LevelDocument`: the foreground and background Map16
+  (`Map16Document`, a tile at a time for a tileset), a GFX or ExGFX file
+  (`GraphicsDocument`), the shared palettes (`PalettesDocument`), a layer 3 tilemap
+  (`TilemapDocument`), the global ExAnimation list (`GlobalAnimation`), and the
+  overworld (`OverworldDocument`, every change worked out again against the clean ROM's).
+  Each takes its changes as values, keeps undo as snapshots, and saves in Kobo's format;
+  `Workspace` builds from the unsaved ones. The editor changes none of them, nor the
+  ROM, any other way.
+- What a project does not hold is the clean ROM's, and editing it adds it: changing a
+  game's GFX file, Map16 tile, palette, or the overworld writes what changed into the
+  project, as choosing a game's level adds it, and nothing of Nintendo's is written
+  that the user did not change.
+- Their windows came in the order a level needs them: Map16, the graphics and palettes
+  it draws with, ExAnimation and layer 3, then the overworld, the largest and the one
+  that touches the fewest levels' pictures; the emulator (Play, symbols, Mesen's RAM
+  watch and breakpoints) came in where it helped test the rest.
+- Not done: drawing in a `.bin` ExGFX file, which the project keeps as bytes with no
+  colours to draw in.
 
 ### Outside edits: live reload
 
@@ -436,25 +459,23 @@ AGENTS.md.
   "sublevel" for those under another; the grouping shows which is which.
 - An overworld level's name is its translevel's: the project's own overworld's when it
   has one (the overworld window renames levels), else the clean ROM's.
-- In step 4, once the overworld is a project's, the overworld's own tiles decide which
-  levels are overworld levels, so that a hack that leaves translevels unused groups by
-  what the player can enter.
-- Levels are named as the overworld names them (`level::level_name`), from the clean
-  ROM, whose overworld a build keeps while Kobo carries none of a project's: for a
-  project imported from a hack, the game's names, not the hack's, though true of what
-  the build makes. In step 4 the project's overworld names them.
+- Not done: the overworld's own level tiles deciding which levels are overworld levels,
+  so that a hack that leaves translevels unused groups by what the player can enter.
+  Planned for step 4, it was left when step 4 closed (2026-10-09); the project's
+  overworld (`OverworldDocument`) now has what it needs.
 - A level whose objects are those of the layer 1 data most of the clean ROM's levels
   point at (the "TEST" level at `$068000`, 277 of the 512) is left out until asked for
   (`reach::Placeholder`), whether or not the project lists it; a level with any object of
-  its own shows. A real level the project never changed shows like any other. In step 4,
-  with the overworld, what is hidden becomes what nothing reaches, from the overworld or
-  from any level, rather than what holds the placeholder.
+  its own shows. A real level the project never changed shows like any other. Not done,
+  as above: hiding what nothing reaches, from the overworld or from any level, rather
+  than what holds the placeholder.
 
 ### Play from here
 
-- Reviewed 2026-10-08. Play from here comes ahead of step 4, as a build
+- Reviewed 2026-10-08. Play from here came ahead of step 4, as a build
   (`kobo_core::playtest`, `kobo play`) opened with the emulator the system opens a ROM
-  with; no emulator is driven, which stays step 4's (Mesen-S, bsnes-plus).
+  with, or the one configured (`[play] emulator`, `KOBO_EMULATOR`); step 4 drives Mesen 2
+  through its Lua scripts (`kobo_core::emulator`, "Building").
 - The play ROM goes in the user's cache (`playtest::rom_path`: `kobo/play`, named after
   the project's folder and a hash of its path), not the project's folder; `kobo play`
   writes where `-o` says.
@@ -509,3 +530,8 @@ AGENTS.md.
 
 - The editor shows no CPU trace, read trace, RAM view, or routine address. A debugging
   panel added later goes through `kobo_core::clean_room` like every other output.
+- The Watch window (step 4) shows RAM, but only the variables the user chose, read from
+  a build that is playing: Mesen's report (`kobo_core::emulator`) carries their
+  addresses and values, and a breakpoint's report names the breakpoint the user chose,
+  nothing more of where code is (checked with a break on the vanilla title screen's
+  game mode in headless Mesen, 2026-10-09).

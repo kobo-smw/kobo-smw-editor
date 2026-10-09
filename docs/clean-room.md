@@ -28,9 +28,19 @@ that checked everything Kobo knew of Lunar Magic against it is
   [lunar-magic-install.md](lunar-magic-install.md#bytes-kobo-writes-because-lunar-magic-or-other-tools-check-them).
   Such bytes can tell Lunar Magic more than Kobo means, so every one is tested with and
   without it ([testing.md](testing.md)). Decided 2026-09-27.
+- A setting that is a byte Lunar Magic checks is that byte: Kobo's code reads it there
+  rather than keeping a flag of its own beside it, so that Lunar Magic changing the
+  setting in a Kobo build changes what Kobo's code does (the FG1-2 merge at `$0FF9F0`,
+  the save tiles' option at `$03BA26`). Where an option is bytes of the game's code that
+  are both what Lunar Magic checks and the whole of the option's effect (a branch made
+  `BRA`, an operand made 0), Kobo writes those bytes (the overworld's Extra Options).
+  Decided 2026-10-09.
 - Implementation, which Kobo writes itself: the code behind each hook, and every routine.
-  Where a checked byte is an instruction's, the instruction is Kobo's own and does its work
-  in Kobo's code.
+  Where a checked byte is an instruction's that Kobo's code runs, the instruction is
+  Kobo's own and does its work in Kobo's code. Where Kobo's code never runs there, the
+  byte is written as data alone, named in the patch as the check and tested with and
+  without; Kobo's code is not laid out so that an instruction of its own falls on it
+  (`$04D818`, `$00AA8D`). Decided 2026-10-09.
 - Allowed evidence: SMWCentral and SNESLab documentation, Lunar Magic's readme and help
   file, the sources of open tools (PIXI, GPS, UberASM Tool, SA-1 Pack), a community
   patch's hook sites and stated behaviour, read to interoperate with it, though not its

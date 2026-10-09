@@ -116,9 +116,18 @@ What a rendered level does not reproduce, and what the tooling does not handle.
   otherwise each frame, and in hacks whose install is older than Lunar Magic 3's: FG3's
   tiles outside `GFX08`'s upper-colour ones are drawn in the lower colours, as Lunar
   Magic 3.70 leaves them once it stores the hack's GFX again (Kaizo Mario 1 to 3;
-  lunar-magic-install.md, "The overworld"), and Kaizo Mario 2's one further tile past its
-  event tile data, drawn blank. For about 12 frames after a submap change, a submap's ExAnimation
-  tiles lag behind Lunar Magic's, which uploads the eight first frames at once.
+  lunar-magic-install.md, "The overworld"), though no map of the three uses those
+  tiles and every submap draws as the hack's, and Kaizo Mario 2's one further tile past
+  its event tile data, drawn blank. For about 12 frames after a submap change, a
+  submap's ExAnimation tiles lag behind Lunar Magic's, which uploads the eight first
+  frames at once (accepted on review, 2026-10-09).
+- Kaizo Mario (Lunar Magic 1.62), imported with `--all` and built, draws 14 levels
+  otherwise than the hack (`002`, `009`, `011`, `012`, `0CA`, `0CB`, `0F8`, `101`,
+  `10E`, `116`, `119`, `11C`, `1BD`, `1D8`; `render_hashes`): in `002` layer 2's
+  background is garbled and some blocks take other graphics. Lunar Magic 3.70's save of
+  the hack with `002` imported again draws `002` as the hack does, so the difference is
+  Kobo's import or build, not the newer code (`012`, `0F8`, and `101` may be 3.70's, as
+  in vanilla: testing-log.md). Found 2026-10-09; not yet looked into.
 
 ## Full hack render sweep: 2026-09-22
 
