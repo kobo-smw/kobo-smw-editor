@@ -10,6 +10,7 @@ use std::thread;
 
 use eframe::egui::{self, Color32, RichText, Sense, TextureHandle, TextureOptions};
 use kobo_core::edit::Workspace;
+use kobo_core::level::translevel_level;
 use kobo_core::overworld::{
     Event, EventBlock, LAYER1_SIZE, LAYER2_SIZE, Overworld, Start, event_vram, layer1_index,
     layer1_place, layer2_index, layer2_place,
@@ -134,16 +135,6 @@ impl OverworldEditor {
         self.stroke = None;
         self.chosen = None;
         self.chosen2 = None;
-    }
-}
-
-/// The level a translevel enters, as the layout numbers them: its own
-/// number up to `$24`, `$101` on from `$25`.
-fn level_of(translevel: u8) -> u16 {
-    if translevel < 0x25 {
-        u16::from(translevel)
-    } else {
-        0x101 + u16::from(translevel - 0x25)
     }
 }
 
@@ -604,7 +595,7 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
                 .unwrap_or_default();
             line += &format!(
                 " · level {:03X} (translevel {t:02X}) · {}",
-                level_of(t),
+                translevel_level(t),
                 name.trim_end()
             );
         }
@@ -749,7 +740,10 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
             ui.horizontal(|ui| {
                 let was = overworld.level_events[usize::from(t)];
                 let mut event = was;
-                ui.label(format!("Passing level {:03X} makes event", level_of(t)));
+                ui.label(format!(
+                    "Passing level {:03X} makes event",
+                    translevel_level(t)
+                ));
                 let response = ui
                     .add(
                         egui::DragValue::new(&mut event)
@@ -805,7 +799,7 @@ fn contents(app: &App, state: &mut OverworldEditor, key: Key, ui: &mut egui::Ui)
                 }
             });
             ui.horizontal(|ui| {
-                ui.label(format!("Level {:03X}'s name", level_of(t)));
+                ui.label(format!("Level {:03X}'s name", translevel_level(t)));
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut state.name)
                         .desired_width(220.0)

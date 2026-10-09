@@ -1,17 +1,17 @@
-//! The level list: each overworld level with the sublevels its exits
-//! lead to (`edit::reach`), the levels nothing reaches by an exit, and
-//! the game's own levels the project does not have; or the project's
-//! levels by number. The game's unused
-//! level numbers, which all hold its "TEST" level, are left out unless
-//! asked for. One search finds levels by number, name, or tileset, and
-//! what every level holds (`edit::find`). A group, and each list the
+//! The level list: each overworld level (one the overworld's level tiles
+//! enter) with the sublevels its exits lead to (`edit::reach`), the
+//! levels nothing reaches by an exit, and the game's own levels the
+//! project does not have; or the project's levels by number. The game's
+//! unused level numbers, which all hold its "TEST" level, are left out
+//! unless asked for. One search finds levels by number, name, or tileset,
+//! and what every level holds (`edit::find`). A group, and each list the
 //! headings fold, opens and closes as one, sliding.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use eframe::egui::{self, Align2, FontId, Rect, RichText, Sense, Vec2};
 use kobo_core::edit::find::{Entry, Found};
-use kobo_core::edit::reach::{Placeholder, Reach};
+use kobo_core::edit::reach::{Exits, Placeholder, Reach};
 
 use crate::app::App;
 use crate::selection::Item;
@@ -112,7 +112,7 @@ fn know(app: &mut App) -> Option<Known> {
         .filter(|(_, i)| i.listed && !i.unused)
         .map(|(&n, _)| n)
         .collect();
-    let reach = Reach::of(workspace, &listed);
+    let reach = Reach::of(&Exits::of(workspace), &listed);
     let others = info
         .iter()
         .filter(|(_, i)| !i.listed && !i.unused)

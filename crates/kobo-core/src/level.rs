@@ -405,6 +405,17 @@ pub fn translevel(level: u16) -> Option<u8> {
     }
 }
 
+/// The level a translevel enters in Lunar Magic's layout, which Kobo's
+/// builds have: its own number up to `24`, `101` on from `25`, on either
+/// map ([`translevel`] the other way).
+pub fn translevel_level(translevel: u8) -> u16 {
+    if translevel < 0x25 {
+        u16::from(translevel)
+    } else {
+        0x101 + u16::from(translevel - 0x25)
+    }
+}
+
 /// A character of the level names, from its tile on layer 3: letters
 /// from `00`, digits from `63`, and the wide letters of "YELLOW" and
 /// "ILLUSION" the switch palace and forest names use.

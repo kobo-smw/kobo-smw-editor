@@ -210,7 +210,8 @@ fn translevel(workspace: &Workspace, level: u16) -> u8 {
     crate::level::translevel(level)
         .or_else(|| {
             let all: Vec<u16> = (0..0x200).collect();
-            let group = crate::edit::reach::Reach::of(workspace, &all).group_of(level)?;
+            let exits = crate::edit::reach::Exits::of(workspace);
+            let group = crate::edit::reach::Reach::of(&exits, &all).group_of(level)?;
             crate::level::translevel(group)
         })
         .unwrap_or(0)

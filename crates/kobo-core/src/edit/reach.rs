@@ -1,47 +1,45 @@
 //! How levels are reached, for listing them as their players meet them.
 //!
-//! The overworld enters a level by its translevel ([`translevel`]): those
-//! are the levels a player knows by name. Every other level is a
-//! sublevel, reached through a screen exit of another, as Lunar Magic's
-//! users know them. [`Reach`] puts each sublevel under the first
-//! overworld level whose exits lead to it, directly or through other
-//! sublevels.
+//! The overworld enters a level by the translevel of a level tile
+//! ([`level::translevel_level`]): those are the overworld levels, which a
+//! player knows by name. Every other level is a sublevel, reached through
+//! a screen exit of another, as Lunar Magic's users know them. [`Exits`]
+//! is which level leads to which and which levels the overworld enters;
+//! [`Reach`] puts each sublevel under the first overworld level whose
+//! exits lead to it, directly or through other sublevels.
 //!
 //! [`Placeholder`] is the level data most of the game's 512 levels share:
 //! the "TEST" level the game's unused numbers all point at (277 of them
-//! in the vanilla ROM). A level with its objects has not been made.
+//! in the vanilla ROM). A level with its objects has not been made, even
+//! where a level tile enters it: 13 of the vanilla map's do, most of them
+//! the Star Road's. Nor do the map and exits find every level a player
+//! meets: the game's code enters the intro, the bonus game, and the
+//! credits' rooms.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use super::{ExitTarget, Workspace};
 use crate::level::objects::Object;
 use crate::level::{self, translevel};
+use crate::overworld::Overworld;
 use crate::rom::Rom;
 use crate::source::level::{Layer2, Level};
 
-/// An overworld level and the sublevels its exits reach.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Group {
-    pub level: u16,
-    /// In number order.
-    pub sublevels: Vec<u16>,
+/// Which level's exits lead to which, and which levels the overworld
+/// enters.
+#[derive(Clone, Debug, Default)]
+pub struct Exits {
+    /// Each level's list of the levels its screen exits lead to.
+    graph: BTreeMap<u16, Vec<u16>>,
+    /// The overworld levels: those the overworld's level tiles enter.
+    pub overworld: BTreeSet<u16>,
 }
 
-/// The levels of a list, grouped by how they are reached.
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
-pub struct Reach {
-    /// Every overworld level listed, in number order: `000`-`024`, then
-    /// `101`-`13B`.
-    pub groups: Vec<Group>,
-    /// Sublevels listed that no listed level's exits reach.
-    pub unreached: Vec<u16>,
-}
-
-impl Reach {
-    /// Groups `listed`, following the exits of the levels `level` gives
-    /// (the project's as the workspace has them, the game's own for the
-    /// rest). An exit through a level not listed is followed all the same.
-    pub fn of(workspace: &Workspace, listed: &[u16]) -> Self {
+impl Exits {
+    /// The project's levels as the workspace has them, the game's own for
+    /// the rest, and the project's overworld (the clean ROM's if it
+    /// changes none).
+    pub fn of(workspace: &Workspace) -> Self {
         let levels: BTreeMap<u16, Level> = (0..0x200)
             .filter_map(|n| {
                 let level = match workspace.level(n) {
@@ -75,30 +73,70 @@ impl Reach {
                 .filter(|&to| to != number && to < 0x200)
                 .collect()
         };
-        let graph: BTreeMap<u16, Vec<u16>> = levels
+        let graph = levels
             .iter()
             .map(|(&number, level)| (number, leads(number, level)))
             .collect();
-        Self::from_graph(&graph, listed)
+        Self::from_graph(graph, overworld_levels(workspace))
     }
 
-    /// Groups `listed` by the exits in `graph`, each level's list of the
-    /// levels it leads to.
-    pub fn from_graph(graph: &BTreeMap<u16, Vec<u16>>, listed: &[u16]) -> Self {
-        let listed: BTreeSet<u16> = listed.iter().copied().collect();
-        let mut owner: BTreeMap<u16, u16> = BTreeMap::new();
-        let roots: Vec<u16> = listed
+    /// `graph`, each level's list of the levels it leads to, with
+    /// `overworld` the levels the overworld enters.
+    pub fn from_graph(graph: BTreeMap<u16, Vec<u16>>, overworld: BTreeSet<u16>) -> Self {
+        Self { graph, overworld }
+    }
+}
+
+/// The levels the project's overworld's level tiles enter; every level
+/// with a translevel if the overworld cannot be read.
+fn overworld_levels(workspace: &Workspace) -> BTreeSet<u16> {
+    let changes = workspace.project().overworld.clone().unwrap_or_default();
+    let overworld = Overworld::read(workspace.clean())
+        .ok()
+        .and_then(|o| o.in_lunar_magic_shape().with(&changes).ok());
+    match overworld {
+        Some(overworld) => overworld
+            .translevels
             .iter()
-            .copied()
-            .filter(|&n| translevel(n).is_some())
-            .collect();
+            .filter(|&&t| t != 0)
+            .map(|&t| level::translevel_level(t))
+            .collect(),
+        None => (0..0x200).filter(|&n| translevel(n).is_some()).collect(),
+    }
+}
+
+/// An overworld level and the sublevels its exits reach.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Group {
+    pub level: u16,
+    /// In number order.
+    pub sublevels: Vec<u16>,
+}
+
+/// The levels of a list, grouped by how they are reached.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct Reach {
+    /// Every overworld level listed, in number order.
+    pub groups: Vec<Group>,
+    /// Sublevels listed that no listed level's exits reach.
+    pub unreached: Vec<u16>,
+}
+
+impl Reach {
+    /// Groups `listed` by `exits`. An exit through a level not listed is
+    /// followed all the same.
+    pub fn of(exits: &Exits, listed: &[u16]) -> Self {
+        let listed: BTreeSet<u16> = listed.iter().copied().collect();
+        let overworld = |n: u16| exits.overworld.contains(&n);
+        let mut owner: BTreeMap<u16, u16> = BTreeMap::new();
+        let roots: Vec<u16> = listed.iter().copied().filter(|&n| overworld(n)).collect();
         let mut seen: BTreeSet<u16> = roots.iter().copied().collect();
         for &root in &roots {
             let mut queue = VecDeque::from([root]);
             while let Some(level) = queue.pop_front() {
-                for &to in graph.get(&level).into_iter().flatten() {
+                for &to in exits.graph.get(&level).into_iter().flatten() {
                     // Another overworld level is a group of its own.
-                    if translevel(to).is_some() || !seen.insert(to) {
+                    if overworld(to) || !seen.insert(to) {
                         continue;
                     }
                     owner.insert(to, root);
@@ -120,7 +158,7 @@ impl Reach {
         let unreached = listed
             .iter()
             .copied()
-            .filter(|n| translevel(*n).is_none() && !owner.contains_key(n))
+            .filter(|&n| !overworld(n) && !owner.contains_key(&n))
             .collect();
         Self { groups, unreached }
     }
@@ -198,7 +236,8 @@ mod tests {
             (0x1C1, vec![]),
             (0x1C2, vec![]),
         ]);
-        let reach = Reach::from_graph(&graph, &[0x105, 0x106, 0x1C0, 0x1C1, 0x1C2]);
+        let exits = Exits::from_graph(graph, BTreeSet::from([0x105, 0x106]));
+        let reach = Reach::of(&exits, &[0x105, 0x106, 0x1C0, 0x1C1, 0x1C2]);
         assert_eq!(
             reach.groups,
             [
@@ -215,7 +254,24 @@ mod tests {
         assert_eq!(reach.unreached, [0x1C2]);
         assert_eq!(reach.group_of(0x1C1), Some(0x105));
         // A level between two that is not listed is gone through.
-        let reach = Reach::from_graph(&graph, &[0x105, 0x1C1]);
+        let reach = Reach::of(&exits, &[0x105, 0x1C1]);
         assert_eq!(reach.groups[0].sublevels, [0x1C1]);
+    }
+
+    #[test]
+    fn a_level_no_level_tile_enters_is_a_sublevel() {
+        // 106 has a translevel but no level tile, and 105's exit leads to
+        // it; 107, also off the map, is reached by nothing.
+        let graph = BTreeMap::from([(0x105, vec![0x106]), (0x106, vec![]), (0x107, vec![])]);
+        let exits = Exits::from_graph(graph, BTreeSet::from([0x105]));
+        let reach = Reach::of(&exits, &[0x105, 0x106, 0x107]);
+        assert_eq!(
+            reach.groups,
+            [Group {
+                level: 0x105,
+                sublevels: vec![0x106]
+            }]
+        );
+        assert_eq!(reach.unreached, [0x107]);
     }
 }

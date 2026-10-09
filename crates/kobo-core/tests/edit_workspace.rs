@@ -486,7 +486,7 @@ fn the_screens_a_level_uses_are_counted_from_its_load() {
 
 #[test]
 fn sublevels_are_grouped_under_the_overworld_level_that_reaches_them() {
-    use kobo_core::edit::reach::{Placeholder, Reach};
+    use kobo_core::edit::reach::{Exits, Placeholder, Reach};
     let Some(clean) = common::vanilla() else {
         return;
     };
@@ -502,7 +502,14 @@ fn sublevels_are_grouped_under_the_overworld_level_that_reaches_them() {
     assert_eq!(unused.len(), 277);
     assert!(unused.contains(&0x025) && !unused.contains(&0x105));
     let listed: Vec<u16> = (0..0x200).filter(|n| !unused.contains(n)).collect();
-    let reach = Reach::of(&workspace, &listed);
+    let exits = Exits::of(&workspace);
+    let reach = Reach::of(&exits, &listed);
+    // The overworld levels are those its level tiles enter: 000 has a
+    // translevel number, 0, which is none, and the game's code alone
+    // enters it (the bonus game), as it does the credits' rooms.
+    assert!(exits.overworld.contains(&0x105) && !exits.overworld.contains(&0x000));
+    assert!(reach.groups.iter().all(|g| g.level != 0x000));
+    assert!(reach.unreached.contains(&0x000));
     // Yoshi's Island 1's pipe leads to 1CB; the Front Door's rooms are
     // its sublevels.
     assert_eq!(reach.group_of(0x1CB), Some(0x105));

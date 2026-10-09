@@ -32,7 +32,7 @@ uses it). Then it opens a project folder or a recent one, or makes a new project
   the editor as the window's own close does, asking first to save any unsaved edits.
 - **Left**: three tabs.
   - *Levels*: the project's levels as a player meets them: each overworld level (the
-    levels the overworld enters, `000`-`024` and `101`-`13B`, by their names there),
+    levels the project's overworld's level tiles enter, by their names there),
     with the sublevels its screen exits lead to folded under it, set in (choosing a
     level opens its group, and choosing it again folds it; a group, like the lists the
     headings below fold, slides open and shut), then the levels no exit
@@ -450,8 +450,11 @@ follow from them are in AGENTS.md.
 
 - Reviewed 2026-10-08. The list groups each sublevel under the first overworld level (by
   number) whose screen exits reach it, directly or through other sublevels
-  (`edit::reach`); an overworld level is one with a translevel (`000`-`024`,
-  `101`-`13B`), whether or not the overworld has a tile for it. Levels only the game's
+  (`edit::reach`); an overworld level is one a level tile of the project's overworld
+  enters (the clean ROM's if the project changes none), so that a hack that leaves
+  translevels unused groups by what the player can enter (2026-10-09; before, every
+  level with a translevel number, `000`-`024` and `101`-`13B`, whether or not a tile
+  entered it, level `000` among them). Levels only the game's
   code reaches (the credits' rooms, the bonus game) are listed apart as "not reached by an
   exit". Grouped is the default; *By number* lists the project's levels flat, in the
   ROM's order.
@@ -459,16 +462,15 @@ follow from them are in AGENTS.md.
   "sublevel" for those under another; the grouping shows which is which.
 - An overworld level's name is its translevel's: the project's own overworld's when it
   has one (the overworld window renames levels), else the clean ROM's.
-- Not done: the overworld's own level tiles deciding which levels are overworld levels,
-  so that a hack that leaves translevels unused groups by what the player can enter.
-  Planned for step 4, it was left when step 4 closed (2026-10-09); the project's
-  overworld (`OverworldDocument`) now has what it needs.
 - A level whose objects are those of the layer 1 data most of the clean ROM's levels
   point at (the "TEST" level at `$068000`, 277 of the 512) is left out until asked for
   (`reach::Placeholder`), whether or not the project lists it; a level with any object of
-  its own shows. A real level the project never changed shows like any other. Not done,
-  as above: hiding what nothing reaches, from the overworld or from any level, rather
-  than what holds the placeholder.
+  its own shows. A real level the project never changed shows like any other. Step 4
+  planned to hide what nothing reaches instead, from the overworld or any level; it
+  stays the placeholder (2026-10-09). Level tiles of the vanilla map enter 13 TEST
+  levels, most of them the Star Road's (`012`, `019`, `01E`, `10C`, `112`, ...), so a
+  level tile does not make a level real; and the game's code enters levels no tile or
+  exit leads to (the intro `0C5`, the bonus game, Yoshi's wings, the credits' rooms).
 
 ### Play from here
 
