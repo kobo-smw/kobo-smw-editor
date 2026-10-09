@@ -56,6 +56,10 @@ org $0FF15C : db "LM"
 ; patch's hook in the dead code here never runs; what it adds, one DMA
 ; per file, is what dma_buffer already does.
 org $00AACD : db $A2, $10
+; The game's CPY #$08 there, which uploads GFX08 on the overworld with its
+; fourth plane set (the CPY #$1E after it GFX1E): Lunar Magic's install has
+; $32, and its GFX export, with the game's $08, sets those tiles' plane.
+org $00AA8D : db $32
 
 ; Tables Lunar Magic's editor and code read, none until a build writes them.
 org !List : dl $FFFFFF

@@ -756,7 +756,7 @@ times:
 | Piece | Installed by | Sites | Counted as installed when |
 |---|---|---|---|
 | The VRAM patch | the first save (a restorable group) | `$0081E2`, `$008209`, `$0085D2`-`$0085DE`, `$00A5A2`, `$008072` and `$00BA56`, `$00F6E4`, `$0580A9`, `$0580BF`-`$0580CA`, `$0586F7`; its code in one `$30C0`-byte RATS block | a `JML` (`$5C`) at `$00A5A2`, whatever its target; a `JSL`, `JSR`, `JMP`, the game's own bytes, `$EA` or `$00` there do not count |
-| 4bpp GFX files | `-ImportGFX` (the GUI's "use 4bpp" option, on by default) | `$0093F7`, `$0095E9`, `$00A82F`, `$00AA8C`-`$00AB3B` (`UploadGFXFile`'s conversion), `$00B89F`-`$00B8A9` (`CODE_00B888`, GFX32 and GFX33), `$03DDC8` (the Mode 7 bosses' file), `$048000`-`$0480D0` (the overworld's layer 1 tile pointers and loop), `$04F2B6`-`$04F3CD` (the switch palace blocks' RAM, moved clear of the larger buffer), code at `$0EFC00`-`$0EFCAB` and in a RATS block | `$00AAD8` = `$EA` (one byte of `STA GfxBppConvertBuffer,X` in the game) |
+| 4bpp GFX files | `-ImportGFX` (the GUI's "use 4bpp" option, on by default) | `$0093F7`, `$0095E9`, `$00A82F`, `$00AA8C`-`$00AB3B` (`UploadGFXFile`'s conversion), `$00B89F`-`$00B8A9` (`CODE_00B888`, GFX32 and GFX33), `$03DDC8` (the Mode 7 bosses' file), `$048000`-`$0480D0` (the overworld's layer 1 tile pointers and loop), `$04F2B6`-`$04F3CD` (the switch palace blocks' RAM, moved clear of the larger buffer), code at `$0EFC00`-`$0EFCAB` and in a RATS block | `$00AAD8` = `$EA` (one byte of `STA GfxBppConvertBuffer,X` in the game); for its GFX export, `$00AA8D` = `$32` ("The overworld", the upper colours on upload) |
 | ExGFX, per-level lists, and objects `24`/`25` | `-ImportExGFX` (or the bypass dialogs) | `JSL`s at `$009471` (the castle cutscenes' graphics), `$00A140` (the overworld's), `$049DFD`, `$0583B8` (the level header load), `$00AA6B` (`UploadGFXFile`'s decompression), `$00AA47`-`$00AA54` in `UploadSpriteGFX`'s FG/BG loop; objects `24` and `25`'s entries in every object set's dispatch (`$0DA4BE`, `$0DC203`, `$0DCE03`, `$0DDA03`, `$0DE903`) to code at `$0DF0E0`; tables and code at `$0FF15C`-`$0FFECB` | reading ExGFX (`-ExportExGFX`): `$00AA47` = `$EA` (the `BEQ` that skips a slot already loaded), a `JSL` (`$22`) at `$0583B8`, and the pointer at `$0FF873`; reading a level's list (`-ExportLevel`): the `JSL` at `$0583B8`; a save keeping the lists as they are: `"LM"` (`4C 4D`) at `$0FF15C` |
 
 - With `$00A5A2` not a `JML`, a save installs the VRAM patch anew: a new copy of its
@@ -1971,8 +1971,10 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
 - The pointers only Lunar Magic's code reads were found by moving their tables (a
   transfer whose layer 2 is longer moves everything after it) and keeping the bytes whose
   change matched the move; the translevel pointer holds in every Lunar Magic 3 hack of the
-  corpus, the page table's not in hacks of older versions (Kaizo Mario 1 and 2, Smb2dx),
-  which have one page.
+  corpus and in Kaizo Mario 1 and 2 (1.62), the page table's not in hacks saved before
+  1.90, which gave layer 1 its second page (the help's version history): those have one
+  page, and lack the check below at `$04D818` (`$80` there), which Kobo's reader takes
+  for one page as Lunar Magic does. Smb2dx (1.63) is locked.
 - The event tile data's split between 6x6 blocks and 2x2 ones is the operand of the
   game's `CPY #$0900` at `$04E4BF` (`CODE_04E4A9`), which Lunar Magic's "Change Max
   Event 6x6 Tile Area" moves; every corpus hack keeps `$0900` but Kaizo Mario 2 (`$0000`,
@@ -1985,6 +1987,31 @@ it against the ROM's own load in every corpus hack that reaches an overworld):
   the scan's place that differ between Lunar Magic's layout and Kobo's, nothing else is
   needed. `tests/lunar_magic_overworld.rs` transfers a build with and without the
   second.
+- Older versions' overworlds otherwise (2026-10-09, Kaizo Mario 1 and 2, 1.62): no
+  submap graphics lists (2.30 added them, the help's version history; what lies past the
+  levels' lists in such a ROM is other data, so `exgfx::read_list` gives none). Kaizo
+  Mario 2's copy of the game's list of further tiles has an entry (event `$4E`) whose
+  data, `$FA84`, is past the event tile data: the game draws what lies there, Kobo's
+  reader 0s (`EVENT_DATA_ROOM`).
+- The upper colours on upload (2026-10-09). The game's `UploadGFXFile` sends `GFX08` on
+  the overworld (tileset `$11` on) and `GFX1E` everywhere through the routine that sets
+  each tile's fourth plane to the silhouette of the other three (`CPY #$08` at `$00AA8C`,
+  `CPY #$1E` after it). Lunar Magic's 4bpp install puts `$32` in both operands, a file
+  never uploaded there, and stores those files with the plane set where the game draws
+  the upper colours (`exgfx::stored_4bpp`); 4bpp ROMs whose install is older (Kaizo
+  Mario 1 and 2, and Kaizo Mario World 3, saved by 2.41) keep the game's operands and
+  files without the plane, which their upload adds: FG3 and FG4 of the overworld differ
+  from a Kobo build of them in exactly that. Lunar Magic's `-ExportGFX` checks
+  `$00AA8D` alone (bisected by grafting a 2.53 hack's bytes at the 4bpp install's sites
+  into Kaizo Mario World 3 and back, printing addresses only): with the game's `$08` it
+  exports `GFX08`'s 24 upper-colour tiles, `GFX17`'s berry, and all of `GFX1E` with the
+  plane set, and its `-ImportGFX` stores them so, after which the rest of FG3 is drawn in
+  the lower colours. An import does the same where the byte is not `$32`
+  (`exgfx::uploads_upper_colours`, `exgfx::upgraded_4bpp`), and Kaizo Mario 1's and
+  Kaizo Mario World 3's builds equal what Lunar Magic 3.70 makes of them in every GFX
+  file and in the overworld's video memory. Kobo's install writes `$32` at `$00AA8D`, in
+  code its upload leaves dead (`graphics.asm`), so that Lunar Magic exports a build's
+  files as stored (`tests/lunar_magic_save.rs`, with and without).
 - The events' further tiles (smw.md, "The overworld": the game's list of 44, which
   Lunar Magic leaves in place unread) are four tables, each a RATS block, whose 24-bit
   pointers are at fixed offsets from the target of the `JSL` at `$04E9F7` (5 bytes, to

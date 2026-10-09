@@ -68,7 +68,7 @@ from the editor where the user is working.
   by Kobo's machine to the overworld, the yardstick), and `overworld::Overworld::read`
   (layer 1 and its pages, translevels, directions, layer 2, names, events) for the game's
   layout and Lunar Magic's, equal to the load in every corpus hack that reaches an
-  overworld but locked and older-version ones.
+  overworld but locked ones (older versions' too, since 2026-10-09).
 - The overworld built (2026-10-08, the load): `overworld::Changes` and its file
   (`source::overworld`, `[overworld] file`), the clean ROM's overworld in Lunar Magic's
   shape with a project's changes, written in that layout by `Stage::Overworld`
@@ -98,9 +98,13 @@ from the editor where the user is working.
   overworld editor (drawn on in the editor's *Title screen and border* window); across
   the corpus's `.smc` hacks, an import's overworld now differs from
   the hack's only where the hack's own code or patches draw (names, lives), in the
-  player's tiles for a frame or two after the load, and in older Lunar Magic versions'
-  formats. Still left: the first
-  frames after a submap change, and the other Extra Options.
+  player's tiles for a frame or two after the load. Older versions' overworlds
+  (2026-10-09): layer 1 with one page as Lunar Magic tells it (`$04D818`), no submap
+  lists before 2.30, and an older install's GFX stored as Lunar Magic 3.70 stores them
+  again, which it tells by the game's operand at `$00AA8D` (bisected; Kobo's install
+  writes `$32` there): Kaizo Mario 1 and 2 and Kaizo Mario World 3 import and build to
+  what Lunar Magic 3.70 makes of them. Still left: the first frames after a submap
+  change, and the other Extra Options.
 - The events' further tiles (2026-10-08): the game's list of 44 and Lunar Magic's
   tables of them, read (`Events::extras`), carried in the overworld file (an event's
   `extras`), and Kobo's code for the layout's two hooks of them (`$04E9F7`, `$04DCA5`),

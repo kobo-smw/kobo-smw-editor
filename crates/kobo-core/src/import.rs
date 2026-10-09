@@ -1067,8 +1067,13 @@ pub fn read_gfx(rom: &Rom, base: &Rom) -> Result<GfxImport, ImportError> {
     };
     let clean = gfx::GfxReader::new(base).map_err(|e| ImportError::Gfx(e.to_string()))?;
     let four_bpp = exgfx::is_4bpp(rom);
+    let upgrade = exgfx::uploads_upper_colours(rom);
     for index in 0..gfx::GFX_FILE_COUNT {
         let theirs = match reader.read(index) {
+            Ok(file) if four_bpp && upgrade => gfx::GfxFile {
+                data: exgfx::upgraded_4bpp(&file),
+                ..file
+            },
             Ok(file) => file,
             Err(e) => {
                 notes.push(format!("GFX{index:02X}: {e}; not imported"));

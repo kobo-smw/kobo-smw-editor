@@ -1904,7 +1904,8 @@ fn write_tileset_page2(rom: &mut Rom, project: &Project) -> Result<(), BuildErro
 /// With Lunar Magic's graphics formats ([`Project::lunar_magic_graphics`]),
 /// every file the game keeps as 3bpp is written as 4bpp, a file the
 /// project does not list as Lunar Magic converts the game's
-/// ([`exgfx::stored_4bpp`]), and a listed one takes 16 colours.
+/// ([`exgfx::stored_4bpp`]), and a listed one takes 16 colours, or is
+/// converted as the game's are if its picture has 8.
 fn write_gfx(rom: &mut Rom, clean: &Rom, project: &Project) -> Result<(), BuildError> {
     let lz3 = project.manifest.lz3;
     let four_bpp = project.lunar_magic_graphics();
@@ -1936,6 +1937,19 @@ fn write_gfx(rom: &mut Rom, clean: &Rom, project: &Project) -> Result<(), BuildE
             vanilla.format
         };
         let data = match listed.get(&index) {
+            // A 3bpp file's picture (an import of a ROM that keeps the
+            // game's 3bpp files) is stored as Lunar Magic converts one, the
+            // tiles the game draws in the upper colours with their fourth
+            // plane set.
+            Some(image) if converts && image.palette.len() <= 8 => {
+                let three = gfx::Bpp::Three;
+                let tiles = gfx::image_to_tiles(image, vanilla.tile_count(), three.colors())
+                    .map_err(|e| gfx_error(&name, &e))?;
+                exgfx::stored_4bpp(&gfx::GfxFile {
+                    data: gfx::GfxFormat::Planar(three).encode(&tiles),
+                    ..vanilla.clone()
+                })
+            }
             Some(image) => {
                 let tiles = gfx::image_to_tiles(image, vanilla.tile_count(), format.colors())
                     .map_err(|e| gfx_error(&name, &e))?;

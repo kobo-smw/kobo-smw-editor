@@ -47,6 +47,9 @@ are SMWDisX's.
   block of `GFX01`/`17`/`31` (the berry, drawn with colours 9-F) and for all of `GFX1E` (and
   `GFX08` in tilesets `$11+`). Lunar Magic's export mirrors this except it skips `17` and flags a
   fixed subset of `08`; see `gfx::upper_palette_tiles` vs `gfx::vram_upper_palette_tiles`.
+  `GFX08` and `GFX1E` are chosen by `CPY #$08` at `$00AA8C` and the `CPY #$1E` after it,
+  whose operands Lunar Magic's 4bpp install makes `$32` (lunar-magic-install.md, "The
+  overworld").
 - GFX lists: `$00A92B` object tilesets (FG1, FG2, BG1, FG3), `$00A8C3` sprite tilesets (SP1-4),
   4 bytes per row, 26 rows. VRAM: FG1/FG2/BG1/FG3 at 8x8 tiles `$000`/`$080`/`$100`/`$180`;
   SP1-4 at word `$6000`/`$6800`/`$7000`/`$7800`; layer 3 `GFX28`-`2B` at word `$4000`.

@@ -113,8 +113,11 @@ What a rendered level does not reproduce, and what the tooling does not handle.
   patches draw (level names in other places, the lives counter), in the player's tile
   words for the first frame or two after the load, which come from direct page left by
   whatever ran before (as in a level), in a hack whose own code leaves the direct page
-  otherwise each frame, and in older Lunar Magic versions' overworld formats (Kaizo Mario
-  1 to 3, Smb2dx). For about 12 frames after a submap change, a submap's ExAnimation
+  otherwise each frame, and in hacks whose install is older than Lunar Magic 3's: FG3's
+  tiles outside `GFX08`'s upper-colour ones are drawn in the lower colours, as Lunar
+  Magic 3.70 leaves them once it stores the hack's GFX again (Kaizo Mario 1 to 3;
+  lunar-magic-install.md, "The overworld"), and Kaizo Mario 2's one further tile past its
+  event tile data, drawn blank. For about 12 frames after a submap change, a submap's ExAnimation
   tiles lag behind Lunar Magic's, which uploads the eight first frames at once.
 
 ## Full hack render sweep: 2026-09-22

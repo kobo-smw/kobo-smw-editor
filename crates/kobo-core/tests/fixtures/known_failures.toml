@@ -134,25 +134,18 @@ levels = "all"
 reason = "Locked: its overworld's tables are not where Lunar Magic's layout keeps them."
 
 [[failure]]
-hack = "Kaizo Mario (English).smc"
-sha1 = "706ca2641347d7112c9ced31c906360e0403981d"
-tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them, overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
-levels = "all"
-reason = "An older Lunar Magic's overworld, with one page of layer 1 tiles and no table of their high bytes."
-
-[[failure]]
 hack = "Kaizo Mario 2 (English).smc"
 sha1 = "810f9dbe9f350d0371a87c2c5ac10b1f095e71a6"
-tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them, overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
+tests = "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
 levels = "all"
-reason = "An older Lunar Magic's overworld, with one page of layer 1 tiles and no table of their high bytes."
+reason = "With every event passed, 4 layer 2 bytes differ: its list of further tiles has an entry (event $4E) past the event tile data, which the game draws from what lies there and Kobo's reader takes as 0."
 
 [[failure]]
 hack = "Smb2dx.smc"
 sha1 = "37ea8b33add914cb00983e41778d038d31b777f9"
 tests = "overworld::lunar_magic_overworlds_read_as_their_loads_leave_them, overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them"
 levels = "all"
-reason = "Lunar Magic 1.63's overworld, with one page of layer 1 tiles and no table of their high bytes."
+reason = "Locked (Lunar Magic 1.63): its translevels are not where Lunar Magic's layout keeps them."
 
 [[failure]]
 hack = "Grand Poo World 2.smc"

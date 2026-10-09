@@ -313,6 +313,15 @@ impl Rom {
         (end > 0).then(|| String::from_utf8_lossy(&rest[..end]).into_owned())
     }
 
+    /// Whether a Lunar Magic older than `version` (major, and minor in
+    /// hundredths: `(1, 90)`) last saved this ROM, by its version string.
+    /// Kobo's builds have none, and count as the newest.
+    pub fn saved_by_lunar_magic_before(&self, version: (u32, u32)) -> bool {
+        self.lunar_magic_version()
+            .and_then(|v| crate::entrance::parse_version(&v))
+            .is_some_and(|v| v < version)
+    }
+
     pub fn pc(&self, addr: SnesAddr) -> Result<PcAddr, MapError> {
         self.mapping.snes_to_pc(addr)
     }
@@ -646,5 +655,23 @@ mod tests {
         let head: u32 = rom.data()[..2 * BANK_LEN].iter().map(|&b| b as u32).sum();
         let expected = head + 2 * BANK_LEN as u32;
         assert_eq!(rom.compute_checksum(), expected as u16);
+    }
+
+    #[test]
+    fn the_lunar_magic_version_that_saved_a_rom() {
+        let mut data = fake_rom(0x20);
+        data.resize(16 * BANK_LEN, 0);
+        let rom = |text: &[u8]| {
+            let mut data = data.clone();
+            data[0x7_F0A0..0x7_F0A0 + text.len()].copy_from_slice(text);
+            Rom::from_bytes(data).unwrap()
+        };
+        let old = rom(b"Lunar Magic Version 1.62 Public");
+        assert_eq!(old.lunar_magic_version().as_deref(), Some("1.62"));
+        assert!(old.saved_by_lunar_magic_before((1, 90)));
+        assert!(!old.saved_by_lunar_magic_before((1, 62)));
+        assert!(!rom(b"Lunar Magic Version 3.70").saved_by_lunar_magic_before((1, 90)));
+        // Kobo's builds have no version string.
+        assert!(!rom(b"").saved_by_lunar_magic_before((9, 99)));
     }
 }

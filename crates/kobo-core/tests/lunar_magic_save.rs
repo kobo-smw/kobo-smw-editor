@@ -649,6 +649,53 @@ fn export_gfx(lunar_magic: &Path, rom: &Rom, name: &str) -> Vec<(String, String)
     files
 }
 
+/// A 4bpp build whose `GFX1E` has its tiles in the lower colours: Lunar
+/// Magic exports it as stored, with `$32` at `$00AA8D` as its own install
+/// has it; with the game's `$08` there it takes the ROM's upload for one
+/// that still draws `GFX1E` in the upper colours, as older versions'
+/// installs left it, and exports the tiles with their fourth plane set
+/// (`exgfx::UPPER_COLOURS`, which an import reads the same way).
+#[test]
+fn lunar_magic_exports_a_4bpp_builds_files_as_stored() {
+    use kobo_core::{exgfx, gfx};
+    let Some(lunar_magic) = common::lunar_magic() else {
+        return;
+    };
+    let Some(clean) = common::vanilla() else {
+        return;
+    };
+    if common::asar().is_none() {
+        return;
+    }
+    let tiles = gfx::read_gfx_file(&clean, 0x1E).unwrap().tiles();
+    let project = Project {
+        gfx: vec![(0x1E, gfx::tiles_to_image(&tiles, 16))],
+        manifest: kobo_core::source::project::Manifest {
+            four_bpp: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let built = build::build(&clean, &project).unwrap();
+    assert!(!exgfx::uploads_upper_colours(&built));
+    let stored = gfx::read_gfx_file(&built, 0x1E).unwrap();
+    let exported = |rom: &Rom, name: &str| {
+        export_gfx(&lunar_magic, rom, name)
+            .into_iter()
+            .find(|(file, _)| file == "GFX1E")
+            .map(|(_, hash)| hash)
+    };
+    assert_eq!(exported(&built, "upper-with"), Some(sha1_hex(&stored.data)));
+    let mut without = Rom::from_headerless(built.data().to_vec()).unwrap();
+    without.write_u8(exgfx::UPPER_COLOURS, 0x08).unwrap();
+    without.fix_checksum().unwrap();
+    assert!(exgfx::uploads_upper_colours(&without));
+    assert_eq!(
+        exported(&without, "upper-without"),
+        Some(sha1_hex(&exgfx::upgraded_4bpp(&stored)))
+    );
+}
+
 /// An SA-1 build with its GFX in LC_LZ3 (`[rom] lz3`, which needs SA-1
 /// Pack): Lunar Magic reads every file as from the same build in LC_LZ2
 /// (which is vanilla's but for `GFX17`, whose export Lunar Magic 3.70

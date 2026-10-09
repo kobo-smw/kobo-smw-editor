@@ -447,7 +447,7 @@ impl Layout {
 
 /// A Lunar Magic version string (`3.70`) as its major and minor numbers,
 /// the minor in hundredths as the versions number them.
-fn parse_version(text: &str) -> Option<(u32, u32)> {
+pub(crate) fn parse_version(text: &str) -> Option<(u32, u32)> {
     let (major, minor) = text.split_once('.')?;
     let minor = match minor.len() {
         1 => minor.parse::<u32>().ok()? * 10,

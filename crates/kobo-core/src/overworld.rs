@@ -8,7 +8,8 @@
 //! reads are found through the places its layout keeps their pointers,
 //! each found by moving the table and diffing (never by reading its
 //! code): the translevels and directions (`$04D803`, bank `$04D808`),
-//! layer 1's high bytes (`$04D822`, bank `$04D827`), and the level names
+//! layer 1's high bytes (`$04D822`, bank `$04D827`; none without `$A2` at
+//! `$04D818`, as before 1.90), and the level names
 //! (`$03BB57`). What the reader gives is checked against what the ROM's
 //! own load leaves in RAM ([`crate::expand::load_overworld`]).
 
@@ -212,6 +213,10 @@ mod operands {
     pub const TILES_POINTERS: SnesAddr = SnesAddr::new(0x04_DC3B);
 }
 
+/// The room the event tile data's properties are unpacked into,
+/// `$7F0000`-`$7F3FFF`, below layer 2's tilemap.
+pub const EVENT_DATA_ROOM: usize = 0x4000;
+
 /// The game's layer 1 16x16 tiles, `00`-`C0`; Lunar Magic's layout holds as
 /// many as its block, up to [`MAX_TILES`].
 pub const GAME_TILES: usize = 0xC1;
@@ -226,6 +231,11 @@ mod lunar_magic {
     pub const LAYER1_HIGH: SnesAddr = SnesAddr::new(0x04_D822);
     pub const LAYER1_HIGH_BANK: SnesAddr = SnesAddr::new(0x04_D827);
     pub const NAMES: SnesAddr = SnesAddr::new(0x03_BB57);
+    /// What Lunar Magic checks for the table of layer 1's pages, bisected
+    /// (docs/lunar-magic-install.md, "The overworld"): without it, layer 1
+    /// has one page.
+    pub const PAGES_CHECK: SnesAddr = SnesAddr::new(0x04_D818);
+    pub const PAGES_CHECK_ON: u8 = 0xA2;
     /// The events' further tiles: a `JSL` here (`$22`, where the game's
     /// loop through its table branches) leads to code with the tables'
     /// pointers at fixed offsets from its start: the ranges, then each
@@ -717,6 +727,7 @@ impl Overworld {
         let layout = Layout::of(rom);
         let low = rom.read(LAYER1_DATA, LAYER1_TILES)?;
         let high = match layout {
+            Layout::LunarMagic if one_page(rom) => vec![0; LAYER1_TILES],
             Layout::LunarMagic => {
                 let at =
                     read_word_ptr(rom, lunar_magic::LAYER1_HIGH, lunar_magic::LAYER1_HIGH_BANK)?;
@@ -816,6 +827,14 @@ impl Overworld {
             title,
         })
     }
+}
+
+/// Whether layer 1 has one page of tiles alone, with no table of the pages,
+/// as Lunar Magic tells it ([`lunar_magic::PAGES_CHECK`]): in ROMs older
+/// versions saved, before 1.90 gave it two (its help's version history).
+fn one_page(rom: &Rom) -> bool {
+    rom.read_u8(lunar_magic::PAGES_CHECK)
+        .is_ok_and(|b| b != lunar_magic::PAGES_CHECK_ON)
 }
 
 /// Layer 1's 16x16 tiles, where the tilemap build reads them: the game's
@@ -932,6 +951,10 @@ fn read_events(rom: &Rom, _layout: Layout) -> Result<Events, OverworldError> {
             Extra::Layer1 { .. } => None,
         }))
         .map(|t| usize::from(t.data) + t.tiles(split))
+        // An entry past the room the game unpacks the properties into
+        // (Kaizo Mario 2 has one in its list of further tiles) reaches no
+        // data of the overworld's, so its tiles are left at 0.
+        .filter(|&end| end <= EVENT_DATA_ROOM)
         .max()
         .unwrap_or(0);
     let numbers = rom.read(operand(operands::EVENT_NUMBERS)?, used)?.to_vec();

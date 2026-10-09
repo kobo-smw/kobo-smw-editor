@@ -23,6 +23,24 @@ pub const LISTS_MARKER: SnesAddr = SnesAddr::new(0x0FF15C);
 pub const NOP: u8 = 0xEA;
 pub const JSL: u8 = 0x22;
 
+/// The operand of the game's `CPY #$08` in `UploadGFXFile` (`$00AA8C`),
+/// which with the `CPY #$1E` after it uploads `GFX08` on the overworld and
+/// `GFX1E` everywhere with the tiles' fourth plane set (smw.md). Lunar
+/// Magic's 4bpp install makes it [`UPPER_COLOURS_OFF`], a file never
+/// uploaded there, and its GFX export checks it: with the game's `$08` it
+/// exports `GFX08`'s and `GFX1E`'s upper-colour tiles and `GFX17`'s berry
+/// with the plane set ([`upgraded_4bpp`]), as older versions' installs
+/// left the byte (bisected 2026-10-09, docs/lunar-magic-install.md).
+pub const UPPER_COLOURS: SnesAddr = SnesAddr::new(0x00_AA8D);
+pub const UPPER_COLOURS_OFF: u8 = 0x32;
+
+/// Whether a 4bpp ROM's upload still draws the upper-colour tiles so, as
+/// Lunar Magic tells it ([`UPPER_COLOURS`]).
+pub fn uploads_upper_colours(rom: &Rom) -> bool {
+    rom.read_u8(UPPER_COLOURS)
+        .is_ok_and(|b| b != UPPER_COLOURS_OFF)
+}
+
 /// The 3-byte pointer to level `000`'s list.
 pub const LIST_POINTER: SnesAddr = SnesAddr::new(0x0FF7FF);
 /// The 3-byte pointer to the block of ExGFX `100`-`FFF` pointers, with the
@@ -366,6 +384,12 @@ pub fn read_list(rom: &Rom, n: u16) -> Result<Option<GraphicsList>, RomError> {
     if !has_exgfx(rom) || n >= LIST_COUNT {
         return Ok(None);
     }
+    // Lunar Magic 2.30 gave submaps their lists (its help's version
+    // history); past the levels' lists, an older version's ROM has other
+    // data.
+    if n >= SUBMAP_LISTS && rom.saved_by_lunar_magic_before((2, 30)) {
+        return Ok(None);
+    }
     let Some(at) = pointer(rom, LIST_POINTER)? else {
         return Ok(None);
     };
@@ -449,11 +473,40 @@ pub fn old_list_bytes(files: [u8; 4]) -> [u8; 4] {
 pub fn stored_4bpp(file: &gfx::GfxFile) -> Vec<u8> {
     let mut out = file.to_lm_export();
     if file.index == 0x17 && file.bpp() == Some(gfx::Bpp::Three) {
-        for tile in [0usize, 1, 16, 17] {
-            let t = &mut out[tile * 32..tile * 32 + 32];
-            for y in 0..8 {
-                t[16 + 2 * y + 1] = t[2 * y] | t[2 * y + 1] | t[16 + 2 * y];
-            }
+        silhouette(&mut out, &BERRY);
+    }
+    out
+}
+
+/// `GFX17`'s berry, which the game draws in the upper colours.
+const BERRY: [usize; 4] = [0, 1, 16, 17];
+
+/// Sets the fourth plane of each of `tiles` to the tile's silhouette.
+fn silhouette(data: &mut [u8], tiles: &[usize]) {
+    for &tile in tiles {
+        let Some(t) = data.get_mut(tile * 32..tile * 32 + 32) else {
+            continue;
+        };
+        for y in 0..8 {
+            t[16 + 2 * y + 1] = t[2 * y] | t[2 * y + 1] | t[16 + 2 * y];
+        }
+    }
+}
+
+/// A 4bpp GFX file of a ROM whose upload still draws the tiles the game
+/// draws in the upper colours so ([`UPPER_COLOURS`] holds the game's
+/// byte), as Lunar Magic 3.70 exports it and so stores it again: those
+/// tiles' fourth plane set as [`stored_4bpp`] sets it (found with Kaizo
+/// Mario and Kaizo Mario World 3 by its `-ExportGFX` and `-ImportGFX`).
+pub fn upgraded_4bpp(file: &gfx::GfxFile) -> Vec<u8> {
+    let mut out = file.data.clone();
+    if file.bpp() == Some(gfx::Bpp::Four) {
+        silhouette(
+            &mut out,
+            &gfx::upper_palette_tiles(file.index, file.tile_count()),
+        );
+        if file.index == 0x17 {
+            silhouette(&mut out, &BERRY);
         }
     }
     out
@@ -523,5 +576,34 @@ mod tests {
         assert_eq!((s.horizontal, s.vertical), (0x10, 0x10));
         assert!(list.clone().set_layer3(&s).is_ok());
         assert_eq!(list.set_layer3(&Layer3Settings::default()), Err("SP2"));
+    }
+
+    #[test]
+    fn an_older_versions_4bpp_files_take_the_upper_colours_as_3_70_stores_them() {
+        let file = |index: u8| gfx::GfxFile {
+            index,
+            format: gfx::GfxFormat::Planar(gfx::Bpp::Four),
+            data: (0..128 * 32).map(|i| (i % 7) as u8).collect(),
+            addr: SnesAddr::new(0x10_8000),
+            compressed_len: 0,
+            compression: gfx::Compression::Lz2,
+        };
+        let plane3 = |data: &[u8], tile: usize| -> Vec<u8> {
+            (0..8).map(|y| data[tile * 32 + 16 + 2 * y + 1]).collect()
+        };
+        let silhouette = |data: &[u8], tile: usize| -> Vec<u8> {
+            let t = &data[tile * 32..];
+            (0..8)
+                .map(|y| t[2 * y] | t[2 * y + 1] | t[16 + 2 * y])
+                .collect()
+        };
+        let berry = file(0x17);
+        let up = upgraded_4bpp(&berry);
+        assert_eq!(plane3(&up, 16), silhouette(&berry.data, 16));
+        assert_eq!(up[2 * 32..16 * 32], berry.data[2 * 32..16 * 32]);
+        assert_eq!(up[18 * 32..], berry.data[18 * 32..]);
+        let whole = upgraded_4bpp(&file(0x1E));
+        assert!((0..128).all(|t| plane3(&whole, t) == silhouette(&whole, t)));
+        assert_eq!(upgraded_4bpp(&file(0x00)), file(0x00).data);
     }
 }

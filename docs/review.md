@@ -21,8 +21,8 @@ settle it.
   and the emulator (Play, symbols, and watching RAM in Mesen with pauses on writes and
   the player on the canvas). Left, as step-4.md's entries say: the first frames after a
   submap change, Lunar Magic's other overworld Extra Options, the title screen's demo
-  moves, older
-  Lunar Magic versions' overworld formats, and breakpoints on code rather than RAM.
+  moves, and breakpoints on code rather than RAM (older Lunar Magic versions'
+  overworlds followed on 2026-10-09).
   Settled by closing step 4 (folding step-4.md into the other docs) or naming what
   else it needs.
 
@@ -55,3 +55,17 @@ settle it.
   laying Kobo's load code out in the scan's place so that an instruction of its own
   starts at `$04D818`, would shape Kobo's code after Lunar Magic's for no other reason.
   Settled by agreeing, or by a rule for check bytes nothing runs.
+
+- **Older installs' GFX, imported as Lunar Magic 3.70 stores them (2026-10-09).** A 4bpp
+  hack whose install predates Lunar Magic's change of the game's operand at `$00AA8D`
+  (Kaizo Mario 1 to 3) draws `GFX08` on the overworld and `GFX1E` in the upper colours by
+  its upload, from files without the fourth plane. Lunar Magic 3.70, storing the GFX
+  again, sets that plane on `GFX08`'s 24 upper-colour tiles, `GFX17`'s berry, and all of
+  `GFX1E`, and the rest of FG3 then draws in the lower colours. Taken without asking:
+  an import does what 3.70 does (`exgfx::upgraded_4bpp`), so the project builds to what
+  Lunar Magic would make of the hack rather than to the hack's own overworld, whose
+  look under Lunar Magic 3's code no file can hold for both a level and the overworld;
+  and Kobo's install writes `$32` at `$00AA8D`, a second lone check byte in code its
+  upload leaves dead, so that Lunar Magic exports a build's files as stored
+  (lunar-magic-install.md, "The overworld"). Settled by agreeing, or by choosing the
+  hack's own look (then `GFX08` would need a copy for the overworld).
