@@ -312,8 +312,11 @@ watch set to *pause* stops the game, as a breakpoint does, when the game writes 
 variable through any of its addresses, and the window says what was written at which
 frame. With *Show the player on the canvas* (on by default), the script also reports
 the game mode, the level (`$010B`), and the player's place, and while the build plays
-the level that is open, a NOW box shows on the canvas where the player is. An SA-1
-build's variables are read where SA-1 Pack moves them. Mesen runs the
+the level that is open, a NOW box shows on the canvas where the player is. *Break at*
+lists code to stop at: a label of Kobo's or the project's code, from the `.sym` the build
+played last wrote beside it (typing offers the labels that start so), or an address;
+the game stops when either processor runs it, and the window says which at which frame.
+An SA-1 build's variables are read where SA-1 Pack moves them. Mesen runs the
 script only with its script window's "Allow access to I/O and OS functions" on, and
 other emulators get the ROM alone.
 

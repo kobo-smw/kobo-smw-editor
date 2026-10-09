@@ -58,8 +58,8 @@ from the editor where the user is working.
    diffs of a corpus hack's overworld moved into a clean ROM show what that layout holds.
 7. **The emulator**: Play from here already opens one, the configured one if there is
    one (`play.emulator`); builds give it the labels of Kobo's and the project's code
-   (`.sym`). Driving an emulator from the editor (breakpoints, watching RAM) stays to
-   do, through `kobo_core::clean_room`.
+   (`.sym`). Driving an emulator from the editor (breakpoints, watching RAM) followed,
+   through Mesen 2's Lua scripts (`kobo_core::emulator`).
 
 ## Done
 
@@ -150,7 +150,12 @@ from the editor where the user is working.
   pauses the game on a watched write (in each memory's own addresses, so any mirror
   counts); the editor's Watch window lists the variables and shows the report, and Play
   and Build and play give Mesen the script (editor.md, "Building"). Reports carry RAM
-  addresses and values alone, nothing of where code is.
+  addresses and values alone, nothing of where code is. Breakpoints on code followed
+  (2026-10-09): the script stops the game when code at an address runs (Mesen's
+  execution callbacks, on the SA-1's bus too), the editor's *Break at* taking the
+  labels of the `.sym` beside the build (`build::Symbol::read_wla`); the report names
+  the breakpoint the user chose, nothing more of where code is (checked with a break on
+  the vanilla title screen's game mode in headless Mesen).
 - Symbols for emulators' debuggers (2026-10-08, item 7): a build's labels of Kobo's and
   the project's code, kept through the stage cache, written beside the ROM as a WLA-DX
   `.sym` by `kobo build --sym`, the editor's builds, and play builds; Mesen 2 loads it

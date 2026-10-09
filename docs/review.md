@@ -18,12 +18,13 @@ settle it.
   a first version in the editor and the build: Map16, graphics, the shared palettes,
   ExAnimation, layer 3 tilemaps, the overworld (read, built in Lunar Magic's layout,
   imported, and edited, with its graphics, palettes, ExAnimation, border, and lists),
-  and the emulator (Play, symbols, and watching RAM in Mesen with pauses on writes and
-  the player on the canvas). Left, as step-4.md's entries say: the first frames after a
-  submap change, four of Lunar Magic's overworld Extra Options (two needing code of
-  Kobo's own), the title screen's demo moves, and breakpoints on code rather than RAM
-  (older Lunar Magic versions' overworlds and the other Extra Options followed on
-  2026-10-09).
+  and the emulator (Play, symbols, and watching RAM in Mesen with pauses on writes,
+  breakpoints on code, and the player on the canvas). Left, as step-4.md's entries
+  say: the first frames after a submap change, four of Lunar Magic's overworld Extra
+  Options (two needing code of Kobo's own), and the title screen's demo moves (Lunar
+  Magic's recording format, which no community source documents); older Lunar Magic
+  versions' overworlds, the other Extra Options, and breakpoints followed on
+  2026-10-09.
   Settled by closing step 4 (folding step-4.md into the other docs) or naming what
   else it needs.
 

@@ -1,13 +1,16 @@
 //! The watch window: RAM variables read after every frame while a build
 //! plays in Mesen (`kobo_core::emulator`), a write to one able to pause the
-//! game. Play and Build and play give Mesen the script for the list; the
-//! window reads the report it writes beside the ROM.
+//! game, and code to stop at, picked from the labels of Kobo's and the
+//! project's code that the build played last wrote beside it. Play and
+//! Build and play give Mesen the script for the lists; the window reads the
+//! report it writes beside the ROM.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, DragValue, Grid, RichText};
-use kobo_core::emulator::{self, Report, Watch};
+use kobo_core::build::Symbol;
+use kobo_core::emulator::{self, Breakpoint, Report, Watch};
 use kobo_core::ram::RamAddr;
 
 use crate::app::App;
@@ -19,10 +22,17 @@ pub struct WatchState {
     /// Whether the player is shown on the canvas: the script reports the
     /// game mode, the level, and the player's place after the watches.
     pub show_player: bool,
+    /// Code to stop at.
+    pub breaks: Vec<Breakpoint>,
     /// The watch being added: its name, address, and size.
     name: String,
     addr: u32,
     size: u8,
+    /// The labels of the build played last (its `.sym`), and the
+    /// breakpoint being added: a label's text, or an address.
+    labels: Vec<Symbol>,
+    label: String,
+    code_addr: u32,
     /// The ROM the last build played was, whose report is read, and the
     /// report as last read, and when.
     playing: Option<PathBuf>,
@@ -36,9 +46,13 @@ impl Default for WatchState {
             open: false,
             watches: Vec::new(),
             show_player: true,
+            breaks: Vec::new(),
             name: String::new(),
             addr: 0,
             size: 0,
+            labels: Vec::new(),
+            label: String::new(),
+            code_addr: 0x00_8000,
             playing: None,
             report: None,
             read_at: None,
@@ -83,19 +97,43 @@ impl WatchState {
         let _ = std::fs::remove_file(emulator::report_path(rom));
         self.report = None;
         self.playing = Some(rom.to_path_buf());
+        if let Ok(text) = std::fs::read_to_string(rom.with_extension("sym")) {
+            self.labels = Symbol::read_wla(&text);
+        }
         let mut watches = self.watches.clone();
         if self.show_player {
             watches.extend(player_watches());
         }
-        if watches.is_empty() {
+        if watches.is_empty() && self.breaks.is_empty() {
             return Ok(None);
         }
         let built = kobo_core::Rom::load(rom).map_err(|e| e.to_string())?;
         let map = kobo_core::ram::RamMap::of(&built);
-        let script = emulator::mesen_script(&watches, map, &emulator::report_path(rom));
+        let script =
+            emulator::mesen_script(&watches, &self.breaks, map, &emulator::report_path(rom));
         let path = emulator::script_path(rom);
         std::fs::write(&path, script).map_err(|e| e.to_string())?;
         Ok(Some(path))
+    }
+
+    /// A breakpoint at the label `typed` of the build played last, or at
+    /// `addr` (named `typed`, or by its address) if there is no such label.
+    pub fn add_break(&mut self, typed: &str, addr: u32) {
+        let breakpoint = match self.labels.iter().find(|s| s.name == typed) {
+            Some(symbol) => Breakpoint {
+                name: symbol.name.clone(),
+                addr: symbol.addr,
+            },
+            None => Breakpoint {
+                name: if typed.is_empty() {
+                    format!("${addr:06X}")
+                } else {
+                    typed.to_string()
+                },
+                addr: kobo_core::SnesAddr::new(addr),
+            },
+        };
+        self.breaks.push(breakpoint);
     }
 
     /// Reads the report again, a few times a second.
@@ -212,16 +250,94 @@ fn show(state: &mut WatchState, ui: &mut egui::Ui) {
             state.name.clear();
         }
     });
+    breaks(state, ui);
     let status = match (&state.playing, &state.report) {
         (None, _) => "Not playing: Play or Build and play starts Mesen with these.".to_string(),
         (Some(_), None) => "Waiting for Mesen's first frame.".to_string(),
-        (Some(_), Some(r)) => match r.paused {
-            Some(p) => format!(
+        (Some(_), Some(r)) => match (r.paused, r.stopped) {
+            (_, Some((i, frame))) => format!(
+                "Stopped at frame {frame}: {}.",
+                state.breaks.get(i).map_or("?", |b| b.name.as_str())
+            ),
+            (Some(p), None) => format!(
                 "Paused at frame {}: {:X} written {:02X}.",
                 p.frame, p.addr, p.value
             ),
-            None => format!("Frame {}.", r.frame),
+            (None, None) => format!("Frame {}.", r.frame),
         },
     };
     ui.label(RichText::new(status).small());
+}
+
+/// The code to stop at, and a breakpoint added by a label of the build
+/// played last or by an address.
+fn breaks(state: &mut WatchState, ui: &mut egui::Ui) {
+    ui.separator();
+    ui.label(RichText::new("Break at").strong());
+    let mut remove = None;
+    Grid::new("break-list")
+        .num_columns(3)
+        .spacing([10.0, 4.0])
+        .show(ui, |ui| {
+            for (i, b) in state.breaks.iter().enumerate() {
+                ui.label(&b.name);
+                ui.label(RichText::new(format!("${:06X}", b.addr.raw())).monospace());
+                if ui.small_button("Remove").clicked() {
+                    remove = Some(i);
+                }
+                ui.end_row();
+            }
+        });
+    if let Some(i) = remove {
+        state.breaks.remove(i);
+    }
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::TextEdit::singleline(&mut state.label)
+                .hint_text("Label")
+                .desired_width(180.0),
+        )
+        .on_hover_text("A label of Kobo's or the project's code, from the build played last");
+        ui.add(
+            DragValue::new(&mut state.code_addr)
+                .range(0..=0xFF_FFFF)
+                .hexadecimal(6, false, true)
+                .prefix("$"),
+        )
+        .on_hover_text("The code's address on the bus, for code without a label");
+        if ui.button("Add").clicked() {
+            let typed = state.label.trim().to_string();
+            state.add_break(&typed, state.code_addr);
+            state.label.clear();
+        }
+    });
+    // The labels that start with what is typed, to pick from.
+    let typed = state.label.trim().to_string();
+    if !typed.is_empty() {
+        let mut picked = None;
+        for symbol in state
+            .labels
+            .iter()
+            .filter(|s| s.name.starts_with(&typed) && s.name != typed)
+            .take(8)
+        {
+            if ui
+                .small_button(format!("{} ${:06X}", symbol.name, symbol.addr.raw()))
+                .clicked()
+            {
+                picked = Some(symbol.clone());
+            }
+        }
+        if let Some(symbol) = picked {
+            state.label = symbol.name;
+            state.code_addr = symbol.addr.raw();
+        }
+    }
+    if state.labels.is_empty() {
+        ui.label(
+            RichText::new("Labels come from the build played last (its .sym).")
+                .small()
+                .color(theme::MUTED),
+        );
+    }
 }

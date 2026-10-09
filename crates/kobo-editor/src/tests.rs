@@ -2513,6 +2513,38 @@ fn the_watch_window_writes_mesen_s_script_and_shows_its_report() {
         harness.state().ram_watch.player(),
         Some((0x105, 0x40, 0x150))
     );
+    // A breakpoint by a label of the build's .sym, which the script stops
+    // at, and the report of it.
+    std::fs::write(
+        rom.with_extension("sym"),
+        "[labels]\n10:8123 kobo_overworld_save_check\n",
+    )
+    .unwrap();
+    harness.state_mut().ram_watch.script_for(&rom).unwrap();
+    harness
+        .state_mut()
+        .ram_watch
+        .add_break("kobo_overworld_save_check", 0);
+    let script = harness
+        .state_mut()
+        .ram_watch
+        .script_for(&rom)
+        .unwrap()
+        .unwrap();
+    let text = std::fs::read_to_string(&script).unwrap();
+    assert!(text.contains("0x108123,"), "{text}");
+    std::fs::write(
+        report_path(&rom),
+        "frame 50\n1A8 14 105 40 150\nstopped 0 49\n",
+    )
+    .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    harness.run_steps(2);
+    assert!(
+        harness
+            .query_by_label("Stopped at frame 49: kobo_overworld_save_check.")
+            .is_some()
+    );
 }
 
 #[test]

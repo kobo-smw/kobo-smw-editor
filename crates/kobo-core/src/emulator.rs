@@ -2,11 +2,13 @@
 //! script Kobo writes (`mesen_script`), which after every frame writes the
 //! RAM watched to a report file beside the ROM, and pauses the game, as its
 //! debugger's break does, when a watched variable is written to and the
-//! watch says to. [`read_report`] reads the file back.
+//! watch says to, or when code at a [`Breakpoint`] runs. [`read_report`]
+//! reads the file back.
 //!
-//! The script reports RAM addresses and values alone, never where the
-//! game's or a patch's code is, so nothing in it is the clean room's to
-//! withhold (`clean_room`). Mesen runs a script given after the ROM on its
+//! The script reports RAM addresses and values, and the breakpoint that
+//! stopped the game (an address the user chose, from a build's labels),
+//! never where the game's or a patch's code is otherwise, so nothing in it
+//! is the clean room's to withhold (`clean_room`). Mesen runs a script given after the ROM on its
 //! command line; the script writes its report with Lua's `io`, which Mesen
 //! allows with its script window's "Allow access to I/O and OS functions".
 
@@ -25,13 +27,23 @@ pub struct Watch {
     pub pause_on_write: bool,
 }
 
-/// What the script last wrote: the frame, each watch's value in order, and
-/// the write that paused the game, if one did.
+/// Code to stop at: a name, and its address on the bus. On an SA-1
+/// cartridge either processor running it stops the game.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Breakpoint {
+    pub name: String,
+    pub addr: crate::addr::SnesAddr,
+}
+
+/// What the script last wrote: the frame, each watch's value in order, the
+/// write that paused the game, if one did, and the breakpoint that stopped
+/// it (its index, and the frame), if one did.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct Report {
     pub frame: u64,
     pub values: Vec<u16>,
     pub paused: Option<Paused>,
+    pub stopped: Option<(usize, u64)>,
 }
 
 /// A watched write that paused the game: its offset in its memory (work RAM,
@@ -74,9 +86,15 @@ fn lua_string(text: &str) -> String {
     out + "\""
 }
 
-/// The script for Mesen 2 that watches `watches` in a build whose RAM is
-/// laid out as `map` says, and writes its report to `report`.
-pub fn mesen_script(watches: &[Watch], map: RamMap, report: &Path) -> String {
+/// The script for Mesen 2 that watches `watches` and stops at `breaks` in
+/// a build whose RAM is laid out as `map` says, and writes its report to
+/// `report`.
+pub fn mesen_script(
+    watches: &[Watch],
+    breaks: &[Breakpoint],
+    map: RamMap,
+    report: &Path,
+) -> String {
     let entries: Vec<String> = watches
         .iter()
         .map(|w| {
@@ -101,6 +119,17 @@ pub fn mesen_script(watches: &[Watch], map: RamMap, report: &Path) -> String {
         RamMap::Vanilla => "emu.cpuType.snes",
         RamMap::Sa1Pack => "emu.cpuType.snes, emu.cpuType.sa1",
     };
+    // Code is caught on each processor's own bus.
+    let code = match map {
+        RamMap::Vanilla => "{ emu.cpuType.snes, emu.memType.snesMemory }",
+        RamMap::Sa1Pack => {
+            "{ emu.cpuType.snes, emu.memType.snesMemory }, { emu.cpuType.sa1, emu.memType.sa1Memory }"
+        }
+    };
+    let breaks: Vec<String> = breaks
+        .iter()
+        .map(|b| format!("  0x{:06X},", b.addr.raw()))
+        .collect();
     format!(
         r#"-- Kobo's watch of a build (kobo_core::emulator): after every frame,
 -- the RAM watched into the report file; a watched write pauses the game.
@@ -112,8 +141,13 @@ local pauses = {{
 {pauses}
 }}
 local cpus = {{ {cpus} }}
+local breaks = {{
+{breaks}
+}}
+local code = {{ {code} }}
 local frame = 0
 local paused = ""
+local stopped = ""
 
 local function value(w)
   local low = emu.read(w[1], emu.memType.snesMemory, false)
@@ -133,6 +167,7 @@ local function write_report()
   end
   f:write(table.concat(values, " ") .. "\n")
   if paused ~= "" then f:write(paused .. "\n") end
+  if stopped ~= "" then f:write(stopped .. "\n") end
   f:close()
 end
 
@@ -150,11 +185,23 @@ for _, p in ipairs(pauses) do
     end, emu.callbackType.write, p[2], p[2], cpu, p[1])
   end
 end
+
+for i, at in ipairs(breaks) do
+  for _, c in ipairs(code) do
+    emu.addMemoryCallback(function()
+      stopped = string.format("stopped %d %d", i - 1, frame)
+      write_report()
+      emu.breakExecution()
+    end, emu.callbackType.exec, at, at, c[1], c[2])
+  end
+end
 "#,
         report = lua_string(&report.to_string_lossy()),
         cpus = cpus,
         entries = entries.join("\n"),
         pauses = pauses.join("\n"),
+        breaks = breaks.join("\n"),
+        code = code,
     )
 }
 
@@ -178,21 +225,25 @@ pub fn read_report(text: &str) -> Option<Report> {
         .split_whitespace()
         .map(|v| u16::from_str_radix(v, 16).ok())
         .collect::<Option<Vec<u16>>>()?;
-    let paused = match lines.next() {
-        Some(line) => {
-            let mut parts = line.strip_prefix("paused ")?.split_whitespace();
-            Some(Paused {
+    let (mut paused, mut stopped) = (None, None);
+    for line in lines {
+        if let Some(rest) = line.strip_prefix("paused ") {
+            let mut parts = rest.split_whitespace();
+            paused = Some(Paused {
                 addr: u32::from_str_radix(parts.next()?, 16).ok()?,
                 value: u8::from_str_radix(parts.next()?, 16).ok()?,
                 frame: parts.next()?.parse().ok()?,
-            })
+            });
+        } else {
+            let mut parts = line.strip_prefix("stopped ")?.split_whitespace();
+            stopped = Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?));
         }
-        None => None,
-    };
+    }
     Some(Report {
         frame,
         values,
         paused,
+        stopped,
     })
 }
 
@@ -223,7 +274,21 @@ mod tests {
                 pause_on_write: true,
             },
         ];
-        let script = mesen_script(&watches, RamMap::Vanilla, Path::new("/tmp/a \"b\".txt"));
+        let breaks = [Breakpoint {
+            name: "kobo_overworld_save_check".into(),
+            addr: crate::addr::SnesAddr::new(0x10_8123),
+        }];
+        let script = mesen_script(
+            &watches,
+            &breaks,
+            RamMap::Vanilla,
+            Path::new("/tmp/a \"b\".txt"),
+        );
+        assert!(
+            script.contains("local breaks = {\n  0x108123,\n}"),
+            "{script}"
+        );
+        assert!(script.contains("emu.callbackType.exec"), "{script}");
         assert!(script.contains("{ 0x7E0094, 2 },"), "{script}");
         assert!(
             script.contains("local pauses = {\n  { emu.memType.snesWorkRam, 0x00019 },\n}"),
@@ -234,8 +299,9 @@ mod tests {
             "{script}"
         );
         // An SA-1 Pack build has the direct page in I-RAM.
-        let sa1 = mesen_script(&watches, RamMap::Sa1Pack, Path::new("r.txt"));
+        let sa1 = mesen_script(&watches, &breaks, RamMap::Sa1Pack, Path::new("r.txt"));
         assert!(!sa1.contains("0x7E0019"), "{sa1}");
+        assert!(sa1.contains("emu.memType.sa1Memory"), "{sa1}");
     }
 
     #[test]
@@ -252,6 +318,8 @@ mod tests {
             })
         );
         assert_eq!(read_report("frame 1\n").map(|r| r.frame), None);
+        let stopped = read_report("frame 9\n1\nstopped 2 8\n").unwrap();
+        assert_eq!((stopped.paused, stopped.stopped), (None, Some((2, 8))));
         assert_eq!(
             read_report("frame 3\n\n").unwrap().values,
             Vec::<u16>::new()

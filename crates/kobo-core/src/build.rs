@@ -1502,6 +1502,35 @@ impl Symbol {
         }
         out
     }
+
+    /// The labels of a WLA-DX symbol file as [`Symbol::wla`] writes one;
+    /// lines it cannot read are left out.
+    pub fn read_wla(text: &str) -> Vec<Symbol> {
+        let mut labels = false;
+        let mut out = Vec::new();
+        for line in text.lines().map(str::trim) {
+            if line.starts_with('[') {
+                labels = line == "[labels]";
+                continue;
+            }
+            let Some((at, name)) = line.split_once(' ').filter(|_| labels) else {
+                continue;
+            };
+            let Some((bank, offset)) = at.split_once(':') else {
+                continue;
+            };
+            if let (Ok(bank), Ok(offset)) = (
+                u32::from_str_radix(bank, 16),
+                u32::from_str_radix(offset, 16),
+            ) {
+                out.push(Symbol {
+                    name: name.trim().to_string(),
+                    addr: SnesAddr::new(bank << 16 | offset),
+                });
+            }
+        }
+        out
+    }
 }
 
 /// The symbols of the patches a stage applied, named as [`Symbol`] says.
@@ -2878,6 +2907,26 @@ fn place(rom: &mut Rom, space: &mut FreeSpace, bytes: &[u8]) -> Result<SnesAddr,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn symbol_files_read_back() {
+        let symbols = vec![
+            Symbol {
+                name: "kobo_overworld_save_check".into(),
+                addr: SnesAddr::new(0x10_8123),
+            },
+            Symbol {
+                name: "main".into(),
+                addr: SnesAddr::new(0x00_8000),
+            },
+        ];
+        let mut back = Symbol::read_wla(&Symbol::wla(&symbols));
+        back.sort_by_key(|s| s.addr.raw());
+        let mut want = symbols;
+        want.sort_by_key(|s| s.addr.raw());
+        assert_eq!(back, want);
+        assert!(Symbol::read_wla("[other]\n00:8000 x\n").is_empty());
+    }
     use crate::rom::RomIdentity;
 
     fn vanilla() -> Option<Rom> {
