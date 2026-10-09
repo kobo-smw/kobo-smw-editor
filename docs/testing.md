@@ -332,13 +332,21 @@ folders make a full run about an hour; leave them out for a quicker one.
   (`--no-build` leaves them; `KOBO_BIN` names another `kobo`), then for each hack imports its
   changed levels, builds them, leaving out each level a build refuses until the rest builds,
   and runs `kobo diff`, an import of the build (its level and Map16 files must be the
-  import's), `tiles_diff` and `render_hashes` over the levels built, and `save-check`. It
+  import's), `render_hashes --tiles` over the levels built, and `save-check`. The render
+  pass loads each level once per ROM and gives both pictures and a hash of what the load
+  resolved (`tests/common/render_hashes.rs`, `tiles_hash`), from which the sweep finds the
+  levels that resolve differently, as `tiles_diff` would without loading them again
+  (`tiles_diff` runs instead with `--no-render`); both tools hand levels to every core one
+  at a time. It
   reads what `kobo` reports as JSON (`--json`). It writes each hack's project, build, and
   log to `out/<hack>/`, and `out/results.json` (each hack by headerless SHA-1, with the
   revision swept) and `out/summary.md` (each hack, then refusals and import notes grouped by
   kind). A run stopped part way resumes from `results.json`, for hacks swept at the same
   revision; `--summary` only rewrites the summary, and `--no-render`, `--no-tiles`, and
-  `--no-save` skip the slow steps. `--baseline old/results.json` compares each hack with an
+  `--no-save` skip the slow steps. `--jobs N` sweeps that many hacks at once (2 by
+  default on four cores or more, which overlaps small hacks' serial steps; Lunar
+  Magic's saves still take turns through its wrapper's lock). Do not run it beside `cargo
+  xtask verify`: both want every core. `--baseline old/results.json` compares each hack with an
   earlier sweep and lists what got worse in `summary.md`, failing the sweep: a stage not
   reached, more levels refused, a diff, an import of the build, or a save that passed and
   fails, levels that resolve or draw differently that did not. Keep a sweep's

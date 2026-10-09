@@ -6,6 +6,9 @@
 //!
 //! `cargo run --release --example tiles_diff -- a.sfc b.sfc [level...]`
 
+#[path = "../tests/common/render_hashes.rs"]
+mod render_hashes;
+
 use kobo_core::{Rom, expand};
 
 fn main() {
@@ -20,45 +23,51 @@ fn main() {
     } else {
         (0..0x200).collect()
     };
+    // Each level on whichever core is free, the lines printed in order.
+    let outcomes = render_hashes::on_every_core(&levels, |&level| compare(&a, &b, level));
     let mut same = 0;
-    for level in levels {
-        let (Ok(x), Ok(y)) = (
-            expand::expand_level(&a, level),
-            expand::expand_level(&b, level),
-        ) else {
-            println!("{level:03X}: fails to load in one");
-            continue;
-        };
-        let (x, y) = (&x.tiles, &y.tiles);
-        let mut parts = Vec::new();
-        if x.low != y.low || x.high != y.high {
-            parts.push("layer 1");
-        }
-        if x.layer2_tilemap != y.layer2_tilemap || x.layer2_screen_len != y.layer2_screen_len {
-            parts.push("background tilemap");
-        }
-        let used = x
-            .low
-            .iter()
-            .zip(&x.high)
-            .map(|(&l, &h)| u16::from_le_bytes([l, h]));
-        if used.clone().any(|t| x.map16.get(&t) != y.map16.get(&t)) {
-            parts.push("Map16");
-        }
-        if let Some((low, high)) = &x.layer2_tilemap {
-            let bg = low
-                .iter()
-                .zip(high)
-                .map(|(&l, &h)| u16::from_le_bytes([l, h]) as usize);
-            if bg.clone().any(|t| x.bg_map16.get(t) != y.bg_map16.get(t)) {
-                parts.push("BG Map16");
-            }
-        }
-        if parts.is_empty() {
-            same += 1;
-        } else {
-            println!("{level:03X}: {}", parts.join(", "));
+    for outcome in outcomes {
+        match outcome {
+            None => same += 1,
+            Some(line) => println!("{line}"),
         }
     }
     println!("{same} levels the same");
+}
+
+/// What differs in `level`'s load between the two ROMs, as a line, or
+/// `None` when nothing does.
+fn compare(a: &Rom, b: &Rom, level: u16) -> Option<String> {
+    let (Ok(x), Ok(y)) = (
+        expand::expand_level(a, level),
+        expand::expand_level(b, level),
+    ) else {
+        return Some(format!("{level:03X}: fails to load in one"));
+    };
+    let (x, y) = (&x.tiles, &y.tiles);
+    let mut parts = Vec::new();
+    if x.low != y.low || x.high != y.high {
+        parts.push("layer 1");
+    }
+    if x.layer2_tilemap != y.layer2_tilemap || x.layer2_screen_len != y.layer2_screen_len {
+        parts.push("background tilemap");
+    }
+    let mut used = x
+        .low
+        .iter()
+        .zip(&x.high)
+        .map(|(&l, &h)| u16::from_le_bytes([l, h]));
+    if used.any(|t| x.map16.get(&t) != y.map16.get(&t)) {
+        parts.push("Map16");
+    }
+    if let Some((low, high)) = &x.layer2_tilemap {
+        let mut bg = low
+            .iter()
+            .zip(high)
+            .map(|(&l, &h)| u16::from_le_bytes([l, h]) as usize);
+        if bg.any(|t| x.bg_map16.get(t) != y.bg_map16.get(t)) {
+            parts.push("BG Map16");
+        }
+    }
+    (!parts.is_empty()).then(|| format!("{level:03X}: {}", parts.join(", ")))
 }

@@ -2,14 +2,16 @@
 """Imports and builds every hack of the corpus, and lists what blocks each.
 
     corpus-sweep out/ [hack.smc|patch.bps ...] [--no-render] [--no-save] [--no-tiles]
-                      [--only text] [--baseline old/results.json] [--no-build]
+                      [--only text] [--baseline old/results.json] [--no-build] [--jobs N]
 
 Takes the hacks named, else the corpus (KOBO_LM_ROMS or `tests.lm_roms`,
 tools/kobo_config.py). For each it imports the hack's changed levels into a
 project and builds it; a build refused for a level drops that level from the
 project and builds again, until the rest builds or a refusal names no level.
-The build that results is compared with the hack (`kobo diff`, `tiles_diff`
-and `render_hashes` over the levels it holds), imported again (the level and
+The build that results is compared with the hack (`kobo diff`, and
+`render_hashes --tiles` over the levels it holds, which loads each level
+once per ROM for both pictures and what the load resolves, as `tiles_diff`
+compares it; `tiles_diff` itself with `--no-render`), imported again (the level and
 Map16 files must come back the same), and saved by Lunar Magic
 (`tools/lunar-magic/save-check`). Writes `out/<hack>/` (the project, the
 build, each step's output), `out/results.json` (each hack by its headerless
@@ -18,7 +20,9 @@ SHA-1, with the revision swept), and `out/summary.md`.
 It builds `kobo` and the `render_hashes` example in release first
 (`--no-build` leaves them; KOBO_BIN names another `kobo`), and reads what
 they report as JSON. A sweep that stopped part way resumes from
-results.json, for hacks swept at the same revision. With `--baseline`, each
+results.json, for hacks swept at the same revision. `--jobs` sweeps that
+many hacks at once (2 by default with four cores or more); Lunar Magic's
+saves still take turns. With `--baseline`, each
 hack is compared with its result in an earlier sweep, and what got worse
 (a stage not reached, more levels refused, a diff, an import of the build,
 or a save that passed and fails, levels that resolve or draw differently
@@ -30,7 +34,9 @@ import argparse
 import json
 import os
 import re
+import concurrent.futures
 import subprocess
+import threading
 import sys
 import time
 from collections import defaultdict
@@ -155,21 +161,34 @@ def import_report(value):
     return report
 
 
-def render_compare(hack, built, levels, log):
-    """The pictures of the levels built, in the hack and in the build: the
-    two picture hashes compared, the diagnostics column apart."""
-    if not levels:
-        return {"levels": 0, "same": 0, "differ": [], "errors": [], "diagnostics_differ": []}
+def level_hashes(hack, built, levels, log, tiles):
+    """Each ROM's render_hashes lines for the levels built, by level, the
+    columns after it; with `tiles`, the last is `tiles=` and the hash of
+    what the level's load resolved, from the same load as the pictures."""
     hashes = []
     for rom in (hack, built):
-        code, out, err = run_split([RENDER, rom, *levels], timeout=7200)
+        code, out, err = run_split([RENDER, rom, *(["--tiles"] if tiles else []), *levels],
+                                   timeout=7200)
         with open(log, "a") as f:
             f.write(f"$ render_hashes {rom}\n{out}{err}(exit {code})\n\n")
         hashes.append({l.split()[0]: l.split(" ")[1:] for l in out.splitlines() if l.strip()})
+    return hashes
+
+
+def tiles_of(columns):
+    """A line's tiles hash, or None for a level that did not load."""
+    last = columns[-1] if columns else ""
+    return last[len("tiles="):] if last.startswith("tiles=") else None
+
+
+def render_compare(hashes):
+    """The pictures of the levels built, in the hack and in the build: the
+    two picture hashes compared, the diagnostics column apart."""
     a, b = hashes
     same, differ, errors, diagnostics = 0, [], [], []
     for level in sorted(a):
         x, y = a[level], b.get(level, ["error:"])
+        x, y = [c for c in x if not c.startswith("tiles=")], [c for c in y if not c.startswith("tiles=")]
         if x[0].startswith("error") or y[0].startswith("error"):
             errors.append(level)
         elif x[:2] == y[:2]:
@@ -180,6 +199,18 @@ def render_compare(hack, built, levels, log):
             differ.append(level)
     return {"levels": len(a), "same": same, "differ": differ, "errors": errors,
             "diagnostics_differ": diagnostics}
+
+
+def tiles_from_hashes(hashes, levels):
+    """What every level built resolves, compared from the render pass's
+    tiles hashes: what tiles_diff finds, without loading the levels again."""
+    a, b = hashes
+    differ = []
+    for level in levels:
+        x, y = tiles_of(a.get(level, [])), tiles_of(b.get(level, []))
+        if x is None or y is None or x != y:
+            differ.append(level)
+    return {"levels": len(levels), "differ": differ, "ok": True}
 
 
 def tiles_compare(hack, built, levels, log):
@@ -275,10 +306,18 @@ def sweep(hack, out, render, save, tiles=True):
     result["diff"] = {"same": code == 0 and bool(value) and value["same"], "lines": lines[:40]}
 
     result["reimport"] = reimport_compare(project, built, work, log)
-    if tiles:
+    if render and levels:
+        # One load of each level per ROM gives the pictures and the tiles.
+        hashes = level_hashes(rom, built, levels, log, tiles)
+        if tiles:
+            result["tiles"] = tiles_from_hashes(hashes, levels)
+        result["render"] = render_compare(hashes)
+    elif render:
+        result["render"] = {"levels": 0, "same": 0, "differ": [], "errors": [], "diagnostics_differ": []}
+        if tiles:
+            result["tiles"] = {"levels": 0, "differ": []}
+    elif tiles:
         result["tiles"] = tiles_compare(rom, built, levels, log)
-    if render:
-        result["render"] = render_compare(rom, built, levels, log)
     if save:
         # save-check ends with `kobo diff`: its exit is the comparison's.
         code, output = run([SAVE_CHECK, built, "105", project], log=log, timeout=900)
@@ -390,11 +429,14 @@ def main():
     parser.add_argument("hacks", nargs="*", type=Path)
     parser.add_argument("--no-render", action="store_true")
     parser.add_argument("--no-save", action="store_true")
-    parser.add_argument("--no-tiles", action="store_true", help="skip tiles_diff")
+    parser.add_argument("--no-tiles", action="store_true",
+                        help="skip comparing what levels resolve (from the render pass, else tiles_diff)")
     parser.add_argument("--only", help="only hacks whose path contains this")
     parser.add_argument("--summary", action="store_true", help="only rewrite summary.md from results.json")
     parser.add_argument("--baseline", type=Path, help="an earlier sweep's results.json to compare with")
     parser.add_argument("--no-build", action="store_true", help="use kobo and render_hashes as built")
+    parser.add_argument("--jobs", type=int, default=2 if (os.cpu_count() or 1) >= 4 else 1,
+                        help="hacks swept at once (default 2 with 4 cores or more)")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     results_path = args.out / "results.json"
@@ -418,18 +460,29 @@ def main():
         for r in json.loads(results_path.read_text()):
             if r.get("revision") == REVISION and not str(r.get("error", "")).startswith("failed to write"):
                 done[r["path"]] = r
-    results = []
-    for i, hack in enumerate(hacks, 1):
-        if str(hack) in done:
-            results.append(done[str(hack)])
-            continue
-        print(f"[{i}/{len(hacks)}] {hack.name}", flush=True)
+    # Results by hack, in the hacks' order; with --jobs, several are swept
+    # at once (each render pass uses every core, Lunar Magic's runs take
+    # turns through its wrapper's lock), and the files are rewritten as
+    # each finishes.
+    by_index = {i: done[str(h)] for i, h in enumerate(hacks) if str(h) in done}
+    lock = threading.Lock()
+
+    def one(i, hack):
+        print(f"[{i + 1}/{len(hacks)}] {hack.name}", flush=True)
         result = sweep(hack, args.out, not args.no_render, not args.no_save, not args.no_tiles)
-        print(f"    {result.get('stage')}: {len(result.get('refusals', []))} refused"
-              + (f"; {result['error']}" if result.get("error") else ""), flush=True)
-        results.append(result)
-        results_path.write_text(json.dumps(results, indent=1))
-        (args.out / "summary.md").write_text(summary(results))
+        with lock:
+            print(f"    {hack.name}: {result.get('stage')}: {len(result.get('refusals', []))} refused"
+                  + (f"; {result['error']}" if result.get("error") else ""), flush=True)
+            by_index[i] = result
+            ordered = [by_index[k] for k in sorted(by_index)]
+            results_path.write_text(json.dumps(ordered, indent=1))
+            (args.out / "summary.md").write_text(summary(ordered))
+
+    todo = [(i, h) for i, h in enumerate(hacks) if i not in by_index]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+        for future in [pool.submit(one, i, h) for i, h in todo]:
+            future.result()
+    results = [by_index[k] for k in sorted(by_index)]
     against = regressions(results, baseline) if baseline is not None else None
     (args.out / "summary.md").write_text(summary(results, against))
     if against:
