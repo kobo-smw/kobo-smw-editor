@@ -466,6 +466,7 @@ impl App {
         app.palettes_editor.open = startup.tab.as_deref() == Some("palettes");
         app.layer3_editor.open = startup.tab.as_deref() == Some("layer3");
         app.overworld_editor.open = startup.tab.as_deref() == Some("overworld");
+        app.screens_editor.open = startup.tab.as_deref() == Some("screens");
         if startup.tab.as_deref() == Some("map16-editor") {
             // At the cement block, which every tileset has.
             app.map16_editor.show_tile(0x130);

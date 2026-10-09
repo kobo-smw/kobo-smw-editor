@@ -318,7 +318,7 @@ other emulators get the ROM alone.
 
 `--screenshot out.png` saves the window once the level is drawn and quits, with `--tab`
 (`levels`, `objects`, `add`, `sprites`, `map16`, `changes`, `overview`, `backgrounds`,
-`map16-editor`, `graphics`, `palettes`, `layer3`, `overworld`),
+`map16-editor`, `graphics`, `palettes`, `layer3`, `overworld`, `screens`),
 `--select`, and `--build` to set it up; under `xvfb-run -a` it needs no display. The
 development server has Mesa's GLX but not `libxkbcommon-x11`, which winit loads for X11:
 unpack `libxkbcommon-x11-0` and `libxcb-xkb1` from Debian's packages (`apt-get

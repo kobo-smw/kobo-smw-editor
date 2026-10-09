@@ -61,7 +61,8 @@ struct Args {
     #[arg(long)]
     palette: bool,
     /// The left panel's tab (levels, objects, add, sprites, map16), or a window
-    /// (changes, overview, backgrounds, project, map16-editor, graphics, palettes, layer3).
+    /// (changes, overview, backgrounds, project, map16-editor, graphics, palettes, layer3,
+    /// overworld, screens).
     #[arg(long)]
     tab: Option<String>,
     /// Build the project once the level is open.
