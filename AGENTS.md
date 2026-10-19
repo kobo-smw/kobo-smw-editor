@@ -316,6 +316,20 @@ CI (`.github/workflows/ci.yml`) runs fmt, clippy with warnings denied, `cargo xt
 lint-tools --strict`, and tests on Linux, Windows, and macOS, and prints the tests that
 skipped. Keep all three green.
 
+Builds are the slow part of working on Kobo, so keep them warm:
+
+- Build in the checkout's own `target/`. Do not set `CARGO_TARGET_DIR` or copy the repo
+  elsewhere for a clean run: a new target directory compiles all ~450 crates again. When
+  another cargo command holds the lock (`Blocking waiting for file lock`), wait for it.
+- Tests run in the dev profile: `cargo test`, never `cargo test --release`. kobo-core is
+  optimised there already, and a release test build is a second copy of every crate.
+  `--release` is for the examples and tools that say so above.
+- While working, run the test file you are changing (`cargo test -p kobo-core --test
+  layer3`); run `cargo xtask verify` once, before pushing. Each file in `tests/` is its own
+  binary, compiled with kobo-core's optimisation, so a full run builds all of them.
+- Start a run that takes minutes in the background and wait for it to finish rather than
+  polling it with `sleep`.
+
 ## Test tiers and ROM configuration
 
 - **`cargo xtask verify`** runs fmt, clippy, `lint-tools`, a table of the tiers this
