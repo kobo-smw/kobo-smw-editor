@@ -12,7 +12,10 @@ level does not reproduce is in [known-gaps.md](known-gaps.md).
   (the tiers, below). Kobo-core is optimised in a dev build (`Cargo.toml`), keeping debug
   assertions and overflow checks, so the tests that run the ROM's own code are about as
   fast as in release; `CARGO_PROFILE_DEV_PACKAGE_KOBO_CORE_OPT_LEVEL=0` gives a debugger
-  an unoptimised build.
+  an unoptimised build. The optimisation covers the integration tests' own code too (a
+  profile covers every target of its package), and that is wanted: tried 2026-10-20 with the
+  tests as a package of their own, their builds were faster but runs slower, up to three
+  times (`lunar_magic_exanimation`), as several tests do real work in their own code.
 - `cargo xtask verify` (crates/xtask) runs what CI runs and more: `cargo fmt --check`,
   clippy with warnings denied, `cargo xtask lint-tools` (the scripts in `tools/`), a table
   of what this machine has for each tier, the tests, and at the end every test that
