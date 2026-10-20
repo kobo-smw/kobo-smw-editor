@@ -55,22 +55,24 @@ fn lunar_magic_files_decode_as_the_rom_decodes_them() {
     let failures = common::failures::Failures::new(
         "gfx_decompression::lunar_magic_files_decode_as_the_rom_decodes_them",
     );
-    for (path, rom) in common::lunar_magic_roms() {
-        match check_rom(&rom) {
-            Ok((compression, found)) => {
-                failures.checked(&path, &rom);
-                eprintln!("{}: {compression}", path.display());
-                for f in found {
-                    failures.fail(&rom, None, f);
-                }
+    let lines = common::par_lunar_magic_roms(|path, rom| match check_rom(rom) {
+        Ok((compression, found)) => {
+            failures.checked(path, rom);
+            for f in found {
+                failures.fail(rom, None, f);
             }
-            // Its files cannot be read by number, which is the point.
-            Err(GfxError::Locked) => eprintln!("skipping {}: locked", path.display()),
-            Err(e) => {
-                failures.checked(&path, &rom);
-                failures.fail(&rom, None, e.to_string());
-            }
+            Some(format!("{}: {compression}", path.display()))
         }
+        // Its files cannot be read by number, which is the point.
+        Err(GfxError::Locked) => Some(format!("skipping {}: locked", path.display())),
+        Err(e) => {
+            failures.checked(path, rom);
+            failures.fail(rom, None, e.to_string());
+            None
+        }
+    });
+    for line in lines.into_iter().flatten() {
+        eprintln!("{line}");
     }
     failures.finish();
 }

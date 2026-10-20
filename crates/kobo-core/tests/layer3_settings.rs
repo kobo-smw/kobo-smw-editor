@@ -493,11 +493,11 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
     let Some(asar) = common::asar() else {
         return;
     };
-    let mut hacks = 0;
     let failures =
         common::failures::Failures::new("layer3_settings::kobos_layer3_code_plays_as_lunar_magics");
-    let mut sa1 = None;
-    for (path, hack) in common::lunar_magic_roms() {
+    let sa1 = std::sync::OnceLock::new();
+    // Each hack's line, and whether it has Lunar Magic's layer 3 code.
+    let lines = common::par_lunar_magic_roms(|path, hack| {
         // Lunar Magic 3.0x and 2.x keep a position that scrolls below 0
         // within 11 bits and read an empty slot's settings otherwise; Kobo's
         // code does as 3.70's (and 3.1x-3.5x's) does.
@@ -507,48 +507,52 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
             .unwrap_or(0.0);
         if hack.read_u8(exgfx::LAYER3_CHECK).ok() != Some(exgfx::JSL)
             || version < 3.1
-            || kobo_core::gfx::is_locked(&hack)
+            || kobo_core::gfx::is_locked(hack)
         {
-            continue;
+            return None;
         }
         // An SA-1 hack's hook sites go back to SA-1 Pack's bytes.
         let base = if hack.mapping().is_sa1() {
-            match sa1.get_or_insert_with(|| common::sa1_base(&clean)) {
+            match sa1.get_or_init(|| common::sa1_base(&clean)) {
                 Some(base) => base,
-                None => continue,
+                None => return None,
             }
         } else {
             &clean
         };
-        let Some(kobo) = with_kobos(&hack, base, &asar) else {
-            eprintln!(
+        let Some(kobo) = with_kobos(hack, base, &asar) else {
+            let line = format!(
                 "{}: Kobo's code does not fit beside the hack's",
                 path.display()
             );
-            continue;
+            return Some((line, false));
         };
-        failures.checked(&path, &hack);
+        failures.checked(path, hack);
+        let mut lines = Vec::new();
         let mut levels = 0;
         for number in 0..0x200u16 {
-            let Some(list) = exgfx::read_list(&hack, number).unwrap() else {
+            let Some(list) = exgfx::read_list(hack, number).unwrap() else {
                 continue;
             };
             if !list.has_layer3() && !(list.layer3_tilemap() && list.0[slot::AN2] != exgfx::EMPTY) {
                 continue;
             }
             let s = list.layer3();
-            let level = match import::read_level(&hack, number) {
+            let level = match import::read_level(hack, number) {
                 Ok((level, _)) => level,
                 Err(e) => {
-                    eprintln!("{}: {number:03X} left out, import: {e}", path.display());
+                    lines.push(format!(
+                        "{}: {number:03X} left out, import: {e}",
+                        path.display()
+                    ));
                     continue;
                 }
             };
             // By the game's table, or as the level loads ($1403): a hack may
             // set a tide its own way.
-            let tide = exgfx::has_tide(&hack, level.header.object_tileset, level.entrance.layer3)
+            let tide = exgfx::has_tide(hack, level.header.object_tileset, level.entrance.layer3)
                 .unwrap()
-                || expand::expand_level(&hack, number)
+                || expand::expand_level(hack, number)
                     .is_ok_and(|l| l.ram.u8(RamAddr::new(0x7E_1403)) != 0);
             if s.unknown || (tide && s.advanced && level.header.level_mode.layer1_vertical()) {
                 continue;
@@ -564,14 +568,19 @@ fn kobos_layer3_code_plays_as_lunar_magics() {
             // both (entrance.asm), and plays as the hack there (QLDC 2021
             // `06_Friday`'s level 106, docs/lunar-magic-install.md).
             for p in paths {
-                if let Some(d) = first_difference(&hack, &kobo, number, frames, p, tide) {
-                    failures.fail(&hack, Some(number), format!("{p}: {d}"));
+                if let Some(d) = first_difference(hack, &kobo, number, frames, p, tide) {
+                    failures.fail(hack, Some(number), format!("{p}: {d}"));
                 }
             }
             levels += 1;
         }
-        eprintln!("{}: {levels} levels", path.display());
-        hacks += 1;
+        lines.push(format!("{}: {levels} levels", path.display()));
+        Some((lines.join("\n"), true))
+    });
+    let mut hacks = 0;
+    for (line, has_code) in lines.into_iter().flatten() {
+        eprintln!("{line}");
+        hacks += has_code as usize;
     }
     eprintln!("{hacks} hacks with Lunar Magic's layer 3 code");
     common::none_checked(

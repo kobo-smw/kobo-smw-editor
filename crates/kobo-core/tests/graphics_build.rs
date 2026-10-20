@@ -336,19 +336,18 @@ fn the_corpus_graphics_build_as_the_hacks_have_them() {
     let failures = common::failures::Failures::new(
         "graphics_build::the_corpus_graphics_build_as_the_hacks_have_them",
     );
-    let mut checked = 0;
-    for (path, hack) in common::lunar_magic_roms() {
-        if !exgfx::has_exgfx(&hack) || gfx::is_locked(&hack) {
-            continue;
+    let lines = common::par_lunar_magic_roms(|path, hack| {
+        if !exgfx::has_exgfx(hack) || gfx::is_locked(hack) {
+            return None;
         }
         // An SA-1 hack builds as an SA-1 project, which needs SA-1 Pack.
         let sa1 = hack.mapping().is_sa1();
         if sa1 && common::tool(kobo_core::tools::Tool::Sa1Pack).is_none() {
-            continue;
+            return None;
         }
-        failures.checked(&path, &hack);
+        failures.checked(path, hack);
         let name = path.display();
-        let (files, _) = import::read_exgfx_files(&hack).unwrap();
+        let (files, _) = import::read_exgfx_files(hack).unwrap();
         let exgfx = exgfx_bytes(&files);
         let limit = |s: usize| match s {
             slot::AN2 => 0x1A00,
@@ -371,7 +370,7 @@ fn the_corpus_graphics_build_as_the_hacks_have_them() {
         };
         let mut levels = Vec::new();
         for number in 0..0x200 {
-            let Some(list) = exgfx::read_list(&hack, number)
+            let Some(list) = exgfx::read_list(hack, number)
                 .unwrap()
                 .filter(|l| l.is_used())
             else {
@@ -389,7 +388,7 @@ fn the_corpus_graphics_build_as_the_hacks_have_them() {
             rom_size: Some(hack.len().max(0x20_0000)),
             sa1,
             four_bpp: true,
-            bypass_lists: exgfx::read_old_lists(&hack).unwrap().into_iter().collect(),
+            bypass_lists: exgfx::read_old_lists(hack).unwrap().into_iter().collect(),
             ..Manifest::default()
         });
         p.levels = levels;
@@ -397,22 +396,22 @@ fn the_corpus_graphics_build_as_the_hacks_have_them() {
         let built = match build::build(&clean, &p) {
             Ok(built) => built,
             Err(e) => {
-                failures.fail(&hack, None, format!("build: {e}"));
-                continue;
+                failures.fail(hack, None, format!("build: {e}"));
+                return None;
             }
         };
         // As bytes: which lists the build took decides PNG or bytes.
         let (again, _) = import::read_exgfx_files(&built).unwrap();
         if exgfx_bytes(&again) != p.exgfx {
-            failures.fail(&hack, None, "ExGFX files differ");
+            failures.fail(hack, None, "ExGFX files differ");
         }
         let (old, want) = (
             exgfx::read_old_lists(&built).unwrap(),
-            exgfx::read_old_lists(&hack).unwrap(),
+            exgfx::read_old_lists(hack).unwrap(),
         );
         if old != want {
             failures.fail(
-                &hack,
+                hack,
                 None,
                 format!("older lists {old:?}, expected {want:?}"),
             );
@@ -421,18 +420,21 @@ fn the_corpus_graphics_build_as_the_hacks_have_them() {
             let got = exgfx::read_list(&built, *number).unwrap();
             if got != level.graphics {
                 failures.fail(
-                    &hack,
+                    hack,
                     Some(*number),
                     format!("list {got:?}, expected {:?}", level.graphics),
                 );
             }
         }
-        eprintln!(
+        Some(format!(
             "{name}: {} ExGFX files, {} lists",
             files.len(),
             p.levels.len()
-        );
-        checked += 1;
+        ))
+    });
+    let checked = lines.iter().flatten().count();
+    for line in lines.into_iter().flatten() {
+        eprintln!("{line}");
     }
     eprintln!("{checked} hacks with ExGFX");
     common::none_checked(

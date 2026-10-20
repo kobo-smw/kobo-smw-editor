@@ -169,18 +169,20 @@ fn vanilla_levels_round_trip() {
 #[test]
 fn lunar_magic_levels_round_trip() {
     let failures = Failures::new("level_data::lunar_magic_levels_round_trip");
-    for (path, rom) in common::lunar_magic_roms() {
+    let lines = common::par_lunar_magic_roms(|path, rom| {
         let name = path.file_name().unwrap().to_string_lossy();
-        if gfx::is_locked(&rom) {
-            eprintln!("{name}: locked, skipped");
-            continue;
+        if gfx::is_locked(rom) {
+            return format!("{name}: locked, skipped");
         }
-        failures.checked(&path, &rom);
-        let counts = check_rom(&name, &rom, Some(&failures));
-        eprintln!(
+        failures.checked(path, rom);
+        let counts = check_rom(&name, rom, Some(&failures));
+        format!(
             "{name}: {} of {} lists byte for byte, {} backgrounds",
             counts.identical, counts.lists, counts.backgrounds
-        );
+        )
+    });
+    for line in lines {
+        eprintln!("{line}");
     }
     failures.finish();
 }

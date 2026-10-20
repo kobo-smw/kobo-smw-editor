@@ -62,22 +62,25 @@ fn every_size_places_its_objects_and_sets_up_its_ram() {
     if common::asar().is_none() {
         return;
     }
-    for mode in 0..32u8 {
-        for bottom_row in [false, true] {
-            let size = LevelSize {
+    let sizes: Vec<LevelSize> = (0..32u8)
+        .flat_map(|mode| {
+            [false, true].map(|bottom_row| LevelSize {
                 mode,
                 bottom_row,
                 split: false,
-            };
-            let level = tall_level(&clean, size);
-            // On the clean ROM, and as an SA-1 project.
-            for (_, built) in common::builds(&clean, &project(vec![(0x105, level.clone())])) {
-                let sa1 = built.mapping().is_sa1();
-                let what = format!("size {mode:02X}, bottom row {bottom_row}, SA-1 {sa1}");
-                check_size(&built, &level, size, &what);
-            }
+            })
+        })
+        .collect();
+    common::par_map(&sizes, |&size| {
+        let level = tall_level(&clean, size);
+        // On the clean ROM, and as an SA-1 project.
+        for (_, built) in common::builds(&clean, &project(vec![(0x105, level.clone())])) {
+            let sa1 = built.mapping().is_sa1();
+            let (mode, bottom_row) = (size.mode, size.bottom_row);
+            let what = format!("size {mode:02X}, bottom row {bottom_row}, SA-1 {sa1}");
+            check_size(&built, &level, size, &what);
         }
-    }
+    });
 }
 
 /// What a build with `level` at `size` as level 105 loads and leaves.

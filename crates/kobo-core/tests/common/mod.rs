@@ -187,6 +187,19 @@ pub fn lunar_magic_rom_paths() -> Vec<PathBuf> {
     tier_paths(Tier::LmRoms).unwrap_or_default()
 }
 
+/// `f` of every hack [`lunar_magic_roms`] gives, on every core
+/// ([`par_map`]): each worker loads the hacks it takes. The results are in
+/// the corpus's order, so a test prints what it found after, in order.
+pub fn par_lunar_magic_roms<R: Send>(f: impl Fn(&Path, &Rom) -> R + Sync) -> Vec<R> {
+    par_map(&lunar_magic_rom_paths(), |path| {
+        let rom = load_corpus_rom(path, &mut None);
+        (rom.identify() != RomIdentity::VanillaUsa).then(|| f(path, &rom))
+    })
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
 /// A corpus entry: a ROM, or a `.bps` patch applied to the vanilla ROM,
 /// which `clean` keeps once loaded.
 pub fn load_corpus_rom(path: &Path, clean: &mut Option<Rom>) -> Rom {

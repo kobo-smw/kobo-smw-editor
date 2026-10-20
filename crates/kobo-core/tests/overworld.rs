@@ -470,13 +470,13 @@ fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
     let failures = common::failures::Failures::new(
         "overworld::lunar_magic_overworlds_build_and_load_as_the_hacks_have_them",
     );
-    for (path, rom) in common::lunar_magic_roms() {
-        failures.checked(&path, &rom);
-        let theirs = match Overworld::read(&rom) {
+    common::par_lunar_magic_roms(|path, rom| {
+        failures.checked(path, rom);
+        let theirs = match Overworld::read(rom) {
             Ok(read) => read.in_lunar_magic_shape(),
             Err(e) => {
-                failures.fail(&rom, None, format!("read: {e}"));
-                continue;
+                failures.fail(rom, None, format!("read: {e}"));
+                return;
             }
         };
         let project = Project {
@@ -487,8 +487,8 @@ fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
         let built = match build::build(&clean, &project) {
             Ok(built) => built,
             Err(e) => {
-                failures.fail(&rom, None, format!("build: {e}"));
-                continue;
+                failures.fail(rom, None, format!("build: {e}"));
+                return;
             }
         };
         let ours = Overworld::read(&built).unwrap();
@@ -515,30 +515,30 @@ fn lunar_magic_overworlds_build_and_load_as_the_hacks_have_them() {
             && ours.animation.as_ref().filter(|a| !a.is_empty())
                 == theirs.animation.as_ref().filter(|a| !a.is_empty());
         if !same {
-            failures.fail(&rom, None, "the build reads back otherwise");
+            failures.fail(rom, None, "the build reads back otherwise");
         }
         match expand::load_overworld(&built) {
             Ok(loaded) => {
                 for d in overworld::differences(&ours, &loaded) {
-                    failures.fail(&rom, None, format!("the build's load: {d}"));
+                    failures.fail(rom, None, format!("the build's load: {d}"));
                 }
             }
-            Err(e) => failures.fail(&rom, None, format!("the build's load: {e}")),
+            Err(e) => failures.fail(rom, None, format!("the build's load: {e}")),
         }
         // A hack whose own new game does not reach the overworld is the
         // other test's to report.
         let all = [0xFF; 0x0F];
-        if let Ok(theirs) = expand::load_overworld_passed(&rom, &all) {
+        if let Ok(theirs) = expand::load_overworld_passed(rom, &all) {
             match expand::load_overworld_passed(&built, &all) {
                 Ok(ours) => {
                     for d in overworld::load_differences(&theirs, &ours) {
-                        failures.fail(&rom, None, format!("every event passed: {d}"));
+                        failures.fail(rom, None, format!("every event passed: {d}"));
                     }
                 }
-                Err(e) => failures.fail(&rom, None, format!("every event passed: {e}")),
+                Err(e) => failures.fail(rom, None, format!("every event passed: {e}")),
             }
         }
-    }
+    });
     failures.finish();
 }
 
@@ -606,42 +606,42 @@ fn kobo_overworld_animation_plays_as_lunar_magics() {
     let failures = common::failures::Failures::new(
         "overworld::kobo_overworld_animation_plays_as_lunar_magics",
     );
-    for (path, rom) in common::lunar_magic_roms() {
+    common::par_lunar_magic_roms(|path, rom| {
         if rom.read_u8(SnesAddr::new(0x04_8086)).ok() != Some(0x22) {
-            continue;
+            return;
         }
-        failures.checked(&path, &rom);
-        let ours = match swap(&asar, Piece::OverworldAnimation, &rom, &clean) {
+        failures.checked(path, rom);
+        let ours = match swap(&asar, Piece::OverworldAnimation, rom, &clean) {
             Ok(mut ours) => {
                 // Lunar Magic's option to merge FG1-2 into SP3-4 moves the
                 // game's animated tiles with them; Kobo's code sends them
                 // where the game's LDY #$0750 says, which is how a build
                 // that carries the option will move them.
                 let merged =
-                    expand::load_overworld(&rom).is_ok_and(|l| l.bg_character_base[0] == 0xE000);
+                    expand::load_overworld(rom).is_ok_and(|l| l.bg_character_base[0] == 0xE000);
                 if merged {
                     ours.write(SnesAddr::new(0x00_A4EB), &[0x50, 0x77]).unwrap();
                 }
                 ours
             }
             Err(e) => {
-                failures.fail(&rom, None, format!("swap: {e}"));
-                continue;
+                failures.fail(rom, None, format!("swap: {e}"));
+                return;
             }
         };
         for submap in 0..7 {
-            let theirs = expand::play_overworld_on(&rom, submap, 64);
+            let theirs = expand::play_overworld_on(rom, submap, 64);
             let kobo = expand::play_overworld_on(&ours, submap, 64);
             match (theirs, kobo) {
                 (Ok(a), Ok(b)) => {
                     if let Some(d) = first_difference(&a, &b) {
-                        failures.fail(&rom, None, format!("submap {submap}: {d}"));
+                        failures.fail(rom, None, format!("submap {submap}: {d}"));
                     }
                 }
-                (Err(e), _) => failures.fail(&rom, None, format!("submap {submap}, the hack: {e}")),
-                (_, Err(e)) => failures.fail(&rom, None, format!("submap {submap}, Kobo's: {e}")),
+                (Err(e), _) => failures.fail(rom, None, format!("submap {submap}, the hack: {e}")),
+                (_, Err(e)) => failures.fail(rom, None, format!("submap {submap}, Kobo's: {e}")),
             }
         }
-    }
+    });
     failures.finish();
 }
