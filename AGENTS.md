@@ -372,15 +372,19 @@ Builds are the slow part of working on Kobo, so keep them warm:
 
 ## Reference material
 
+Kobo's own downloads and tool builds live under `~/.local/share/kobo/` (the oracle scripts'
+default). Where the tools built from source are installed differs per machine and isn't
+recorded here; a machine set up for Kobo has its own notes.
+
 - `~/.local/share/kobo/docs/smwdisx/`: the SMWDisX disassembly banks and `SMW_U.sym` (downloaded
   from GitHub, not committed). Use it to read how the game consumes a table; never build on it.
   SMW Central is behind a JavaScript challenge and cannot be fetched from tools.
-- Asar 1.91 built from source (`~/src/vendor/asar`, tag `v1.91`): `~/.local/bin/asar`, and
-  `libasar.so` in `~/.local/lib`, which `KOBO_ASAR_LIB` points the tests at. Without it,
-  `kobo tools fetch` caches the pinned builds of Asar, PIXI, and UberASM Tool
-  (`~/.cache/kobo/tools`), which the tests then find.
-- .NET 8 SDK in `~/.dotnet` (user-local, from `dot.net/v1/dotnet-install.sh`); UberASM Tool
-  built with it as x64 in `~/.local/share/kobo/tools/uberasm-x64` (docs/toolchain.md).
+- Asar 1.91 built from source (tag `v1.91`) gives `asar` and `libasar.so`; `KOBO_ASAR_LIB`
+  points the tests at the library. Without it, `kobo tools fetch` caches the pinned builds of
+  Asar, PIXI, and UberASM Tool (`~/.cache/kobo/tools`), which the tests then find.
+- UberASM Tool built as x64 with the .NET 8 SDK (a user-local install from
+  `dot.net/v1/dotnet-install.sh` is enough) in `~/.local/share/kobo/tools/uberasm-x64`
+  (docs/toolchain.md).
   `kobo-smw/kobo-tools` (its `build.py`, and a Docker image for Linux) makes the pinned builds.
 - Lunar Magic 3.70, the version Kobo's builds target: `~/.local/share/kobo/tools/lunar-magic-3.70/`
   (from `fusoya.eludevisibility.org/lm/`). Run `x64/Lunar Magic.exe`, which needs only
@@ -391,10 +395,9 @@ Builds are the slow part of working on Kobo, so keep them warm:
   technical ones). `tools/lunar-magic/` has a wrapper that runs it headlessly and a ROM
   diff that reports changed regions without printing Lunar Magic's code.
 - Mesen 2: `~/.local/share/kobo/tools/mesen2/Mesen`, built from source against the system
-  libstdc++ (`~/src/vendor/Mesen2`, `USE_GCC=true make`, with SDL2 built into `~/.local/sdl2`
-  and X11 headers unpacked from Debian's packages into `~/src/vendor/x11dev`; .NET SDK in
-  `~/.dotnet`). It runs with `DOTNET_ROOT=~/.dotnet` and
-  `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` (no libicu here), under `xvfb-run -a`. The
+  libstdc++ (`USE_GCC=true make`, which needs SDL2, X11 headers and the .NET SDK). It runs with
+  `DOTNET_ROOT` set to that SDK, under `xvfb-run -a`, plus
+  `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` on a machine without libicu. The
   official 2.1.1 binary in `tools/mesen/` bundles GCC 12's libstdc++ and aborts with
   `std::bad_cast` at startup about half the time; do not use it. Headless use is
   `Mesen --testRunner script.lua rom.sfc --timeout=N`; the script ends with
